@@ -1,5 +1,5 @@
 {
-    "name": "python_template_repo",
+    "name": "statmate-ai",
     "build": {
         "dockerfile": "Dockerfile",
         "args": {
@@ -10,7 +10,7 @@
     },
     "runArgs": [
         "--rm",
-        "--name=python_template_repo_devcontainer"
+        "--name=statmate-ai_devcontainer"
     ],
 
     "remoteUser": "vscode",
@@ -23,7 +23,7 @@
     "customizations": {
         "vscode": {
             "settings": {
-                "python.defaultInterpreterPath": "/opt/uv/python_template_repo/bin/python3",
+                "python.defaultInterpreterPath": "/opt/uv/statmate-ai/bin/python3",
                 "editor.formatOnSave": true,
                 "[python]": {
                     "editor.defaultFormatter": "charliermarsh.ruff",

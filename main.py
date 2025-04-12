@@ -1,6 +1,6 @@
 def main() -> None:
     """Hello world."""
-    print('Hello from python_template_repo!')
+    print('Hello from statmate-ai!')
 
 
 if __name__ == '__main__':
