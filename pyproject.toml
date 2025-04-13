@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [{ name = "Adam Krysztopa", email = "adam_krysztopa@mechai.pl" }]
 requires-python = ">=3.11"
 dependencies = [
-    "pydantic>=2.5",
+    "pydantic",
     "numpy",
     "scipy",
     "pandas",
@@ -48,7 +48,7 @@ convention = "google"
 ignore-names = ["X*"]
 
 [tool.pyright]
-typeCeckingMode = "standard"
+typeCheckingMode = "standard"
 
 [tool.ruff.format]
 quote-style = "single"

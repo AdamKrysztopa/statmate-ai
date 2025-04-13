@@ -3,42 +3,43 @@
     "build": {
         "dockerfile": "Dockerfile",
         "args": {
-            "VARIANT": "3.11",
+            "VARIANT": "3.11.12",
             "GIT_USER_NAME": "${localEnv:GIT_USER_NAME}",
-            "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}",
+            "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}"
         }
     },
     "runArgs": [
         "--rm",
         "--name=statmate-ai_devcontainer"
     ],
-
     "remoteUser": "vscode",
     "containerEnv": {
         "MY_ENV_VAR": "${localEnv:MY_ENV_VAR}",
         "HOME": "/home/vscode",
         "GIT_USER_NAME": "${localEnv:GIT_USER_NAME}",
-        "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}",
+        "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}"
     },
     "customizations": {
         "vscode": {
             "settings": {
-                "python.defaultInterpreterPath": "/opt/uv/statmate-ai/bin/python3",
+                "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python3",
                 "editor.formatOnSave": true,
                 "[python]": {
                     "editor.defaultFormatter": "charliermarsh.ruff",
                     "editor.codeActionsOnSave": {
-                    "source.fixAll": true,
-                    "source.organizeImports": true
+                        "source.fixAll": true,
+                        "source.organizeImports": true
                     }
                 },
+                "python.languageServer": "Pylance",
+                "python.analysis.extraPaths": ["${workspaceFolder}/.venv/lib/python3.11/site-packages"],
                 "[yaml]": {
                     "editor.defaultFormatter": "redhat.vscode-yaml",
-                    "editor.formatOnSave": true,
+                    "editor.formatOnSave": true
                 },
                 "[markdown]": {
                     "editor.defaultFormatter": "yzhang.markdown-all-in-one",
-                    "editor.formatOnSave": true,
+                    "editor.formatOnSave": true
                 },
                 "[json]": {
                     "editor.defaultFormatter": "esbenp.prettier-vscode",
@@ -55,8 +56,8 @@
             },
             "extensions": [
                 "ms-python.python",
-                "ms-python.vscode-pylance",
                 "emeraldwalk.runonsave",
+                "ms-python.vscode-pylance",
                 "dbaeumer.vscode-eslint",
                 "charliermarsh.ruff",
                 "tamasfe.even-better-toml",
@@ -65,10 +66,10 @@
                 "yzhang.markdown-all-in-one",
                 "esbenp.prettier-vscode",
                 "foxundermoon.shell-format",
-                "github.copilot",
+                "github.copilot"
             ]
         }
     },
-    "postCreateCommand": "bash .devcontainer/setup_git.sh && git config --global core.editor \"code --wait --new-window\"",
+    "postCreateCommand": "bash .devcontainer/setup_git.sh && uv sync && git config --global core.editor \"code --wait --new-window\"",
     "shutdownAction": "stopContainer"
 }
