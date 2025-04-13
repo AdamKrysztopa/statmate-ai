@@ -64,7 +64,8 @@
                 "redhat.vscode-yaml",
                 "yzhang.markdown-all-in-one",
                 "esbenp.prettier-vscode",
-                "foxundermoon.shell-format"
+                "foxundermoon.shell-format",
+                "github.copilot",
             ]
         }
     },
