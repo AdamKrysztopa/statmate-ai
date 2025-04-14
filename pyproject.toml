@@ -36,7 +36,7 @@ prerelease = "if-necessary-or-explicit"
 [tool.ruff]
 select = ["E", "F", "W", "C", "N", "Q", "B", "I"]
 ignore = []
-line-length = 88
+line-length = 120
 extend-select = ["ANN", "ARG", "D", "PIE", "PT", "RET", "S", "UP"]
 fix = true
 
