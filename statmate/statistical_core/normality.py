@@ -43,3 +43,26 @@ def shapiro_wilk_test(data: np.ndarray, alpha: float = 0.05, nan_policy: str = '
             'sample_size': len(data),
         },
     )
+
+
+def normality_of_difference(
+    data1: np.ndarray,
+    data2: np.ndarray,
+    alpha: float = 0.05,
+    nan_policy: str = 'propagate',
+) -> StatTestResult:
+    """Performs the Shapiro-Wilk normality test on the difference between two samples.
+
+    Null hypothesis:
+        The difference between the two samples is drawn from a normal distribution.
+
+    Alternative hypothesis:
+        The difference between the two samples is not drawn from a normal distribution.
+    """
+    difference = data1 - data2
+    results = shapiro_wilk_test(difference, alpha=alpha, nan_policy=nan_policy)
+    results.test_name = 'Normality of Difference Test'
+    results.null_hypothesis = 'The difference between the two samples is drawn from a normal distribution.'
+    results.alternative = 'The difference between the two samples is not drawn from a normal distribution.'
+
+    return results
