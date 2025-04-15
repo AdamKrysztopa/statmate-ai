@@ -12,7 +12,7 @@ from pydantic_ai.models import Model
 from statmate.statistical_core.base import StatTestResult
 
 
-def build_generic_system_prompt(**kwargs: dict[str, str]) -> str:
+def build_generic_system_prompt(**kwargs: str) -> str:
     """Build a generic system prompt for a statistical test agent with optional additional instructions.
 
     Args:
@@ -56,7 +56,11 @@ class StatTestDeps(BaseModel):
     )
 
     data: np.ndarray | pd.Series = Field(
-        description='Input data to test.',
+        description='Input data to test. If test requires two datasets, provide secondary set: data_secondary.',
+    )
+    data_secondary: np.ndarray | pd.Series | None = Field(
+        description='Secondary dataset for two-sample tests.',
+        default=None,
     )
     test_params: dict[str, Any] | None = Field(
         description='Parameters for the statistical test.',
@@ -89,6 +93,7 @@ class AgentResult(BaseModel):
             str: String representation of the agent result.
         """
         return (
+            f'### Test Name: {self.statistical_test_result.test_name} ###\n\n'
             f'Statistic: {self.statistical_test_result.statistics},\n\np-value: {self.statistical_test_result.p_value}\n\n'
             f'Result: {self.result}\n\nComment: {self.comments}\n\n'
         )
@@ -99,7 +104,7 @@ def build_stat_test_agent(
     test_name: str,
     test_function: Callable[..., StatTestResult],
     system_prompt: str | None = None,
-    **prompt_kwargs: dict[str, str],
+    **prompt_kwargs: str,
 ) -> Agent[StatTestDeps, AgentResult]:
     """Builds a statistical test agent with an extensible system prompt.
 
@@ -132,6 +137,11 @@ def build_stat_test_agent(
             ctx.deps.test_params = {}
         if isinstance(ctx.deps.data, pd.Series):
             ctx.deps.data = ctx.deps.data.to_numpy()
+
+        if ctx.deps.data_secondary is not None and isinstance(ctx.deps.data_secondary, pd.Series):
+            ctx.deps.data_secondary = ctx.deps.data_secondary.to_numpy()
+        if ctx.deps.data_secondary is not None:
+            return test_function(ctx.deps.data, ctx.deps.data_secondary, **ctx.deps.test_params)
         return test_function(ctx.deps.data, **ctx.deps.test_params)
 
     return agent

@@ -18,7 +18,8 @@ def shapiro_wilk_agent(
         model=model,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, if results are not clear, propose different tests.',
+        potential_suggertions='Please suggest the best way to perform the test, '
+        'if results are not clear, propose different tests.',
     )
 
 
