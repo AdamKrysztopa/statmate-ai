@@ -1,10 +1,10 @@
 from collections.abc import Callable
 
 import numpy as np
-from agent_builder import StatTestDeps, build_stat_test_agent
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
 
+from statmate.agent import StatTestDeps, build_stat_test_agent
 from statmate.statistical_core import StatTestResult, shapiro_wilk_test
 
 

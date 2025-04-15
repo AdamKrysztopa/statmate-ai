@@ -2,12 +2,11 @@
 
 import numpy as np
 import scipy.stats
-from base import StatTestResult
+
+from statmate.statistical_core.base import StatTestResult
 
 
-def shapiro_wilk_test(
-    data: np.ndarray, alpha: float = 0.05, nan_policy: str = 'propagate'
-) -> StatTestResult:
+def shapiro_wilk_test(data: np.ndarray, alpha: float = 0.05, nan_policy: str = 'propagate') -> StatTestResult:
     """Performs the Shapiro-Wilk normality test.
 
     Null hypothesis:
@@ -27,9 +26,7 @@ def shapiro_wilk_test(
     """
     statistic, p_value = scipy.stats.shapiro(data, nan_policy=nan_policy)  # type: ignore not true
     if p_value < alpha:
-        result_text = (
-            f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}).'
-        )
+        result_text = f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}).'
     else:
         result_text = f'We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}).'
 

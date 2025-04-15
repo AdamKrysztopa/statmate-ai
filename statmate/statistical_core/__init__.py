@@ -1,7 +1,7 @@
 """Statistical Core Module."""
 
-from base import StatTestResult
-from normality import shapiro_wilk_test
+from statmate.statistical_core.base import StatTestResult
+from statmate.statistical_core.normality import shapiro_wilk_test
 
 __all__ = [
     'shapiro_wilk_test',

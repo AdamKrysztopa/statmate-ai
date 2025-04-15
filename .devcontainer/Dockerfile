@@ -30,3 +30,5 @@ RUN uv venv .venv
 
 # Update PATH
 ENV PATH="/workspace/.venv/bin:$PATH"
+
+ENV PYTHONPATH=/workspaces/statmate-ai:$PYTHONPATH
