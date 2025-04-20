@@ -41,6 +41,8 @@ Assumptions & Diagnostics:
 
 Data Exploration:
   - Summarize distribution metrics (mean, median, variance, skewness).
+  - Analye the imput data, check if data are categorical or continuous, and propose the best test.
+  - Verify if only data are provided, or if secondary data is provided - sugest the best analysis.
   - Detect outliers and missing values; document handling decisions.
 
 Precision & Effect Size:
@@ -79,7 +81,7 @@ class StatTestDeps(BaseModel):
     """Dependencies for the statistical test agent."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    data: np.ndarray | pd.Series = Field(
+    data: np.ndarray | pd.Series | pd.DataFrame = Field(
         description='Primary dataset (numpy array or pandas Series).',
     )
     data_secondary: np.ndarray | pd.Series | None = Field(
@@ -101,6 +103,7 @@ class AgentResult(BaseModel):
     comments: str = Field(description='Additional comments and recommendations.')
 
     def __str__(self) -> str:
+        """String representation of the agent result."""
         return (
             f'### Test Name: {self.statistical_test_result.test_name} ###\n'
             f'Statistic: {self.statistical_test_result.statistics}, p-value: {self.statistical_test_result.p_value}\n'
@@ -152,6 +155,58 @@ def build_stat_test_agent(
                 **ctx.deps.test_params,
             )
         return test_function(ctx.deps.data, **ctx.deps.test_params)
+
+    @agent.tool
+    async def analyze_input_data(ctx: RunContext[StatTestDeps]) -> str:
+        """Analyze input data and provide insights."""
+        # Example analysis: Check for missing values and basic statistics
+        output_str = ''
+        if isinstance(ctx.deps.data, pd.Series | pd.DataFrame):
+            missing_values = ctx.deps.data.isnull().sum()
+            basic_stats = ctx.deps.data.describe()
+
+        else:
+            missing_values = np.isnan(ctx.deps.data).sum()
+            basic_stats = {
+                'mean': np.mean(ctx.deps.data),
+                'std': np.std(ctx.deps.data),
+                'min': np.min(ctx.deps.data),
+                'max': np.max(ctx.deps.data),
+                '25%': np.percentile(ctx.deps.data, 25),
+                '50%': np.percentile(ctx.deps.data, 50),
+                '75%': np.percentile(ctx.deps.data, 75),
+            }
+        output_str += f'Missing Values: {missing_values}\n'
+        output_str += f'Basic Statistics: {basic_stats}\n'
+        if isinstance(ctx.deps.data, pd.DataFrame):
+            # get all the possible names of the columns and indexes
+            output_str += f'Column Names: {ctx.deps.data.columns.tolist()}\n'
+            output_str += f'Index Names: {ctx.deps.data.index.tolist()}\n'
+        if isinstance(ctx.deps.data, pd.Series):
+            output_str += f'Series Name: {ctx.deps.data.name}\n'
+            output_str += f'Series Index: {ctx.deps.data.index.tolist()}\n'
+
+        if ctx.deps.data_secondary is not None:
+            output_str += 'Secondary Data Analysis:\n'
+            output_str += 'Since secondary data is provided, it suggests that a two-sample test is being performed.\n'
+            output_str += 'so, the comparison will be made between the two datasets.\n'
+            if isinstance(ctx.deps.data_secondary, pd.Series | pd.DataFrame):
+                basic_stats_secondary = ctx.deps.data_secondary.describe()
+            else:
+                basic_stats_secondary = {
+                    'mean': np.mean(ctx.deps.data_secondary),
+                    'std': np.std(ctx.deps.data_secondary),
+                    'min': np.min(ctx.deps.data_secondary),
+                    'max': np.max(ctx.deps.data_secondary),
+                    '25%': np.percentile(ctx.deps.data_secondary, 25),
+                    '50%': np.percentile(ctx.deps.data_secondary, 50),
+                    '75%': np.percentile(ctx.deps.data_secondary, 75),
+                }
+            output_str += f'Basic Statistics: {basic_stats_secondary}\n'
+            output_str += 'Please ensure that the two datasets are comparable.\n'
+            output_str += 'If they are not, please provide the correct datasets.\n'
+
+        return f'Missing Values: {missing_values}, Basic Statistics: {basic_stats}'
 
     return agent
 

@@ -5,6 +5,10 @@ from statmate.statistical_core.anova import (
     anova_rm_test,
 )
 from statmate.statistical_core.base import StatTestResult
+from statmate.statistical_core.cathegorical_comparison import (
+    chi2_test,
+    fisher_exact_test,
+)
 from statmate.statistical_core.comparison import (
     mannwhitneyu_test,
     ttest_ind_test,
@@ -40,6 +44,8 @@ __all__ = [
     'cramer_von_mises_test',
     'anova_one_way_test',
     'anova_rm_test',
+    'chi2_test',
+    'fisher_exact_test',
 ]
 __version__ = '0.1.0'
 __author__ = 'MechAI Adam Krysztopa'

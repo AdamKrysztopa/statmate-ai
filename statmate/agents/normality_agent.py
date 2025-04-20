@@ -360,9 +360,11 @@ def meta_normality_agent(
 
 if __name__ == '__main__':
     # Example usage
+    import pandas as pd
+
     model = OpenAIModel('gpt-4o')
     model_settings = ModelSettings(
-        temperature=0.0,
+        temperature=0.1,
         max_tokens=1000,
         top_p=1.0,
         frequency_penalty=0.0,
@@ -377,7 +379,7 @@ if __name__ == '__main__':
 
     test_params = {'alpha': 0.05}
 
-    deps = StatTestDeps(data=data_2, test_params=test_params)
+    deps = StatTestDeps(data=pd.Series(data_2, name='temperature diff. after treatment'), test_params=test_params)
     user_prompt = """
 Please let me know the result of the test. You must be sure about the result and you cannot say that the test 
 is inconclusive. If you are not sure, please suggest the best way to perform the test.',

@@ -33,7 +33,7 @@
 - [x] Wilcoxon Signed-Rank, Mann–Whitney U
 - [x] One-way & Repeated Measures ANOVA
 - [ ] Pearson & Spearman correlation
-- [ ] Chi-square test, Fisher’s exact test
+- [x] Chi-square test, Fisher’s exact test
 
 ## 🤖 Implemented Statistical Agents
 
@@ -42,7 +42,7 @@
 - [x] Shapiro-Wilk for sample diffetece
 - [x] Wilcoxon Signed-Rank, Mann–Whitney U
 - [ ] Pearson & Spearman correlation
-- [ ] Chi-square test, Fisher’s exact test
+- [x] Chi-square test, Fisher’s exact test
 
 
 ---
