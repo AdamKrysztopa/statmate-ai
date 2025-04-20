@@ -28,12 +28,22 @@
 
 ## 🧪 Implemented Statistical Tests
 
-- Shapiro–Wilk Test (normality)
-- Paired & Independent t-tests
-- Wilcoxon Signed-Rank, Mann–Whitney U
-- One-way & Repeated Measures ANOVA
-- Pearson & Spearman correlation
-- Chi-square test, Fisher’s exact test
+- [x] Shapiro–Wilk Test (normality) and other less powerfool
+- [x] Paired & Independent t-tests
+- [x] Wilcoxon Signed-Rank, Mann–Whitney U
+- [x] One-way & Repeated Measures ANOVA
+- [ ] Pearson & Spearman correlation
+- [ ] Chi-square test, Fisher’s exact test
+
+## 🤖 Implemented Statistical Agents
+
+- [x] Normality test agents
+- [x] Normality multi-tests agent
+- [x] Shapiro-Wilk for sample diffetece
+- [x] Wilcoxon Signed-Rank, Mann–Whitney U
+- [ ] Pearson & Spearman correlation
+- [ ] Chi-square test, Fisher’s exact test
+
 
 ---
 
@@ -63,18 +73,18 @@ flowchart TD
 
     E -- No --> I{Two Independent Groups?}
     I -- Yes --> J{Are assumptions met?<br/>normality & equal variances}
-    J -- Yes --> K[Independent‑samples t-test<br/>(Student’s t-test)]
+    J -- Yes --> K[Independent‑samples t-test<br/>Student’s t-test]
     J -- No --> L[Consider Both Options:]
-    L --> M[Option A: Welch’s t-test<br/>(parametric adjustment)]
-    L --> N[Option B: Mann‑Whitney U test<br/>(non‑parametric)]
+    L --> M[Option A: Welch’s t-test<br/>parametric adjustment]
+    L --> N[Option B: Mann‑Whitney U test<br/>non‑parametric]
 
-    I -- No --> subgraph Unused["More than Two Groups (Not used right now)"]
-        O{More than Two Groups?}
-        O -- Yes --> P{Repeated measures?}
-        P -- Yes --> Q[Repeated‑measures ANOVA]
-        P -- No --> R[One‑way ANOVA]
-    end
-    %% This branch is not used right now
+    %%I -- No --> subgraph Unused["More than Two Groups *Not used right now*"]
+    %%    O{More than Two Groups?}
+    %%    O -- Yes --> P{Repeated measures?}
+    %%    P -- Yes --> Q[Repeated‑measures ANOVA]
+    %%    P -- No --> R[One‑way ANOVA]
+    %% end
+    %% This branch is not used right now -->
 
     C --> S{Assess relationship/association?}
     S -- Yes --> T{Data characteristics?}
