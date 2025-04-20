@@ -17,6 +17,7 @@ dependencies = [
     "streamlit",
     "pydantic-ai",
     "langgraph",
+    "joblib>=1.4.2",
 ]
 
 [project.optional-dependencies]
