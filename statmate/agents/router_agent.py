@@ -50,18 +50,18 @@ class RouterAgentResults(BaseModel):
         description='Output format of the test.',
     )
     data_analysis_result: str
-    proposed_tests: list[str] = Field(
+    route_to_test: list[str] = Field(
         min_length=1,
-        default_factory=list,
-        description='List of proposed tests in the order of preference. Cannot be empty.',
+        description=(
+            'Ordered list of decision steps from the flowchart, ending in the chosen test. '
+            'Each element should be a string like “Paired → No → Independent‐samples t‐test”.'
+        ),
     )
     comments: str
 
     def __str__(self) -> str:
-        return (
-            f'### Data Analysis Result: {self.data_analysis_result} ###\n'
-            f'Proposed Tests: {", ".join(self.proposed_tests)}\n'
-        )
+        route = ' →\n  '.join(self.route_to_test)
+        return f'### Data Analysis Result: {self.data_analysis_result} ###\nRoute to Test:\n  {route}\n'
 
 
 def build_router_agent(
@@ -169,10 +169,14 @@ if __name__ == '__main__':
         "   - Classify each column as 'continuous' or 'categorical':\n"
         "     - 'categorical' if the column is of type object, bool, or numeric with 5 or fewer unique values.\n"
         "     - 'continuous' for other numeric types.\n\n"
-        '2. **Test Selection**:\n'
-        '   - Based on the combination of column types, select an route to the appropriate statistical test:\n'
-        '   - the route to the test should be based on the following flowchart:\n'
-        '   - the rout means the steps to get to potential tests.\n'
+        '     - Provide a recommendation for data operations - like arithmetic operations, encoding, etc.\n'
+        '2. **Test Selection (provide a route)**:'
+        '   - Instead of naming a single test, output *each* decision as a step in the flowchart, culminating in the final test.'
+        '    - Format the route as an ordered list of strings, e.g.:'
+        '     1. “Start → Continuous outcome”      2. “Two independent groups”'
+        '     3. “Assumptions met (normality, equal variance) → Yes”'
+        '     4. “Independent‐samples t‐test”'
+        '    - Use every decision node (normality check, paired vs independent, etc.) as its own step.'
         '3. **Decision Flowchart**:\n'
         '   - Analyze the potential test paths using the following flowchart:\n'
         '     ```mermaid\n'
@@ -200,8 +204,13 @@ if __name__ == '__main__':
         '   - Provide a JSON object with the following structure:\n'
         '     ```json\n'
         '     {\n'
-        '       "selected_columns": ["column1", "column2"],\n'
-        '       "test_name": "name_of_the_test"\n'
+        '       "columns_to_use": ["column1", "column2"],'
+        '       "route_to_test": ['
+        '       "Start → Continuous outcome",'
+        '       "Independent groups → No pairing",'
+        '       "Assumptions met → Yes",'
+        '       "Independent‐samples t‐test"'
+        '       ],'
         '     }\n'
         '     ```\n\n'
         '5. **Handling Ambiguity**:\n'
@@ -267,6 +276,6 @@ if __name__ == '__main__':
         formatted_data = format_data_by_recommendation(df, results.data)
         print(f'Recommended Columns: {results.data.columns_to_use}, where input_data: {df.columns.tolist()}')
         print(f'Output Format: {results.data.output_format}')
-        print(f'Recomended Tests: {results.data.proposed_tests}')
+        print(f'Recomended Tests: {results.data.route_to_test}')
         print(f'Formatted Data:\n{formatted_data}\n')
         print('--- ---- ---- ---- ---\n')
