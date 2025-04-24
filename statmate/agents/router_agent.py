@@ -1,11 +1,44 @@
-import json
-from typing import Literal
+from enum import Enum
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
+
+
+class NodeName(str, Enum):
+    """Enumeration of decision nodes in the flowchart."""
+
+    # Decision nodes
+    START = 'Start: What is your analysis objective?'
+    OUTCOME_TYPE = 'Outcome Type?'
+    ASSESS_STUDY_DESIGN = 'Assess Study Design'
+    PAIRED_MEASUREMENTS = 'Paired Measurements on Each Subject?'
+    PARAMETRIC_ASSUMPTIONS = 'Parametric assumptions hold?'
+    TWO_INDEPENDENT_GROUPS = 'Two Independent Groups?'
+    ASSUMPTIONS_MET = 'Are assumptions met? (normality & equal variances)'
+    CONSIDER_BOTH_OPTIONS = 'Consider Both Options:'
+    ASSESS_ASSOCIATION = 'Assess relationship/association?'
+    DATA_CHARACTERISTICS = 'Data characteristics?'
+    CONSIDER_REGRESSION = 'Consider regression: Linear Regression Analysis'
+
+    # --- Specific tests for the ASSUMPTIONS_MET node ---
+    # Normality checks
+    SHAPIRO_WILK_TEST = 'Shapiro-Wilk Test'
+
+    # Variance-homogeneity checks
+    LEVENE_TEST = "Levene's Test"
+
+    # Final test nodes
+    PAIRED_T_TEST = 'Paired t-test'
+    WILCOXON_SIGNED_RANK = 'Wilcoxon Signed-Rank test'
+    INDEPENDENT_T_TEST = "Independent-samples t-test (Student's t-test)"
+    WELCH_T_TEST = "Welch's t-test (parametric adjustment)"
+    MANN_WHITNEY_U = 'Mann-Whitney U test (non-parametric)'
+    PEARSON_CORRELATION = 'Pearson correlation'
+    SPEARMAN_CORRELATION = 'Spearman correlation'
 
 
 class RouterAgentDeps(BaseModel):
@@ -38,7 +71,7 @@ class RouterAgentResults(BaseModel):
         columns_to_use: Columns selected for the test.
         output_format: Desired output format ('pd.Series' or 'pd.DataFrame').
         data_analysis_result: Summary of the data analysis.
-        proposed_tests: List of suggested tests in order of preference.
+        route_to_test: List of suggested tests in order of preference.
         comments: Additional comments or notes.
     """
 
@@ -50,11 +83,11 @@ class RouterAgentResults(BaseModel):
         description='Output format of the test.',
     )
     data_analysis_result: str
-    route_to_test: list[str] = Field(
+    route_to_test: list[NodeName] = Field(
         min_length=1,
         description=(
             'Ordered list of decision steps from the flowchart, ending in the chosen test. '
-            'Each element should be a string like “Paired → No → Independent‐samples t‐test”.'
+            'each element should be an NodeName element.'
         ),
     )
     comments: str
@@ -93,7 +126,7 @@ def build_router_agent(
     )
 
     @agent.tool
-    async def analyze_data(ctx: RunContext[RouterAgentDeps]) -> str:
+    async def analyze_data(ctx: RunContext[RouterAgentDeps]) -> dict[str, Any]:
         """Analyzes the input data to extract types, cardinalities, and descriptive statistics.
 
         Args:
@@ -111,8 +144,10 @@ def build_router_agent(
             df = pd.DataFrame(data, columns=cols)
         elif isinstance(data, pd.Series):
             df = data.to_frame()
+            ctx.deps.columns_decision = [str(data.name)] if data.name else []
         elif isinstance(data, pd.DataFrame):
             df = data.copy()
+            ctx.deps.columns_decision = [str(col) for col in df.columns]
         else:
             raise TypeError('Unsupported data type for input_data')
 
@@ -120,7 +155,7 @@ def build_router_agent(
         cardinalities = {col: int(df[col].nunique()) for col in df.columns}
         data_description = df.describe(include='all').to_dict()
 
-        analysis_summary = {
+        return {
             'User Input': ctx.deps.user_input,
             'Data Shape': df.shape,
             'Data Types': dtypes,
@@ -128,7 +163,33 @@ def build_router_agent(
             'Data Description': data_description,
         }
 
-        return json.dumps(analysis_summary, indent=2)
+    @agent.tool
+    async def calculate_columns_diff(ctx: RunContext[RouterAgentDeps], cols_to_diff: list[str]) -> RouterAgentDeps:
+        """Calculates the difference between two specified columns and updates the deps.
+
+        Args:
+            ctx: The agent run context containing input_data and columns_decision.
+            cols_to_diff: Exactly two column names to diff.
+
+        Returns:
+            RouterAgentDeps: the same deps object, with 'diff' column added and columns_decision updated.
+        """
+        if len(cols_to_diff) == 2:
+            col1, col2 = cols_to_diff
+            if isinstance(ctx.deps.input_data, pd.DataFrame):
+                if col1 in ctx.deps.input_data.columns and col2 in ctx.deps.input_data.columns:
+                    if ctx.deps.input_data[col1].dtype != ctx.deps.input_data[col2].dtype:
+                        ctx.deps.user_input += '\nBoth columns must have the same data type to calculate differences'
+                        return ctx.deps
+                    ctx.deps.input_data['diff'] = ctx.deps.input_data[col1] - ctx.deps.input_data[col2]
+                    if ctx.deps.columns_decision is not None:
+                        ctx.deps.columns_decision.append('diff')
+                    ctx.deps.user_input += f'\nDifference between {col1} and {col2} calculated is now available in the input_data DataFrame in the column "diff"'
+                    return ctx.deps
+                ctx.deps.user_input += '\nBoth columns must exist in input_data'
+            ctx.deps.user_input += '\ninput_data must be a pandas DataFrame to calculate column differences'
+        ctx.deps.user_input += '\ncolumns_decision must contain exactly two column names'
+        return ctx.deps
 
     return agent
 
@@ -162,67 +223,64 @@ if __name__ == '__main__':
         frequency_penalty=0.0,
         presence_penalty=0.0,
     )
-    system_prompt = (
-        'You are a statistical test routing agent. Given a pandas DataFrame description and a user request, follow these steps:\n\n'
-        '1. **Column Analysis**:\n'
-        '   - List each column with its data type and unique value count.\n'
-        "   - Classify each column as 'continuous' or 'categorical':\n"
-        "     - 'categorical' if the column is of type object, bool, or numeric with 5 or fewer unique values.\n"
-        "     - 'continuous' for other numeric types.\n\n"
-        '     - Provide a recommendation for data operations - like arithmetic operations, encoding, etc.\n'
-        '2. **Test Selection (provide a route)**:'
-        '   - Instead of naming a single test, output *each* decision as a step in the flowchart, culminating in the final test.'
-        '    - Format the route as an ordered list of strings, e.g.:'
-        '     1. “Start → Continuous outcome”      2. “Two independent groups”'
-        '     3. “Assumptions met (normality, equal variance) → Yes”'
-        '     4. “Independent‐samples t‐test”'
-        '    - Use every decision node (normality check, paired vs independent, etc.) as its own step.'
-        '3. **Decision Flowchart**:\n'
-        '   - Analyze the potential test paths using the following flowchart:\n'
-        '     ```mermaid\n'
-        '     flowchart TD\n'
-        '         A[Start: What is your analysis objective?] --> B{Outcome Type?}\n'
-        '         B -- Continuous Outcome --> C[Assess Study Design]\n'
-        '         B -- Categorical Outcome --> D[Choose Chi-square test or Fisher exact test if expected counts are low]\n'
-        '         C --> E{Paired Measurements on Each Subject?}\n'
-        '         E -- Yes --> F{Parametric assumptions hold?}\n'
-        '         F -- Yes --> G[Paired t-test]\n'
-        '         F -- No --> H[Wilcoxon Signed-Rank test]\n'
-        '         E -- No --> I{Two Independent Groups?}\n'
-        '         I -- Yes --> J{Are assumptions met? (normality & equal variances)}\n'
-        '         J -- Yes --> K[Independent-samples t-test (Student’s t-test)]\n'
-        '         J -- No --> L[Consider Both Options:]\n'
-        '         L --> M[Option A: Welch’s t-test (parametric adjustment)]\n'
-        '         L --> N[Option B: Mann-Whitney U test (non-parametric)]\n'
-        '         C --> S{Assess relationship/association?}\n'
-        '         S -- Yes --> T{Data characteristics?}\n'
-        '         T -- Parametric continuous --> U[Pearson correlation]\n'
-        '         T -- Ordinal/non-normal --> V[Spearman correlation]\n'
-        '         S -- No --> W[Consider regression: Linear Regression Analysis]\n'
-        '     ```\n\n'
-        '4. **Output Format**:\n'
-        '   - Provide a JSON object with the following structure:\n'
-        '     ```json\n'
-        '     {\n'
-        '       "columns_to_use": ["column1", "column2"],'
-        '       "route_to_test": ['
-        '       "Start → Continuous outcome",'
-        '       "Independent groups → No pairing",'
-        '       "Assumptions met → Yes",'
-        '       "Independent‐samples t‐test"'
-        '       ],'
-        '     }\n'
-        '     ```\n\n'
-        '5. **Handling Ambiguity**:\n'
-        '   - If the user request is ambiguous, ask for clarification by listing specific questions.\n'
-        '   - If the meaning of column names is unclear, ask the user to clarify.\n'
-        '   - If the data is not suitable for the requested test, suggest alternative tests.\n'
-        '   - Avoid to propse singular tests - aways propse the route to the test.\n\n'
-        '6. **User Interaction**:\n'
-        '   - Ask the user for any additional information needed to perform the analysis.\n'
-        '   - Keep the questions simple and concise.\n'
-        '   - Avoid asking for too much information at once.\n\n'
-    )
+    system_prompt = """
+    You are a deterministic statistical-test routing agent.  
+Follow these numbered instructions exactly—do not add or omit steps:
+
+1. **Available Tools**  
+   • analyze_data(ctx) → dict[str, Any]  
+   • calculate_columns_diff(ctx, cols_to_diff: list[str]) → RouterAgentDeps  
+
+2. **Column Analysis**  - verify the columns names, and use take them into acount for path selection.
+   2.1 List each column with its data type and unique-value count.  
+   2.2 Classify each column as ‘continuous’ or ‘categorical’.  
+   2.3 Provide encoding or transformation recommendations.  
+        **Do NOT** calculate any "diff" column here.
+   2.4 Provide a list of columns to use for the test
+       2.4.1 Make sure that not meaningful columns are NOT included in the list.
+       2.4.2 Whenever applies, give description why you decide to drop the column.
+
+3. **Column-Difference Calculation**  
+   - Compute the diff `col1−col2` if potentiall test requies it - paired t-test or Wilcoxon Signed-Rank test.
+   - If the input data is a DataFrame, add a new column named `diff` to the input data.
+   - To compute, call the `calculate_columns_diff` tool; do not infer or invent differences.
+   - For significanlty different mean values (like more than few sigma) skip the diff - and look for correlation.
+
+4. **Test-Selection Route**  
+   4.1 Use exactly the `NodeName` enum values for each decision step.  
+   4.2 Emit **each** flowchart node visited, in order, ending with the test node.  
+   4.3 Format output as JSON matching RouterAgentResults:
+   ```json
+   {
+       "columns_to_use": ["col1", "col2", "diff"],
+       "output_format": "pd.Series",
+       "data_analysis_result": "Data analysis summary",
+       "route_to_test": ["NodeName1", "NodeName2", "FinalTest"],
+       "comments": "Any additional comments"
+    }
+    ```
+    4.4. Use following decision tree to select the test:
+    ```mermaid
+        flowchart TD
+        A[Start: What is your analysis objective?] --> B{Outcome Type?}
+        B -- Continuous --> C[Assess Study Design]
+        C --> E{Paired Measurements on Each Subject?}
+        E -- Yes --> F{Parametric assumptions hold?}
+        F -- Yes --> G[Paired t-test]
+        F -- No --> H[Wilcoxon Signed-Rank test]
+        E -- No --> I{Two Independent Groups?}
+        I -- Yes --> J[Are assumptions met? (normality & equal variances)]
+        J -- Yes --> K[Independent-samples t-test]
+        J -- No --> L[Consider Both Options:]
+        L --> M[Option A: Welch’s t-test]
+        L --> N[Option B: Mann-Whitney U test]
+    ```
+5. **Handling Ambiguity**
+    - If a required detail is missing or the user’s request conflicts with these rules, ask a concise clarifying question rather than guessing.
+
+6. **Revisit**
+    - come back to step 2 only, and decide which columns are necessary for a given path.
+    """
 
     agent = build_router_agent(model=model, system_prompt=system_prompt)
 
