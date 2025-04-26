@@ -16,6 +16,8 @@ from statmate.statistical_core.comparison import (
     welch_t_test,
     wilcoxon_test,
 )
+from statmate.statistical_core.equality_of_variance import bartlett_test, levene_test
+from statmate.statistical_core.linear_correlation import pearson_corr, spearman_corr
 from statmate.statistical_core.normality import (
     anderson_darling_test,
     cramer_von_mises_test,
@@ -46,6 +48,10 @@ __all__ = [
     'anova_rm_test',
     'chi2_test',
     'fisher_exact_test',
+    'levene_test',
+    'bartlett_test',
+    'spearman_corr',
+    'pearson_corr',
 ]
 __version__ = '0.1.0'
 __author__ = 'MechAI Adam Krysztopa'
