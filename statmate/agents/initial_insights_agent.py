@@ -42,7 +42,7 @@ Follow these numbered instructions exactly—do not add or omit steps:
    ```json
    {
        "analysis_columns": ["col1", "col2"] or ["diff"]
-       "group_column": "sex", "used_method"
+       "group_column": "sex", "used_method". If not applicable use "None"
        "output_format": "pd.Series",
        "data_analysis_result": "Data analysis summary",
        "route_to_test": ["NodeName1", "NodeName2", "FinalTest"],
@@ -236,6 +236,7 @@ def build_initial_insights_agent(
         dtypes = {col: str(dtype) for col, dtype in df.dtypes.items()}
         cardinalities = {col: int(df[col].nunique()) for col in df.columns}
         data_description = df.describe(include='all').to_dict()
+        index_name = df.index.name
 
         return {
             'User Input': ctx.deps.user_input,
@@ -243,6 +244,7 @@ def build_initial_insights_agent(
             'Data Types': dtypes,
             'Cardinalities': cardinalities,
             'Data Description': data_description,
+            'Index Name': index_name,
         }
 
     @agent.tool
@@ -281,7 +283,7 @@ def build_initial_insights_agent(
 def format_data_by_recommendation(
     data: pd.DataFrame,
     recommendation: InitialInsightsAgentResults,
-) -> pd.DataFrame:
+) -> pd.Series | tuple[pd.Series, pd.Series] | pd.DataFrame:
     """Formats the data based on the agent's recommendation.
 
     Args:
@@ -293,10 +295,13 @@ def format_data_by_recommendation(
     """
     if recommendation.group_column is not None and recommendation.group_column != 'None':
         data = data.set_index(recommendation.group_column)
-    if recommendation.output_format == 'pd.Series':
+    if recommendation.output_format == 'pd.Series' and len(recommendation.analysis_columns) == 1:
         return data[recommendation.analysis_columns].squeeze()
+    if recommendation.output_format == 'pd.Series' and len(recommendation.analysis_columns) == 2:
+        return data[recommendation.analysis_columns[0]], data[recommendation.analysis_columns[1]]
     if recommendation.output_format == 'pd.DataFrame':
         return data[recommendation.analysis_columns] if len(recommendation.analysis_columns) > 0 else data
+
     raise ValueError(f'Unsupported output format: {recommendation.output_format}')
 
 

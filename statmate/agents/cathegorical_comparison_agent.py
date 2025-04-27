@@ -130,3 +130,21 @@ if __name__ == '__main__':
     chi2_result_ind = run_sync_agent(chi2_agent_, user_prompt=user_prompt, deps=ind_data_deps)
     print('\nChi-Squared Test Result (Independent Data):')
     print(chi2_result_ind)
+
+    df = pd.DataFrame(
+        {
+            'usr_id': np.arange(200),
+            'smoker': np.random.choice(['Yes', 'No'], 200),
+            'exercise_level': np.random.choice(['Low', 'Medium', 'High'], 200),
+        }
+    )
+    deps = StatTestDeps(
+        data=pd.crosstab(df['smoker'], df['exercise_level']),
+        data_secondary=None,
+        test_params={
+            'alpha': 0.05,
+        },
+    )
+    chi__ = run_sync_agent(chi2_agent_, user_prompt=user_prompt, deps=deps)
+    print('\nChi-Squared Test Result:')
+    print(chi__)
