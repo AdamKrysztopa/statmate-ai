@@ -11,7 +11,7 @@ from pydantic_ai.models.openai import Model, ModelSettings
 
 
 class AssesDesignDeps(BaseModel):
-    msg: str | dict[str, Any] | list = Field(description='Message from initial inisghts agetn')
+    msg: str | dict[str, Any] | list = Field(description='Message from initial inisghts agent.')
 
 
 class AssesDesignResults(BaseModel):
@@ -26,8 +26,14 @@ def get_assess_design_study_agent(
     system_prompt = """
 ## Initial Insights:
 
-You are the analitical agnet analyzing desciption recived from the Initial Insights Agent. You must read carefully the
-message and decide which whay you should follow on the graph:
+You are the analitical agnet analyzing desciption recived from the Initial Insights Agent. 
+
+You are responsible for task "E" and you must answer either Paired Measurements on Each Subject or Not.
+Often - almost always - when the transformation 'transform_independent' is run data are not paired.
+Data are paired for 'Paired t-test' and 'Wilcoxon Signed-Rank test' only - paired = True
+If you see potential of 'Two Independent Groups?' data are **NOT Paired!** - paired = False
+
+You must read carefully the message and decide which whay you should follow on the graph:
 
     ```mermaid
         flowchart TD
@@ -44,8 +50,6 @@ message and decide which whay you should follow on the graph:
         L --> M[Option A: Welch’s t-test]
         L --> N[Option B: Mann-Whitney U test]
     ```
-
-You are responsible for task "E" and you must answer either Paired Measurements on Each Subject or Not.
 
 as an output, Format output as JSON matching AssesDesignResults:
 ```json

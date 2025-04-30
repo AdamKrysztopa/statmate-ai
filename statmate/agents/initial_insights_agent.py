@@ -100,16 +100,10 @@ Follow these numbered instructions exactly—do not add or omit steps:
 
 
 class NodeName(str, Enum):
-    START = 'Start'
-    OUTCOME_TYPE = 'Outcome Type'
     ASSESS_STUDY_DESIGN = 'Assess Study Design'
-    PAIRED_MEASUREMENTS = 'Paired Measurements?'
-    PARAMETRIC_ASSUMPTIONS = 'Parametric assumptions hold?'
     TWO_INDEPENDENT_GROUPS = 'Two Independent Groups?'
-    CONSIDER_BOTH_OPTIONS = 'Consider Both Options'
-    ASSESS_ASSOCIATION = 'Assess association?'
-    DATA_CHARACTERISTICS = 'Data characteristics?'
-    # Test nodes
+    NONPARAMETRIC = 'Nonparametric Tests'
+    SUMMARY = 'Summary'
     SHAPIRO = 'Shapiro-Wilk Test'
     LEVENE = "Levene's Test"
     PAIRED_T = 'Paired t-test'
@@ -117,10 +111,9 @@ class NodeName(str, Enum):
     INDEP_T = 'Independent t-test'
     WELCH = 'Welch’s t-test'
     MANN = 'Mann-Whitney U'
-    PEARSON = 'Pearson correlation'
-    SPEARMAN = 'Spearman correlation'
     CHI2 = 'Chi-square test'
     FISHER = 'Fisher exact test'
+    NORMALITY_OF_DIFFERENCE = 'Parametric assumptions hold?'
     ANOVA_RM = 'ANOVA repeated measures'
 
 
@@ -189,7 +182,7 @@ class InitialInsightsAgentResults(BaseModel):
 
     def __str__(self) -> str:
         """String representation of RouterAgentResults for easy readability."""
-        route = ' →\n  '.join(self.route_to_test)
+        route = ' →\n  '.join(self.route_to_test[:-1])
         return (
             f'### Data Analysis Result ###\n'
             f'{self.data_analysis_result}\n\n'

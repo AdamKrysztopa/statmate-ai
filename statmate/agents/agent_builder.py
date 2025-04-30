@@ -105,8 +105,8 @@ class AgentResult(BaseModel):
     def __str__(self) -> str:
         """String representation of the agent result."""
         return (
-            f'### Test Name: {self.statistical_test_result.test_name} ###\n'
-            f'Statistic: {self.statistical_test_result.statistics}, p-value: {self.statistical_test_result.p_value}\n'
+            f'{str(self.statistical_test_result)}'
+            f'Statistic: {self.statistical_test_result.statistics}\n'
             f'Result: {self.result}\n'
             f'Comments: {self.comments}\n'
         )

@@ -18,7 +18,7 @@ from statmate.agents.comparison_agents import (
 from statmate.agents.equality_of_variance_agents import bartlett_agent, levene_agent
 from statmate.agents.initial_insights_agent import INITIAL_INSIGHTS_PROMPT, build_initial_insights_agent
 from statmate.agents.linear_corellation_agents import pearson_agent, spearman_agent
-from statmate.agents.normality_agent import shapiro_wilk_agent
+from statmate.agents.normality_agent import normality_of_difference_agent, shapiro_wilk_agent
 
 __all__ = [
     'StatTestDeps',
@@ -43,4 +43,5 @@ __all__ = [
     'spearman_agent',
     'build_initial_insights_agent',
     'INITIAL_INSIGHTS_PROMPT',
+    'normality_of_difference_agent',
 ]

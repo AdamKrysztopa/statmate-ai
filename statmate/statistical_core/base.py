@@ -19,10 +19,18 @@ class StatTestResult(BaseModel):
         default=None,
     )
     statistical_test_results: str = Field(
-        description='Description of the results basing on null hypothesis '
-        'and the p-value',
+        description='Description of the results basing on null hypothesis and the p-value',
     )
     test_specifics: dict[str, Any] | None = Field(
         description='Test speyfic parameters, like alpha values, used methords, etc.',
         default=None,
     )
+
+    def __str__(self: 'StatTestResult') -> str:
+        return (
+            f'### Test name: {self.test_name} ###\n'
+            f'Null hypothesis: {self.null_hypothesis}\n'
+            f'Alternative hypothesis: {self.null_hypothesis}\n'
+            f'p value of {self.p_value:.3f} makes: '
+            f'{self.statistical_test_results}\n'
+        )
