@@ -41,22 +41,26 @@ class WorkflowState(TypedDict):
     do_association: bool
     number_of_samples: int
     results: Annotated[list, add_messages]
+    probabilities: dict[str, float]
 
 
 def call_test_agent(test_agent: Callable, state: WorkflowState) -> WorkflowState:
     """Call a statistical agent and append its result."""
-    # try:
-    model = OpenAIModel('gpt-4o')
-    model_settings = ModelSettings(temperature=0.0, top_p=1.0, frequency_penalty=0.0, presence_penalty=0.0)
-    deps = StatTestDeps(data=state['df'], data_secondary=state.get('secondary_df'))
-    result = run_sync_agent(test_agent(model=model, model_settings=model_settings), user_prompt='', deps=deps)
-    logger.info(f'Agent result: {result}')
-    state['results'].append(AIMessage(content=str(result)))
-    return state
-    # except Exception as e:
-    # logger.error(f'Error in call_test_agent: {e}')
-    # state['results'].append(AIMessage(content=f'Error: {e}'))
-    # return state
+    try:
+        model = OpenAIModel('gpt-4o')
+        model_settings = ModelSettings(temperature=0.0, top_p=1.0, frequency_penalty=0.0, presence_penalty=0.0)
+        deps = StatTestDeps(data=state['df'], data_secondary=state.get('secondary_df'))
+        result = run_sync_agent(test_agent(model=model, model_settings=model_settings), user_prompt='', deps=deps)
+        logger.info(f'Agent result: {result}')
+        state['results'].append(AIMessage(content=str(result)))
+        p_value = result.statistical_test_result.p_value
+        p_value = p_value if isinstance(p_value, float) else np.mean(p_value)
+        state['probabilities'][test_agent.__name__] = float(p_value)
+        return state
+    except Exception as e:
+        logger.error(f'Error in call_test_agent {test_agent.__name__}: {e}')
+        state['results'].append(AIMessage(content=f'Error: {e}'))
+        return state
 
 
 def call_initialization_agent(state: WorkflowState) -> WorkflowState:
@@ -130,7 +134,7 @@ def asses_study_design_node(state: WorkflowState) -> WorkflowState:
 def assess_study_design(state: WorkflowState) -> str:
     """Branch on paired vs independent groups."""
     try:
-        next_node = NodeName.PARAMETRIC_ASSUMPTIONS.value if state['paired'] else NodeName.TWO_INDEPENDENT_GROUPS.value
+        next_node = NodeName.SHAPIRO.value if state['paired'] else NodeName.TWO_INDEPENDENT_GROUPS.value
         logger.info(f'Assess study design next node: {next_node}')
         return next_node
     except Exception as e:
@@ -141,11 +145,8 @@ def assess_study_design(state: WorkflowState) -> str:
 def parametric_assumptions(state: WorkflowState) -> str:
     """Run normality & variance checks."""
     try:
-        state = call_test_agent(shapiro_wilk_agent, state)
-        state = call_test_agent(levene_agent, state)
-        norm_ok = state['results'][-2].statistical_test_result.p_value > 0.05
-        var_ok = state['results'][-1].statistical_test_result.p_value > 0.05
-        next_node = NodeName.PAIRED_T.value if norm_ok and var_ok else NodeName.WILCOXON.value
+        norm_ok = state['probabilities']['shapiro_wilk_agent'] > 0.05
+        next_node = NodeName.PAIRED_T.value if norm_ok else NodeName.WILCOXON.value
         logger.info(f'Parametric assumptions next node: {next_node}')
         return next_node
     except Exception as e:
@@ -183,6 +184,7 @@ for name, agent in [
     (NodeName.WELCH.value, welch_t_agent),
     (NodeName.FISHER.value, fisher_exact_agent),
     (NodeName.CHI2.value, chi2_agent),
+    (NodeName.SHAPIRO.value, shapiro_wilk_agent),
 ]:
     graph.add_node(name, lambda state, a=agent: call_test_agent(a, state))
 
@@ -202,20 +204,20 @@ graph.add_conditional_edges(
     NodeName.ASSESS_STUDY_DESIGN.value,
     assess_study_design,
     {
-        NodeName.PARAMETRIC_ASSUMPTIONS.value: NodeName.PARAMETRIC_ASSUMPTIONS.value,
+        NodeName.SHAPIRO.value: NodeName.SHAPIRO.value,
         NodeName.TWO_INDEPENDENT_GROUPS.value: NodeName.TWO_INDEPENDENT_GROUPS.value,
         END: END,
     },
 )
-# graph.add_conditional_edges(
-#     NodeName.PARAMETRIC_ASSUMPTIONS.value,
-#     parametric_assumptions,
-#     {
-#         NodeName.PAIRED_T.value: NodeName.PAIRED_T.value,
-#         NodeName.WILCOXON.value: NodeName.WILCOXON.value,
-#         END: END,
-#     },
-# )
+graph.add_conditional_edges(
+    NodeName.SHAPIRO.value,
+    parametric_assumptions,
+    {
+        NodeName.PAIRED_T.value: NodeName.PAIRED_T.value,
+        NodeName.WILCOXON.value: NodeName.WILCOXON.value,
+        END: END,
+    },
+)
 # graph.add_conditional_edges(
 #     NodeName.TWO_INDEPENDENT_GROUPS.value,
 #     two_independent,
@@ -237,13 +239,7 @@ compiled = graph.compile()
 if __name__ == '__main__':
     # Create sample DataFrame
     # df = pd.DataFrame({'before_treatment': np.random.normal(50, 5, 80), 'after_treatment': np.random.normal(55, 5, 80)})
-    df = pd.DataFrame(
-        {
-            'usr_id': np.arange(200),
-            'smoker': np.random.choice(['Yes', 'No'], 200),
-            'exercise_level': np.random.choice(['Low', 'Medium', 'High'], 200),
-        }
-    )
+    df = pd.DataFrame({'before_treatment': np.random.normal(50, 5, 80), 'after_treatment': np.random.normal(55, 5, 80)})
     initial_state: WorkflowState = {
         'df': df,
         'secondary_df': None,
@@ -253,6 +249,7 @@ if __name__ == '__main__':
         'do_association': False,
         'number_of_samples': 0,
         'results': [],
+        'probabilities': {},  # Added to match the WorkflowState type
     }
     logger.info('\nGraph Structure:')
     graph_representation = compiled.get_graph().draw_ascii()

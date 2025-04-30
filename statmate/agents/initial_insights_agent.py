@@ -1,3 +1,4 @@
+import inspect
 from enum import Enum
 from typing import Any, Literal
 
@@ -12,14 +13,15 @@ INITIAL_INSIGHTS_PROMPT = """
 Follow these numbered instructions exactly—do not add or omit steps:
 
 1. **Available Tools**  
-   • analyze_data(ctx) → dict[str, Any]  
-   • calculate_columns_diff(ctx, cols_to_diff: list[str]) → RouterAgentDeps  
+   • analyze_data(ctx) → dict[str, Any]
+   • transform_independent_tool(ctx, value_col, group_col) → deps
+   • transform_categorical_tool(ctx, row_category, col_category) → deps
+   
 
 2. **Column Analysis**  - verify the columns names, and use take them into acount for path selection.
    2.1 List each column with its data type and unique-value count.  
    2.2 Classify each column as ‘continuous’ or ‘categorical’.  
    2.3 Provide encoding or transformation recommendations.  
-        **Do NOT** calculate any "diff" column here.
    2.4 Provide a list of columns to use for the test
        2.4.1 Make sure that not meaningful columns are NOT included in the list.
        2.4.2 Whenever applies, give description why you decide to drop the column.
@@ -29,29 +31,50 @@ Follow these numbered instructions exactly—do not add or omit steps:
        it is e.g. Age, sex, or anything that recognize analysed objec, but it is not the matter of test.
        group_column cannot be a subset of analysis_columns
 
-3. **Column-Difference Calculation**  
-   - Compute the diff `col1−col2` if potentiall test requies it - paired t-test or Wilcoxon Signed-Rank test.
-   - If the input data is a DataFrame, add a new column named `diff` to the input data.
-   - To compute, call the `calculate_columns_diff` tool; do not infer or invent differences.
-   - For significanlty different mean values (like more than few sigma) skip the diff - and look for correlation.
+3. Data formatting depends on the test type:
+   3.1. Transformation requirements:
+       • **Independent-group tests** (e.g. Student’s t-test, Welch’s t-test, Mann–Whitney U):  
+         Input is often in “long” format. Apply the `transform_independent_tool` tool with  
+         `value_col` and `group_col` to pivot into wide form—producing one column per group named `<value_col>_<group>`.
+       • **Categorical tests** (e.g. Chi-square, Fisher’s exact):  
+         These require a numerical contingency table. Use the `transform_categorical_tool` tool with  
+         `row_category` and `column_category` to build a counts DataFrame suitable for 
+         `chi2_contingency` or `fisher_exact`.
+   3.2. **Table-based tests** (ANOVA, Chi-square, Fisher’s exact) must receive a DataFrame input—specify which columns
+   define rows and columns of the table.
+   3.3. **Series-based tests** (correlations, paired t-test, Wilcoxon, etc.) take one or two `pd.Series`.
+   Propose the appropriate column(s) for `x1` and `x2`, following SciPy’s convention of separate-series inputs.
+   3.4. If data are transformed give name of data transformation tool:  'transform_independent', 'transform_categorical'.
+   Give 'None' if no data transformation are needed.
 
 4. **Test-Selection Route**  
    4.1 Use exactly the `NodeName` enum values for each decision step.  
    4.2 Emit **each** flowchart node visited, in order, ending with the test node.  
-   4.3 Format output as JSON matching RouterAgentResults:
-   ```json
-   {
-       "analysis_columns": ["col1", "col2"] or ["diff"]
-       "group_column": "sex", "used_method". If not applicable use "None"
-       "output_format": "pd.Series",
-       "data_analysis_result": "Data analysis summary",
-       "route_to_test": ["NodeName1", "NodeName2", "FinalTest"],
-       "comments": "Any additional comments"
-       "data_type": 'CATEGORICAL' or 'CONTINUOUS' based on column analysis.
-       "data_size": Total number of rows in the dataset.
-       "number_of_columns": Count of features (columns) in the dataset.
+4.3 Format output as JSON matching RouterAgentResults (and **always** include `"tool_arguments": {...}`):
+    ```json
+    {
+        "analysis_columns": ["<col1>", "..."],
+        "group_column": "<col_or_null>",
+        "output_format": "<pd.Series|pd.DataFrame>",
+        "data_analysis_result": "<…>",
+        "route_to_test": ["<NodeName>", "...", "<FinalTest>"],
+        "comments": "<…>",
+        "data_type": "<CONTINUOUS|CATEGORICAL>",
+        "data_transformation": "<transform_independent|transform_categorical|None>",
+        "tool_arguments": {
+                "value_col": "<col_or_null>",
+                "group_col": "<col_or_null>",
+                "row_category": "<col_or_null>",
+                "column_category": "<col_or_null>"
+            },
+        "data_size": <int>,
+        "number_of_columns": <int>
     }
     ```
+    Data Validation:
+       - When data are transformed - make sure the analysis_columns are after the transformation.
+       - Emit a "tool_arguments" object—even if no transform is needed, it must be {}.
+       - **Make Sure** the tool_arguments are delivered and exactly correct when data_transformation is not None.
     4.4. Use following decision tree to select the test:
     ```mermaid
         flowchart TD
@@ -157,6 +180,10 @@ class InitialInsightsAgentResults(BaseModel):
     comments: str
 
     data_type: Literal['CATEGORICAL', 'CONTINUOUS']
+    data_transformation: Literal['transform_independent', 'transform_categorical', 'None']
+    tool_arguments: dict[str, Any] = Field(
+        default_factory=dict, description='Arguments to pass to the chosen data transformation tool'
+    )
     data_size: int
     number_of_columns: int
 
@@ -172,6 +199,7 @@ class InitialInsightsAgentResults(BaseModel):
             f'- Data Type: {self.data_type}\n'
             f'- Data Size: {self.data_size}\n'
             f'- Number of Columns: {self.number_of_columns}\n'
+            f'- Data Transformations: {self.data_transformation}\n'
             f'- Columns to Use: {", ".join(self.analysis_columns) if self.analysis_columns else "All Columns"}\n'
             f'- Group Column: {self.group_column} - the index column\n'
             f'- Output Format: {self.output_format}\n'
@@ -248,33 +276,54 @@ def build_initial_insights_agent(
         }
 
     @agent.tool
-    async def calculate_columns_diff(
-        ctx: RunContext[InitialInsightsAgentDeps], cols_to_diff: list[str]
+    def transform_independent_tool(
+        ctx: RunContext[InitialInsightsAgentDeps], value_col: str, group_col: str
     ) -> InitialInsightsAgentDeps:
-        """Calculates the difference between two specified columns and updates the deps.
+        """Pivot a long-format DataFrame into wide format for two independent groups.
+
+        Column names become "<value_col>_<group>".
 
         Args:
-            ctx: The agent run context containing input_data and columns_decision.
-            cols_to_diff: Exactly two column names to diff.
+            ctx: The context containing dependencies.
+            value_col: Name of the numeric column.
+            group_col: Name of the binary‐categorical grouping column.
 
         Returns:
-            RouterAgentDeps: the same deps object, with 'diff' column added and columns_decision updated.
+            Wide-format DataFrame with one column per group.
         """
-        if len(cols_to_diff) == 2:
-            col1, col2 = cols_to_diff
-            if isinstance(ctx.deps.input_data, pd.DataFrame):
-                if col1 in ctx.deps.input_data.columns and col2 in ctx.deps.input_data.columns:
-                    if ctx.deps.input_data[col1].dtype != ctx.deps.input_data[col2].dtype:
-                        ctx.deps.user_input += '\nBoth columns must have the same data type to calculate differences'
-                        return ctx.deps
-                    ctx.deps.input_data['diff'] = ctx.deps.input_data[col1] - ctx.deps.input_data[col2]
-                    if ctx.deps.columns_decision is not None:
-                        ctx.deps.columns_decision.append('diff')
-                    ctx.deps.user_input += f'\nDifference between {col1} and {col2} calculated is now available in the input_data DataFrame in the column "diff"'
-                    return ctx.deps
-                ctx.deps.user_input += '\nBoth columns must exist in input_data'
-            ctx.deps.user_input += '\ninput_data must be a pandas DataFrame to calculate column differences'
-        ctx.deps.user_input += '\ncolumns_decision must contain exactly two column names'
+        df = ctx.deps.input_data.copy()
+        if isinstance(df, pd.Series):
+            df = df.to_frame()
+        elif isinstance(df, np.ndarray):
+            df = pd.DataFrame(df, columns=ctx.deps.columns_decision)
+        ctx.deps.input_data = transform_independent(df, value_col, group_col)
+        ctx.deps.columns_decision = list(ctx.deps.input_data.columns)
+        return ctx.deps
+
+    @agent.tool
+    def transform_categorical_tool(
+        ctx: RunContext[InitialInsightsAgentDeps],
+        row_category: str,
+        column_category: str,
+    ) -> InitialInsightsAgentDeps:
+        """Build a contingency table from two categorical columns for a Chi-squared test.
+
+        Args:
+            ctx: The RunContext holding the current dependencies.
+            row_category: Name of the column whose values will form the table’s rows.
+            column_category: Name of the column whose values will form the table’s columns.
+
+        Returns:
+            The same InitialInsightsAgentDeps, with `input_data` replaced by
+            a pandas.DataFrame contingency table (counts) suitable for chi2_contingency.
+        """
+        df = ctx.deps.input_data.copy()
+        if isinstance(df, pd.Series):
+            df = df.to_frame()
+        elif isinstance(df, np.ndarray):
+            df = pd.DataFrame(df, columns=ctx.deps.columns_decision)
+        ctx.deps.input_data = transform_categorical(df, row_category, column_category)
+        ctx.deps.columns_decision = list(ctx.deps.input_data.columns)
         return ctx.deps
 
     return agent
@@ -282,7 +331,7 @@ def build_initial_insights_agent(
 
 def format_data_by_recommendation(
     data: pd.DataFrame,
-    recommendation: InitialInsightsAgentResults,
+    rec: InitialInsightsAgentResults,
 ) -> pd.Series | tuple[pd.Series, pd.Series] | pd.DataFrame:
     """Formats the data based on the agent's recommendation.
 
@@ -293,16 +342,57 @@ def format_data_by_recommendation(
     Returns:
         Formatted DataFrame.
     """
-    if recommendation.group_column is not None and recommendation.group_column != 'None':
-        data = data.set_index(recommendation.group_column)
-    if recommendation.output_format == 'pd.Series' and len(recommendation.analysis_columns) == 1:
-        return data[recommendation.analysis_columns].squeeze()
-    if recommendation.output_format == 'pd.Series' and len(recommendation.analysis_columns) == 2:
-        return data[recommendation.analysis_columns[0]], data[recommendation.analysis_columns[1]]
-    if recommendation.output_format == 'pd.DataFrame':
-        return data[recommendation.analysis_columns] if len(recommendation.analysis_columns) > 0 else data
+    if rec.group_column and rec.group_column in data.columns:
+        data = data.set_index(rec.group_column, drop=False)
 
-    raise ValueError(f'Unsupported output format: {recommendation.output_format}')
+    route = set(rec.route_to_test)
+
+    # 3) Only these tests get a DataFrame back
+    df_tests = {NodeName.CHI2, NodeName.FISHER, NodeName.ANOVA_RM}
+
+    if route & df_tests:
+        return data[rec.analysis_columns] if set(rec.analysis_columns).issubset(set(data.columns)) else data
+
+    # 4) Otherwise always return two Series
+    if set(rec.analysis_columns).issubset(set(data.columns)):
+        col1, col2 = rec.analysis_columns[:2]
+    else:
+        col1, col2 = data.columns[:2]
+    s1 = data[col1].dropna()
+    s2 = data[col2].dropna()
+    return s1, s2
+
+
+def transform_independent(data: pd.DataFrame, value_col: str, group_col: str) -> pd.DataFrame:
+    wide = data.pivot(columns=group_col, values=value_col)
+    wide = wide.add_prefix(f'{value_col}_')
+    return wide
+
+
+def transform_categorical(data: pd.DataFrame, row_category: str, column_category: str) -> pd.DataFrame:
+    return pd.crosstab(data[row_category], data[column_category])
+
+
+# Map tool names to actual functions
+TOOL_FUNCS = {
+    'transform_independent': transform_independent,
+    'transform_categorical': transform_categorical,
+}
+
+
+def validate_tool_args(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    func = TOOL_FUNCS[tool_name]
+    sig = inspect.signature(func)
+    expected = set(sig.parameters) - {'data'}
+    provided = set(args)
+    if not expected.issubset(provided):
+        missing = expected - provided
+        raise ValueError(f'Bad args for {tool_name}: missing {missing}')
+    extra = provided - expected
+    if len(extra) > 0:
+        print(f'Need to remove the extra columns: {extra}')
+
+    return {arg: arg_val for arg, arg_val in args.items() if arg in expected}
 
 
 if __name__ == '__main__':
@@ -327,13 +417,13 @@ if __name__ == '__main__':
         't_test': pd.DataFrame(
             {'height': np.random.normal(170, 10, 100), 'gender': np.random.choice(['Male', 'Female'], 100)}
         ),
-        'anova': pd.DataFrame(
-            {
-                'test_score': np.random.normal(75, 10, 150),
-                'examiner': np.random.choice(['Examiner 1', 'Examiner 2', 'Examiner 3'], 150),
-                'teaching_method': np.random.choice(['Method A', 'Method B', 'Method C'], 150),
-            }
-        ),
+        # 'anova': pd.DataFrame(
+        #     {
+        #         'test_score': np.random.normal(75, 10, 150),
+        #         'examiner': np.random.choice(['Examiner 1', 'Examiner 2', 'Examiner 3'], 150),
+        #         'teaching_method': np.random.choice(['Method A', 'Method B', 'Method C'], 150),
+        #     }
+        # ),
         'chi_squared': pd.DataFrame(
             {
                 'usr_id': np.arange(200),
@@ -343,7 +433,7 @@ if __name__ == '__main__':
         ),
         'pearson_correlation': pd.DataFrame(
             {
-                'hours_studied': np.random.normal(5, 2, 100),
+                'hours_studied': np.random.normal(20, 2, 100),
                 'exam_score': np.random.normal(70, 15, 100),
                 'student_id': np.arange(100),
             }
@@ -364,7 +454,14 @@ if __name__ == '__main__':
                 columns_decision=None,
             ),
         )
-        print(results.data)
-        formatted_data = format_data_by_recommendation(df, results.data)
-        print(f'Formatted Data:\n{formatted_data}\n')
+        res = results.data
+        print(res)
+        tool_args = res.tool_arguments or {}
+
+        if res.data_transformation != 'None':
+            tool_args = validate_tool_args(res.data_transformation, tool_args)
+            df = TOOL_FUNCS[res.data_transformation](df, **tool_args)
+
+        formatted = format_data_by_recommendation(df, res)
+        print(formatted)
         print('--- ---- ---- ---- ---\n')

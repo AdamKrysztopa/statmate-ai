@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 import numpy as np
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
 
 from statmate.agents import AgentResult, StatTestDeps, build_stat_test_agent
 from statmate.statistical_core import (
@@ -23,13 +23,15 @@ from statmate.statistical_core import (
 
 
 def wilcoxon_agent(
-    model: OpenAIModel,
+    model: Model,
+    model_settings: ModelSettings | None = None,
     test_name: str = 'Wilcoxon Test',
     test_function: Callable[..., StatTestResult] = wilcoxon_test,
 ) -> Agent[StatTestDeps, AgentResult]:
     """Builds a Wilcoxon test agent."""
     return build_stat_test_agent(
         model=model,
+        model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
         potential_suggertions='Please suggest the best way to perform the test, '
@@ -38,13 +40,15 @@ def wilcoxon_agent(
 
 
 def ttest_rel_agent(
-    model: OpenAIModel,
+    model: Model,
+    model_settings: ModelSettings | None = None,
     test_name: str = 'T-Test',
     test_function: Callable[..., StatTestResult] = ttest_rel_test,
 ) -> Agent[StatTestDeps, AgentResult]:
     """Builds a T-Test agent."""
     return build_stat_test_agent(
         model=model,
+        model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
         potential_suggertions='Please suggest the best way to perform the test, '
@@ -53,13 +57,15 @@ def ttest_rel_agent(
 
 
 def ttest_ind_agent(
-    model: OpenAIModel,
+    model: Model,
+    model_settings: ModelSettings | None = None,
     test_name: str = 'Independent T-Test',
     test_function: Callable[..., StatTestResult] = ttest_ind_test,
 ) -> Agent[StatTestDeps, AgentResult]:
     """Builds an Independent T-Test agent."""
     return build_stat_test_agent(
         model=model,
+        model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
         potential_suggertions='Please suggest the best way to perform the test, '
@@ -68,13 +74,15 @@ def ttest_ind_agent(
 
 
 def mannwhitneyu_agent(
-    model: OpenAIModel,
+    model: Model,
+    model_settings: ModelSettings | None = None,
     test_name: str = 'Mann-Whitney U Test',
     test_function: Callable[..., StatTestResult] = mannwhitneyu_test,
 ) -> Agent[StatTestDeps, AgentResult]:
     """Builds a Mann-Whitney U Test agent."""
     return build_stat_test_agent(
         model=model,
+        model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
         potential_suggertions='Please suggest the best way to perform the test, '
@@ -83,13 +91,15 @@ def mannwhitneyu_agent(
 
 
 def welch_t_agent(
-    model: OpenAIModel,
+    model: Model,
+    model_settings: ModelSettings | None = None,
     test_name: str = 'Welch T-Test',
     test_function: Callable[..., StatTestResult] = welch_t_test,
 ) -> Agent[StatTestDeps, AgentResult]:
     """Builds a Welch T-Test agent."""
     return build_stat_test_agent(
         model=model,
+        model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
         potential_suggertions='Please suggest the best way to perform the test, '
