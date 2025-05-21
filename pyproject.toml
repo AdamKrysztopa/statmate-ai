@@ -19,6 +19,7 @@ dependencies = [
     "langgraph",
     "joblib>=1.4.2",
     "grandalf>=0.8",
+    "uvicorn>=0.34.0",
 ]
 
 [project.optional-dependencies]

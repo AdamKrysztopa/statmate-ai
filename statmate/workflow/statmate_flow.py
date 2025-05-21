@@ -213,8 +213,11 @@ def two_independent_node(state: WorkflowState) -> WorkflowState:
 
         # 2) Shapiro–Wilk on group 2
 
-        state['df'] = secondary_df
-        state = call_test_agent(shapiro_wilk_agent, state)
+        if secondary_df is not None:
+            state['df'] = secondary_df
+            state = call_test_agent(shapiro_wilk_agent, state)
+        else:
+            logger.error('secondary_df is None, cannot assign to state["df"]')
 
         p2 = state['probabilities'].pop('shapiro_wilk_agent', 0)
         state['df'] = orig_df

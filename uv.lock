@@ -3015,6 +3015,7 @@ dependencies = [
     { name = "seaborn" },
     { name = "statsmodels" },
     { name = "streamlit" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -3048,6 +3049,7 @@ requires-dist = [
     { name = "seaborn" },
     { name = "statsmodels" },
     { name = "streamlit" },
+    { name = "uvicorn", specifier = ">=0.34.0" },
 ]
 provides-extras = ["dev"]
 
