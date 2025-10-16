@@ -49,6 +49,20 @@ from statmate.core.exceptions import (
     WorkflowError,
 )
 from statmate.core.logging_config import get_logger, setup_logging
+from statmate.core.model_config import (
+    SUPPORTED_MODELS,
+    ModelCapability,
+    ModelInfo,
+    ModelProvider,
+    ModelProviderConfig,
+    MultiModelConfig,
+    create_default_multi_model_config,
+)
+from statmate.core.model_provider import (
+    ModelProviderError,
+    ModelProviderSystem,
+    create_model_provider_system,
+)
 from statmate.core.validation import (
     validate_alpha,
     validate_array_not_empty,
@@ -75,6 +89,17 @@ __all__ = [
     'NodeName',
     'DataType',
     'TransformationType',
+    # Model Configuration
+    'MultiModelConfig',
+    'ModelProvider',
+    'ModelProviderConfig',
+    'ModelInfo',
+    'ModelCapability',
+    'SUPPORTED_MODELS',
+    'create_default_multi_model_config',
+    'ModelProviderSystem',
+    'ModelProviderError',
+    'create_model_provider_system',
     # Exceptions
     'StatMateError',
     'DataValidationError',

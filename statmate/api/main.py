@@ -35,6 +35,28 @@ async def lifespan(app: FastAPI):
         logger.error(f'Failed to initialize database: {e}', exc_info=True)
         raise
 
+    # Initialize model factory with settings
+    try:
+        from statmate.workflow.model_factory import initialize_default_factory
+
+        multi_model_config = settings.create_multi_model_config()
+        initialize_default_factory(multi_model_config)
+        logger.info('Model factory initialized')
+
+        # Log available models
+        from statmate.workflow.model_factory import get_default_factory
+
+        factory = get_default_factory()
+        available_models = factory.list_available_models(for_tools=True)
+        if available_models:
+            model_names = [m.display_name for m in available_models]
+            logger.info(f'Available reasoning models: {", ".join(model_names)}')
+        else:
+            logger.warning('No reasoning models configured! Please set API keys in .env file.')
+    except Exception as e:
+        logger.error(f'Failed to initialize model factory: {e}', exc_info=True)
+        # Don't raise - will use default config as fallback
+
     # Initialize scheduler
     try:
         init_scheduler()

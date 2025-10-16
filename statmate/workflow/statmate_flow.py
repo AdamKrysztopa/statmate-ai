@@ -7,7 +7,7 @@ import pandas as pd
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
-from pydantic_ai.models.openai import ModelSettings, OpenAIModel
+from pydantic_ai.models import ModelSettings
 from typing_extensions import TypedDict
 
 from statmate.agents import (
@@ -78,8 +78,15 @@ class WorkflowState(TypedDict):
 def call_test_agent(test_agent: Callable, state: WorkflowState) -> WorkflowState:
     """Call a statistical agent and append its result."""
     try:
-        model = OpenAIModel('gpt-4o')
-        settings = ModelSettings(temperature=0.0, top_p=1.0, frequency_penalty=0.0, presence_penalty=0.0)
+        # Use flexible model factory for agent
+        from statmate.agents.model_helper import create_agent_model_and_settings
+
+        model, settings = create_agent_model_and_settings(
+            temperature=0.0,
+            top_p=1.0,
+            frequency_penalty=0.0,
+            presence_penalty=0.0,
+        )
         deps = StatTestDeps(data=state['df'], data_secondary=state.get('secondary_df'))
         result = run_sync_agent(test_agent(model=model, model_settings=settings), user_prompt='', deps=deps)
         state['results'].append(AIMessage(content=str(result)))
@@ -97,7 +104,9 @@ def call_test_agent(test_agent: Callable, state: WorkflowState) -> WorkflowState
 def call_initialization_agent(state: WorkflowState) -> WorkflowState:
     """Run the initialization agent to analyze data and suggest tests."""
     try:
-        model = OpenAIModel('gpt-4o')
+        from statmate.agents.model_helper import get_agent_model
+
+        model = get_agent_model()
         settings = ModelSettings(temperature=0.0, top_p=1.0, frequency_penalty=0.0, presence_penalty=0.0)
         agent = build_initial_insights_agent(
             model=model, system_prompt=INITIAL_INSIGHTS_PROMPT, model_settings=settings
@@ -152,8 +161,11 @@ def decide_outcome(state: WorkflowState) -> str:
 
 
 def assess_study_design_node(state: WorkflowState) -> WorkflowState:
-    model = OpenAIModel('gpt-4o')
-    settings = ModelSettings(temperature=0.0, top_p=1.0, frequency_penalty=0.0, presence_penalty=0.0)
+    from statmate.agents.model_helper import create_agent_model_and_settings
+
+    model, settings = create_agent_model_and_settings(
+        temperature=0.0, top_p=1.0, frequency_penalty=0.0, presence_penalty=0.0
+    )
     agent = get_assess_design_study_agent(model=model, model_settings=settings)
     logger.info('assess_study_design_node\nmodel is fed with those data:')
     logger.info(state['results'])
@@ -166,8 +178,9 @@ def assess_study_design_node(state: WorkflowState) -> WorkflowState:
 
 # summariser node usage example (in your workflow)
 def summariser_node(state: WorkflowState) -> WorkflowState:
-    model = OpenAIModel('gpt-4o')
-    settings = ModelSettings(temperature=0.0)
+    from statmate.agents.model_helper import create_agent_model_and_settings
+
+    model, settings = create_agent_model_and_settings(temperature=0.0)
 
     deps = SummariserDeps(results=state['results'], performed_tests=list(state['probabilities'].keys()))
 

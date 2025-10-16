@@ -79,8 +79,37 @@ class Settings(BaseSettings):
     LOGS_DIR: Path | None = None
     MAX_UPLOAD_SIZE: int = Field(default=100 * 1024 * 1024)  # 100 MB
 
+    # AI Model Configuration
+    # Default model settings
+    DEFAULT_MODEL_PROVIDER: str = Field(default='openai')
+    DEFAULT_MODEL_NAME: str = Field(default='gpt-4o')
+    MODEL_TEMPERATURE: float = Field(default=0.0)
+    MODEL_TOP_P: float = Field(default=1.0)
+    MODEL_FREQUENCY_PENALTY: float = Field(default=0.0)
+    MODEL_PRESENCE_PENALTY: float = Field(default=0.0)
+    MODEL_MAX_TOKENS: int | None = Field(default=None)
+    REQUIRE_REASONING_MODELS_FOR_TOOLS: bool = Field(default=True)
+
     # OpenAI
     OPENAI_API_KEY: str = Field(default='')
+    OPENAI_API_BASE: str | None = Field(default=None)
+
+    # Anthropic
+    ANTHROPIC_API_KEY: str = Field(default='')
+    ANTHROPIC_API_BASE: str | None = Field(default=None)
+
+    # Google/Gemini
+    GOOGLE_API_KEY: str = Field(default='')
+    GEMINI_API_KEY: str = Field(default='')  # Alias for Google
+
+    # Groq
+    GROQ_API_KEY: str = Field(default='')
+    GROQ_API_BASE: str | None = Field(default=None)
+
+    # Ollama (Local models)
+    OLLAMA_ENABLED: bool = Field(default=False)
+    OLLAMA_BASE_URL: str = Field(default='http://localhost:11434/v1')
+    OLLAMA_DEFAULT_MODEL: str = Field(default='deepseek-r1:8b')  # Reasoning model by default
 
     # Security
     SECRET_KEY: str = Field(default='your-secret-key-change-in-production')
@@ -166,6 +195,85 @@ class Settings(BaseSettings):
             msg = 'LOGS_DIR not initialized'
             raise ValueError(msg)
         return self.LOGS_DIR / f'{analysis_id}.log'
+
+    def create_multi_model_config(self) -> 'MultiModelConfig':
+        """Create MultiModelConfig from settings.
+
+        Returns:
+            MultiModelConfig instance with all configured providers.
+        """
+        from statmate.core.model_config import (
+            ModelProvider,
+            ModelProviderConfig,
+            MultiModelConfig,
+        )
+
+        # Create provider configurations
+        providers = {}
+
+        # OpenAI
+        if self.OPENAI_API_KEY:
+            providers[ModelProvider.OPENAI] = ModelProviderConfig(
+                provider=ModelProvider.OPENAI,
+                api_key=self.OPENAI_API_KEY,
+                api_base=self.OPENAI_API_BASE,
+                enabled=True,
+            )
+
+        # Anthropic
+        if self.ANTHROPIC_API_KEY:
+            providers[ModelProvider.ANTHROPIC] = ModelProviderConfig(
+                provider=ModelProvider.ANTHROPIC,
+                api_key=self.ANTHROPIC_API_KEY,
+                api_base=self.ANTHROPIC_API_BASE,
+                enabled=True,
+            )
+
+        # Google/Gemini (prefer GOOGLE_API_KEY, fallback to GEMINI_API_KEY)
+        google_key = self.GOOGLE_API_KEY or self.GEMINI_API_KEY
+        if google_key:
+            providers[ModelProvider.GOOGLE] = ModelProviderConfig(
+                provider=ModelProvider.GOOGLE,
+                api_key=google_key,
+                enabled=True,
+            )
+
+        # Groq
+        if self.GROQ_API_KEY:
+            providers[ModelProvider.GROQ] = ModelProviderConfig(
+                provider=ModelProvider.GROQ,
+                api_key=self.GROQ_API_KEY,
+                api_base=self.GROQ_API_BASE,
+                enabled=True,
+            )
+
+        # Ollama
+        if self.OLLAMA_ENABLED:
+            providers[ModelProvider.OLLAMA] = ModelProviderConfig(
+                provider=ModelProvider.OLLAMA,
+                api_key=None,  # Ollama doesn't need API key
+                api_base=self.OLLAMA_BASE_URL,
+                default_model=self.OLLAMA_DEFAULT_MODEL,
+                enabled=True,
+            )
+
+        # Create multi-model config
+        try:
+            default_provider = ModelProvider(self.DEFAULT_MODEL_PROVIDER.lower())
+        except ValueError:
+            default_provider = ModelProvider.OPENAI
+
+        return MultiModelConfig(
+            default_provider=default_provider,
+            default_model_name=self.DEFAULT_MODEL_NAME,
+            providers=providers,
+            temperature=self.MODEL_TEMPERATURE,
+            top_p=self.MODEL_TOP_P,
+            frequency_penalty=self.MODEL_FREQUENCY_PENALTY,
+            presence_penalty=self.MODEL_PRESENCE_PENALTY,
+            max_tokens=self.MODEL_MAX_TOKENS,
+            require_reasoning_models=self.REQUIRE_REASONING_MODELS_FOR_TOOLS,
+        )
 
 
 @lru_cache
