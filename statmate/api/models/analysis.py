@@ -13,9 +13,11 @@ class AnalysisCreate(BaseModel):
     selected_columns: list[str] | None = Field(
         default=None, description='Columns to include in analysis (None = all columns)'
     )
-    configuration: dict[str, Any] | None = Field(
-        default=None, description='Optional analysis configuration parameters'
+    model_name: str | None = Field(
+        default=None, description='AI model to use for analysis (optional, uses default if not specified)'
     )
+    provider: str | None = Field(default=None, description='Model provider (optional, auto-detected from model_name)')
+    configuration: dict[str, Any] | None = Field(default=None, description='Optional analysis configuration parameters')
 
 
 class AnalysisResponse(BaseModel):
@@ -25,6 +27,8 @@ class AnalysisResponse(BaseModel):
     dataset_id: str = Field(description='Related dataset ID')
     status: str = Field(description='Current status (pending, running, completed, failed)')
     selected_columns: list[str] | None = Field(description='Columns selected for analysis')
+    model_name: str | None = Field(description='AI model used for analysis')
+    provider: str | None = Field(description='Model provider used')
     configuration: dict[str, Any] | None = Field(description='Analysis configuration')
     start_time: datetime | None = Field(description='When analysis started')
     end_time: datetime | None = Field(description='When analysis completed')
@@ -55,6 +59,8 @@ class AnalysisResultResponse(BaseModel):
     status: str = Field(description='Analysis status')
     dataset_id: str = Field(description='Related dataset ID')
     dataset_name: str = Field(description='Original dataset filename')
+    model_name: str | None = Field(description='AI model used for analysis')
+    provider: str | None = Field(description='Model provider used')
     start_time: datetime | None = Field(description='Analysis start time')
     end_time: datetime | None = Field(description='Analysis end time')
     duration_seconds: float | None = Field(description='Analysis duration in seconds')

@@ -37,11 +37,15 @@ def get_dataset_preview(dataset_id, num_rows=10):
     return response.json()
 
 
-def run_analysis(dataset_id, selected_columns=None):
+def run_analysis(dataset_id, selected_columns=None, model_name=None, provider=None):
     """Run statistical analysis."""
     payload = {'dataset_id': dataset_id}
     if selected_columns:
         payload['selected_columns'] = selected_columns
+    if model_name:
+        payload['model_name'] = model_name
+    if provider:
+        payload['provider'] = provider
 
     response = httpx.post(f'{API_BASE_URL}/analysis/run', json=payload, timeout=10.0)
     response.raise_for_status()
@@ -76,12 +80,30 @@ st.markdown('*AI-driven statistical analysis for clinical and observational rese
 # Check API health
 try:
     health = httpx.get('http://localhost:8000/health', timeout=5.0).json()
-    st.success(f'✅ API Connected (v{health["version"]})')
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.success(f'✅ API Connected (v{health["version"]})')
+    with col2:
+        if st.button('🤖 Model Config', use_container_width=True):
+            st.session_state['show_model_page'] = True
+            st.rerun()
 except Exception as e:
     st.error(f'❌ API not available: {e}')
     st.stop()
 
 st.divider()
+
+# Show model configuration page if requested
+if st.session_state.get('show_model_page'):
+    from statmate.ui.components.model_selector import render_model_info_page
+
+    if st.button('← Back to Analysis', use_container_width=True):
+        st.session_state['show_model_page'] = False
+        st.rerun()
+
+    st.divider()
+    render_model_info_page(API_BASE_URL)
+    st.stop()
 
 # Initialize session state
 if 'current_dataset_id' not in st.session_state:
@@ -243,6 +265,17 @@ with tab3:
                     results = get_analysis_results(analysis_id)
 
                     st.success('✅ Analysis Complete!')
+
+                    # Display model used
+                    if results.get('model_name') or results.get('provider'):
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if results.get('model_name'):
+                                st.metric('🤖 Model Used', results['model_name'])
+                        with col2:
+                            if results.get('provider'):
+                                st.metric('Provider', results['provider'].upper())
+                        st.divider()
 
                     # Summary
                     if results.get('summary'):

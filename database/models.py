@@ -126,6 +126,8 @@ class Analysis(Base):
     dataset_id = Column(String(36), ForeignKey('datasets.id'), nullable=False, index=True)
     status = Column(Enum(AnalysisStatus), default=AnalysisStatus.PENDING, nullable=False, index=True)
     selected_columns = Column(JSON, nullable=True)  # ["col1", "col3"]
+    model_name = Column(String(100), nullable=True)  # AI model used (e.g., 'gpt-4o', 'deepseek-r1:8b')
+    provider = Column(String(50), nullable=True)  # Model provider (e.g., 'openai', 'ollama')
     configuration = Column(JSON, nullable=True)  # Analysis parameters
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
@@ -151,6 +153,8 @@ class Analysis(Base):
             'dataset_id': self.dataset_id,
             'status': self.status.value if isinstance(self.status, PyEnum) else self.status,
             'selected_columns': self.selected_columns,
+            'model_name': self.model_name,
+            'provider': self.provider,
             'configuration': self.configuration,
             'start_time': self.start_time.isoformat() if self.start_time else None,
             'end_time': self.end_time.isoformat() if self.end_time else None,

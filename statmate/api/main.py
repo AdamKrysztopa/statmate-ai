@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from config.settings import settings
 from database.session import init_db
-from statmate.api.routes import analysis, datasets, results, tasks
+from statmate.api.routes import analysis, datasets, models, results, tasks
 from statmate.api.scheduler import init_scheduler, shutdown_scheduler
 
 logger = logging.getLogger(__name__)
@@ -133,6 +133,7 @@ app.include_router(datasets.router, prefix=settings.API_PREFIX)
 app.include_router(analysis.router, prefix=settings.API_PREFIX)
 app.include_router(tasks.router, prefix=settings.API_PREFIX)
 app.include_router(results.router, prefix=settings.API_PREFIX)
+app.include_router(models.router, prefix=settings.API_PREFIX)
 
 
 # Global exception handler
