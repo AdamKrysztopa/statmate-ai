@@ -5,7 +5,7 @@ from statmate.statistical_core.anova import (
     anova_rm_test,
 )
 from statmate.statistical_core.base import StatTestResult
-from statmate.statistical_core.cathegorical_comparison import (
+from statmate.statistical_core.categorical_comparison import (
     chi2_test,
     fisher_exact_test,
 )

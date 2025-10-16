@@ -1,12 +1,30 @@
+"""Categorical comparison module for statistical tests."""
+
 import numpy as np
 import pandas as pd
 import scipy.stats
 
+from statmate.config import default_config
+from statmate.exceptions import DataValidationError
 from statmate.statistical_core.base import StatTestResult
+from statmate.validation import validate_contingency_table
 
 
-def chi2_test(contingency_table: np.ndarray | pd.DataFrame, alpha: float = 0.05) -> StatTestResult:
+def chi2_test(
+    contingency_table: np.ndarray | pd.DataFrame,
+    alpha: float | None = None,
+) -> StatTestResult:
     """Performs the Chi-Square test of independence on a contingency table.
+
+    Args:
+        contingency_table: Contingency table as 2D array or DataFrame.
+        alpha: Significance level. If None, uses default from config.
+
+    Returns:
+        StatTestResult containing test outcomes.
+
+    Raises:
+        DataValidationError: If contingency table is invalid.
 
     Null hypothesis:
         The two categorical variables are independent.
@@ -14,18 +32,26 @@ def chi2_test(contingency_table: np.ndarray | pd.DataFrame, alpha: float = 0.05)
     Alternative hypothesis:
         The two categorical variables are associated.
     """
+    if alpha is None:
+        alpha = default_config.statistical.default_alpha
+
+    # Validate input
+    validate_contingency_table(contingency_table, min_cell_count=5)
+
     results = scipy.stats.chi2_contingency(contingency_table)
-    chi2 = results.statistic  # type: ignore # not true
-    p_value = results.pvalue  # type: ignore # not true
-    dof = results.dof  # type: ignore # not true
-    # expected = results.expected  # type: ignore # not true
+    chi2 = float(results.statistic)
+    p_value = float(results.pvalue)
+    dof = int(results.dof)
 
     if p_value < alpha:
         result_text = (
             f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}); the variables are associated.'
         )
     else:
-        result_text = f'We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}); the variables appear independent.'
+        result_text = (
+            f'We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}); '
+            f'the variables appear independent.'
+        )
 
     return StatTestResult(
         test_name='Chi-Square Test of Independence',
@@ -38,9 +64,21 @@ def chi2_test(contingency_table: np.ndarray | pd.DataFrame, alpha: float = 0.05)
     )
 
 
-# 11. Fisher Exact Test (typically for 2x2 tables)
-def fisher_exact_test(table: np.ndarray | list[list[int]], alpha: float = 0.05) -> StatTestResult:
+def fisher_exact_test(
+    table: np.ndarray | list[list[int]],
+    alpha: float | None = None,
+) -> StatTestResult:
     """Performs Fisher's Exact Test on a 2x2 contingency table.
+
+    Args:
+        table: 2x2 contingency table.
+        alpha: Significance level. If None, uses default from config.
+
+    Returns:
+        StatTestResult containing test outcomes.
+
+    Raises:
+        DataValidationError: If table is not 2x2.
 
     Null hypothesis:
         There is no association between the two categorical variables.
@@ -48,14 +86,31 @@ def fisher_exact_test(table: np.ndarray | list[list[int]], alpha: float = 0.05) 
     Alternative hypothesis:
         There is an association between the two categorical variables.
     """
+    if alpha is None:
+        alpha = default_config.statistical.default_alpha
+
+    # Validate 2x2 table
+    if isinstance(table, np.ndarray):
+        if table.shape != (2, 2):
+            raise DataValidationError(f"Fisher's exact test requires 2x2 table, got shape {table.shape}")
+    elif isinstance(table, list):
+        if len(table) != 2 or any(len(row) != 2 for row in table):
+            raise DataValidationError("Fisher's exact test requires 2x2 table")
+
     results = scipy.stats.fisher_exact(table)
-    statistic = results.statistic  # type: ignore # not true
-    p_value = results.pvalue  # type: ignore # not true
+    statistic = float(results.statistic)
+    p_value = float(results.pvalue)
 
     if p_value < alpha:
-        result_text = f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}); there is evidence of association.'
+        result_text = (
+            f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}); '
+            f'there is evidence of association.'
+        )
     else:
-        result_text = f'We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}); no evidence of association is found.'
+        result_text = (
+            f'We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}); '
+            f'no evidence of association is found.'
+        )
 
     return StatTestResult(
         test_name="Fisher's Exact Test",
@@ -70,9 +125,6 @@ def fisher_exact_test(table: np.ndarray | list[list[int]], alpha: float = 0.05) 
 
 if __name__ == '__main__':
     from pprint import pprint
-
-    import numpy as np
-    import pandas as pd
 
     # Categorical groups
     age_groups = ['<18', '18-24', '25-34', '35-44', '45-54', '55-64', '65-74', '75-84', '85-94', '95+']
@@ -99,8 +151,8 @@ if __name__ == '__main__':
     dependent_data = np.array([np.random.multinomial(100, preference_profiles[age_group]) for age_group in age_groups])
 
     # INDEPENDENT DATA: all age groups have the same distribution
-    base_prob = [1 / len(beverages)] * len(beverages)
     independent_data = np.tile([33, 33, 34], (len(age_groups), 1))
+
     # Create DataFrames
     dep_df = pd.DataFrame(dependent_data, index=age_groups, columns=beverages)
     dep_df.index.name = 'Age Group'

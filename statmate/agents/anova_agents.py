@@ -35,8 +35,8 @@ def anova_rm_agent(
         system_prompt=system_prompt,
         model_settings=model_settings,
         retries=retries,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
         **prompt_kwargs,
     )
 

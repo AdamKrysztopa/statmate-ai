@@ -25,7 +25,7 @@ from statmate.agents import (
     wilcoxon_agent,
 )
 from statmate.agents.agent_builder import StatTestDeps, run_sync_agent
-from statmate.agents.auxilary_agents import AssesDesignDeps, get_assess_design_study_agent
+from statmate.agents.auxiliary_agents import AssessDesignDeps, get_assess_design_study_agent
 from statmate.agents.initial_insights_agent import (
     TOOL_FUNCS,
     InitialInsightsAgentDeps,
@@ -151,13 +151,13 @@ def decide_outcome(state: WorkflowState) -> str:
         return END
 
 
-def asses_study_design_node(state: WorkflowState) -> WorkflowState:
+def assess_study_design_node(state: WorkflowState) -> WorkflowState:
     model = OpenAIModel('gpt-4o')
     settings = ModelSettings(temperature=0.0, top_p=1.0, frequency_penalty=0.0, presence_penalty=0.0)
     agent = get_assess_design_study_agent(model=model, model_settings=settings)
-    logger.info('asses_study_design_node\nmofel is fed with those data:')
+    logger.info('assess_study_design_node\nmodel is fed with those data:')
     logger.info(state['results'])
-    res = agent.run_sync(deps=AssesDesignDeps(msg=state['results']))
+    res = agent.run_sync(deps=AssessDesignDeps(msg=state['results']))
     state['paired'] = res.data.paired
     msg = '~~~Paired comparison~~~' if res.data.paired else '~~~Two independent groups~~~'
     logger.info(msg)
@@ -271,7 +271,7 @@ graph.add_conditional_edges(
         NodeName.FISHER.value: NodeName.FISHER.value,
     },
 )
-graph.add_node(NodeName.ASSESS_STUDY_DESIGN.value, asses_study_design_node)
+graph.add_node(NodeName.ASSESS_STUDY_DESIGN.value, assess_study_design_node)
 graph.add_conditional_edges(
     NodeName.ASSESS_STUDY_DESIGN.value,
     assess_study_design,

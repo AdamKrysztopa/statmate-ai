@@ -1,3 +1,5 @@
+"""Linear correlation agents for statistical analysis."""
+
 from collections.abc import Callable
 
 import numpy as np
@@ -5,6 +7,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.openai import ModelSettings, OpenAIModel
 
 from statmate.agents import AgentResult, StatTestDeps, build_stat_test_agent, run_sync_agent
+from statmate.config import default_config
 from statmate.statistical_core import StatTestResult, pearson_corr, spearman_corr
 
 
@@ -14,18 +17,28 @@ def pearson_agent(
     test_name: str = 'Pearson Correlation',
     test_function: Callable[..., StatTestResult] = pearson_corr,
 ) -> Agent[StatTestDeps, AgentResult]:
-    """Builds a Pearson correlation agent."""
+    """Builds a Pearson correlation agent.
+
+    Args:
+        model: The AI model to use.
+        model_settings: Optional model settings.
+        test_name: Name of the statistical test.
+        test_function: Function that performs the test.
+
+    Returns:
+        Configured Agent instance.
+    """
     return build_stat_test_agent(
         model=model,
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
         potential_suggestions=(
-            'Check a scatterplot to verify linearity before relying on Pearson’s r. '
+            'Check a scatterplot to verify linearity before relying on Pearson's r. '
             'Assess and, if needed, remove or winsorize outliers that may unduly influence the correlation. '
-            'Confirm both variables are approximately normally distributed or use Fisher’s z-transform for CIs. '
+            'Confirm both variables are approximately normally distributed or use Fisher's z-transform for CIs. '
             'If variances differ greatly, consider robust methods or transformations. '
-            'For non-linear but monotonic relationships, switch to Spearman’s rho.'
+            'For non-linear but monotonic relationships, switch to Spearman's rho.'
         ),
     )
 
@@ -36,7 +49,17 @@ def spearman_agent(
     test_name: str = 'Spearman Correlation',
     test_function: Callable[..., StatTestResult] = spearman_corr,
 ) -> Agent[StatTestDeps, AgentResult]:
-    """Builds a Spearman rank-correlation agent."""
+    """Builds a Spearman rank-correlation agent.
+
+    Args:
+        model: The AI model to use.
+        model_settings: Optional model settings.
+        test_name: Name of the statistical test.
+        test_function: Function that performs the test.
+
+    Returns:
+        Configured Agent instance.
+    """
     return build_stat_test_agent(
         model=model,
         model_settings=model_settings,
@@ -44,29 +67,24 @@ def spearman_agent(
         test_function=test_function,
         potential_suggestions=(
             'Plot ranked values or a scatterplot of ranks to ensure a monotonic trend. '
-            'Be mindful of ties—if many ties occur, consider Kendall’s tau as an alternative. '
+            'Be mindful of ties—if many ties occur, consider Kendall's tau as an alternative. '
             'Spearman is more robust to outliers, but extreme values can still distort rho. '
             'You can bootstrap confidence intervals for ρ when sample sizes are small. '
-            'If data meet normality and linearity, Pearson’s r may offer more power.'
+            'If data meet normality and linearity, Pearson's r may offer more power.'
         ),
     )
 
 
 if __name__ == '__main__':
-    import numpy as np
-    from pydantic_ai.models.openai import ModelSettings, OpenAIModel
-
-    from statmate.agents import StatTestDeps, run_sync_agent
-
     # Reproducible random data
     np.random.seed(42)
+
     # Series 1: base signal
     series1 = np.random.normal(loc=0.0, scale=1.0, size=100)
     # Series 2: correlated with series1 (Pearson & Spearman)
     series2 = 0.8 * series1 + 0.2 * np.random.normal(loc=0.0, scale=1.0, size=100)
-    # Series 3: no pearson correlation, spearman correlation
 
-    # assume series1 already defined
+    # Series 3: no pearson correlation, spearman correlation
     # 1) build a smooth odd‐power transform + small noise
     raw3 = series1**3 + 0.05 * np.random.normal(size=series1.shape)
 
@@ -77,7 +95,7 @@ if __name__ == '__main__':
     # 3) flip sign to make Spearman positive
     series3 = -resid3
 
-    model = OpenAIModel('gpt-4o')
+    model = OpenAIModel(default_config.model.model_name)
     model_settings = ModelSettings(
         temperature=0.0,
         max_tokens=500,
@@ -90,14 +108,9 @@ if __name__ == '__main__':
     p_agent = pearson_agent(model=model, model_settings=model_settings)
     s_agent = spearman_agent(model=model, model_settings=model_settings)
 
-    # # 1 vs 2: expect correlation
-    # deps_12 = StatTestDeps(data=series1, data_secondary=series2, test_params={'alpha': 0.05})
-    # print('=== Series 1 vs Series 2 (correlated) ===')
-    # print('Pearson:', run_sync_agent(p_agent, '', deps_12))
-    # print('Spearman:', run_sync_agent(s_agent, '', deps_12))
-
-    # 1 vs 3: expect no correlation
+    # 1 vs 3: expect no correlation for Pearson, correlation for Spearman
     deps_13 = StatTestDeps(data=series1, data_secondary=series3, test_params={'alpha': 0.05})
     print('\n=== Series 1 vs Series 3 (Pearson uncorrelated) ===')
     print('Pearson:', run_sync_agent(p_agent, '', deps_13))
     print('Spearman:', run_sync_agent(s_agent, '', deps_13))
+

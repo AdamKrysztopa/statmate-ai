@@ -46,8 +46,8 @@ def shapiro_wilk_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
@@ -73,8 +73,8 @@ def anderson_darling_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
@@ -100,8 +100,8 @@ def ks_normal_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
@@ -155,8 +155,8 @@ def dagostino_pearson_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
@@ -182,8 +182,8 @@ def jarque_bera_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
@@ -209,8 +209,8 @@ def cramer_von_mises_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
@@ -236,8 +236,8 @@ def lilliefors_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 

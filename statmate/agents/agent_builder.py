@@ -41,8 +41,8 @@ Assumptions & Diagnostics:
 
 Data Exploration:
   - Summarize distribution metrics (mean, median, variance, skewness).
-  - Analye the imput data, check if data are categorical or continuous, and propose the best test.
-  - Verify if only data are provided, or if secondary data is provided - sugest the best analysis.
+  - Analyze the input data, check if data are categorical or continuous, and propose the best test.
+  - Verify if only data are provided, or if secondary data is provided - suggest the best analysis.
   - Detect outliers and missing values; document handling decisions.
 
 Precision & Effect Size:
@@ -51,7 +51,7 @@ Precision & Effect Size:
 Screening & Recommendations:
   - Recommend visual diagnostics (histogram, boxplot, Q-Q plot).
   - Flag additional tests or data transformations if needed.
-  - In the case of low number of samples, suggest using more data or different test whchich is more robust.
+  - In the case of low number of samples, suggest using more data or different test which is more robust.
 
 Output:
   - Return JSON containing:
