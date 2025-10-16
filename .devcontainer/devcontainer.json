@@ -4,8 +4,8 @@
         "dockerfile": "Dockerfile",
         "args": {
             "VARIANT": "3.11.12",
-            "GIT_USER_NAME": "${localEnv:GIT_USER_NAME}",
-            "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}",
+            "GIT_USER_NAME": "Adam Krysztopa",
+            "GIT_USER_EMAIL": "krysztopa@gmail.com",
             "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
 
         }
@@ -14,12 +14,16 @@
         "--rm",
         "--name=statmate-ai_devcontainer"
     ],
+    "mounts": [
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh/adam_private_gh,target=/home/vscode/.ssh/adam_private_gh,type=bind,consistency=cached",
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh/adam_private_gh.pub,target=/home/vscode/.ssh/adam_private_gh.pub,type=bind,consistency=cached"
+    ],
     "remoteUser": "vscode",
     "containerEnv": {
         "MY_ENV_VAR": "${localEnv:MY_ENV_VAR}",
         "HOME": "/home/vscode",
-        "GIT_USER_NAME": "${localEnv:GIT_USER_NAME}",
-        "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}",
+        "GIT_USER_NAME": "Adam Krysztopa",
+        "GIT_USER_EMAIL": "krysztopa@gmail.com",
         "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
 
     },
@@ -74,6 +78,6 @@
             ]
         }
     },
-    "postCreateCommand": "bash .devcontainer/setup_git.sh && uv sync && git config --global core.editor \"code --wait --new-window\"",
+    "postCreateCommand": "bash .devcontainer/setup_git.sh && bash .devcontainer/setup_ssh.sh && uv sync && git config --global core.editor \"code --wait --new-window\"",
     "shutdownAction": "stopContainer"
 }
