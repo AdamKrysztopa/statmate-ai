@@ -7,7 +7,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.openai import ModelSettings, OpenAIModel
 
 from statmate.agents import AgentResult, StatTestDeps, build_stat_test_agent, run_sync_agent
-from statmate.config import default_config
+from statmate.core import default_config
 from statmate.statistical_core import StatTestResult, pearson_corr, spearman_corr
 
 

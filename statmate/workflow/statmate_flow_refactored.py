@@ -6,8 +6,7 @@ statmate_flow.py with a cleaner API using the refactored modules.
 
 import pandas as pd
 
-from statmate.config import Config, default_config
-from statmate.logging_config import get_logger, setup_logging
+from statmate.core import Config, default_config, get_logger, setup_logging
 from statmate.workflow.graph_builder import build_workflow_graph
 from statmate.workflow.state import WorkflowState, create_initial_state
 

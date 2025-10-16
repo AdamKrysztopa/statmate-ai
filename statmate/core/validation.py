@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from statmate.exceptions import (
+from statmate.core.exceptions import (
     DataValidationError,
     InsufficientDataError,
     InvalidDataShapeError,

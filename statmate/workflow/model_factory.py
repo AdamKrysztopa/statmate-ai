@@ -6,7 +6,7 @@ configuration, making the code more testable and easier to change.
 
 from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
 
-from statmate.config import Config, default_config
+from statmate.core import Config, default_config
 
 
 class ModelFactory:

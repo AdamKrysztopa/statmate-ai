@@ -245,11 +245,13 @@ Protocols and ABCs:
 ```
 statmate/
 ├── __init__.py
-├── config.py                          # NEW: Configuration
-├── exceptions.py                      # NEW: Custom exceptions
-├── logging_config.py                  # NEW: Logging setup
-├── base_interfaces.py                 # NEW: Abstract base classes
-├── validation.py                      # NEW: Input validation
+├── core/                              # NEW: Core foundational modules
+│   ├── __init__.py                    # Exports all core functionality
+│   ├── config.py                      # Configuration management
+│   ├── exceptions.py                  # Custom exception hierarchy
+│   ├── logging_config.py              # Logging setup
+│   ├── base_interfaces.py             # Abstract base classes and protocols
+│   └── validation.py                  # Input validation utilities
 ├── agents/
 │   ├── __init__.py                    # Updated imports
 │   ├── agent_builder.py               # Fixed spellings
@@ -317,7 +319,7 @@ for msg in result.results:
 ### Using Custom Configuration
 
 ```python
-from statmate.config import Config, ModelConfig, StatisticalTestConfig
+from statmate.core import Config, ModelConfig, StatisticalTestConfig
 from statmate.workflow.statmate_flow_refactored import StatMateWorkflow
 
 # Create custom config
@@ -393,9 +395,29 @@ workflow = StatMateWorkflow()
 result = workflow.run(df)
 ```
 
+## Module Organization
+
+All foundational modules have been organized into a `statmate.core` package for better structure:
+
+- `statmate.config` → `statmate.core.config`
+- `statmate.exceptions` → `statmate.core.exceptions`
+- `statmate.logging_config` → `statmate.core.logging_config`
+- `statmate.base_interfaces` → `statmate.core.base_interfaces`
+- `statmate.validation` → `statmate.core.validation`
+
+All exports are available through `statmate.core`:
+```python
+from statmate.core import Config, default_config, get_logger, DataValidationError
+```
+
 ## Breaking Changes
 
-1. **Import paths changed** for renamed files:
+1. **Module reorganization** - Foundational modules moved to `statmate.core`:
+   - Old: `from statmate.config import Config`
+   - New: `from statmate.core import Config`
+   - Or: `from statmate.core.config import Config`
+
+2. **Import paths changed** for renamed files:
    - `from statmate.agents.cathegorical_comparison_agent import ...` 
      → `from statmate.agents.categorical_comparison_agent import ...`
    - `from statmate.agents.linear_corellation_agents import ...` 

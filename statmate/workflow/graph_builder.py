@@ -14,8 +14,7 @@ from statmate.agents import (
     ttest_rel_agent,
     wilcoxon_agent,
 )
-from statmate.config import NodeName
-from statmate.logging_config import get_logger
+from statmate.core import NodeName, get_logger
 from statmate.workflow.edges import (
     assess_study_design,
     decide_outcome,

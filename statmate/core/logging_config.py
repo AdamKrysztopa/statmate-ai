@@ -6,7 +6,7 @@ This module sets up structured logging with appropriate handlers and formatters.
 import logging
 import sys
 
-from statmate.config import LoggingConfig
+from statmate.core.config import LoggingConfig
 
 
 def setup_logging(config: LoggingConfig | None = None) -> logging.Logger:

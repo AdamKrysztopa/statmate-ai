@@ -6,8 +6,7 @@ test workflow, determining which node to execute next based on state.
 
 from langgraph.graph import END
 
-from statmate.config import NodeName, default_config
-from statmate.logging_config import get_logger
+from statmate.core import NodeName, default_config, get_logger
 from statmate.workflow.state import WorkflowState
 
 logger = get_logger(__name__)

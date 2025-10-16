@@ -6,9 +6,9 @@ import numpy as np
 import scipy.stats
 from scipy.stats._result_classes import TtestResult, WilcoxonResult
 
-from statmate.config import default_config
+from statmate.core import default_config
+from statmate.core.validation import validate_paired_data
 from statmate.statistical_core.base import StatTestResult
-from statmate.validation import validate_paired_data
 
 
 # 2. Paired t-test (Dependent Samples)
