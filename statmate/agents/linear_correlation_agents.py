@@ -34,11 +34,11 @@ def pearson_agent(
         test_name=test_name,
         test_function=test_function,
         potential_suggestions=(
-            'Check a scatterplot to verify linearity before relying on Pearson's r. '
+            'Check a scatterplot to verify linearity before relying on Pearson\'s r. '
             'Assess and, if needed, remove or winsorize outliers that may unduly influence the correlation. '
-            'Confirm both variables are approximately normally distributed or use Fisher's z-transform for CIs. '
+            'Confirm both variables are approximately normally distributed or use Fisher\'s z-transform for CIs. '
             'If variances differ greatly, consider robust methods or transformations. '
-            'For non-linear but monotonic relationships, switch to Spearman's rho.'
+            'For non-linear but monotonic relationships, switch to Spearman\'s rho.'
         ),
     )
 
@@ -67,10 +67,10 @@ def spearman_agent(
         test_function=test_function,
         potential_suggestions=(
             'Plot ranked values or a scatterplot of ranks to ensure a monotonic trend. '
-            'Be mindful of ties—if many ties occur, consider Kendall's tau as an alternative. '
+            'Be mindful of ties—if many ties occur, consider Kendall\'s tau as an alternative. '
             'Spearman is more robust to outliers, but extreme values can still distort rho. '
             'You can bootstrap confidence intervals for ρ when sample sizes are small. '
-            'If data meet normality and linearity, Pearson's r may offer more power.'
+            'If data meet normality and linearity, Pearson\'s r may offer more power.'
         ),
     )
 

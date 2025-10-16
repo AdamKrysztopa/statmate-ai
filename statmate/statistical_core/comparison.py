@@ -1,10 +1,10 @@
 """Comparison module for statistical tests."""
 
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import scipy.stats
-from scipy.stats._result_classes import TtestResult, WilcoxonResult
+from scipy.stats._result_classes import TtestResult
 
 from statmate.core import default_config
 from statmate.core.validation import validate_paired_data
@@ -87,7 +87,7 @@ def wilcoxon_test(data1: np.ndarray, data2: np.ndarray, alpha: float | None = No
     validate_paired_data(data1, data2, alpha)
 
     result = scipy.stats.wilcoxon(data1, data2, zero_method='wilcox', correction=False)
-    result_typed = cast(WilcoxonResult, result)
+    result_typed = cast(Any, result)  # WilcoxonResult not available in all scipy versions
     statistic = float(result_typed.statistic)
     p_value = float(result_typed.pvalue)
 
