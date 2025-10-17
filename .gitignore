@@ -51,8 +51,10 @@ database/statmate.db
 database/statmate.db-*
 
 # Data directories (user uploads and results)
-data/uploads/*.parquet
-data/uploads/*.csv
-data/uploads/*.xlsx
+# Ignore all files but keep directory structure with .gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
 data/results/*
-data/logs/*.log
+!data/results/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
