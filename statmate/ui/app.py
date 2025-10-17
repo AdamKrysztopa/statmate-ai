@@ -89,6 +89,36 @@ try:
             st.rerun()
 except Exception as e:
     st.error(f'❌ API not available: {e}')
+    st.info('💡 Make sure the API is running: `make dev` or `python statmate/api/main.py`')
+    st.stop()
+
+# Check environment and credentials
+from statmate.ui.components.credentials import (
+    render_credential_setup_page,
+    render_credentials_banner,
+    require_credentials,
+)
+
+render_credentials_banner(API_BASE_URL)
+
+# In PROD mode, check if credentials are configured
+if not require_credentials(API_BASE_URL):
+    st.divider()
+    st.warning('🔐 Credentials Required', icon='⚠️')
+    # Show credential setup page
+    if not st.session_state.get('show_credential_setup'):
+        st.session_state['show_credential_setup'] = True
+    render_credential_setup_page(API_BASE_URL)
+    st.stop()
+
+# If user wants to change credentials in PROD
+if st.session_state.get('show_credential_setup'):
+    st.divider()
+    if st.button('← Back to Analysis', use_container_width=True):
+        st.session_state['show_credential_setup'] = False
+        st.rerun()
+    st.divider()
+    render_credential_setup_page(API_BASE_URL)
     st.stop()
 
 st.divider()
