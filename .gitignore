@@ -54,6 +54,9 @@ database/statmate.db-*
 # Ignore all files but keep directory structure with .gitkeep
 data/uploads/*
 !data/uploads/.gitkeep
+# Include sample/demo datasets for testing
+!data/uploads/sample_categorical_20250103_150000.parquet
+!data/uploads/sample_continuous_paired_20250101_120000.parquet
 data/results/*
 !data/results/.gitkeep
 data/logs/*
