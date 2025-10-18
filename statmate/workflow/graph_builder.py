@@ -96,8 +96,8 @@ class WorkflowGraphBuilder:
 
         # Normality of difference test
         def normality_wrapper(state: WorkflowState) -> WorkflowState:
-            model = create_model()
-            settings = create_model_settings()
+            model = create_model(model_name=state.get('model_name'), provider=state.get('provider'))
+            settings = create_model_settings(model_name=state.get('model_name'))
             agent = normality_of_difference_agent(model=model, model_settings=settings)
             return call_test_agent(agent, state)
 
@@ -114,8 +114,8 @@ class WorkflowGraphBuilder:
 
         # Paired t-test
         def paired_t_wrapper(state: WorkflowState) -> WorkflowState:
-            model = create_model()
-            settings = create_model_settings()
+            model = create_model(model_name=state.get('model_name'), provider=state.get('provider'))
+            settings = create_model_settings(model_name=state.get('model_name'))
             agent = ttest_rel_agent(model=model, model_settings=settings)
             return call_test_agent(agent, state)
 
@@ -123,8 +123,8 @@ class WorkflowGraphBuilder:
 
         # Wilcoxon test
         def wilcoxon_wrapper(state: WorkflowState) -> WorkflowState:
-            model = create_model()
-            settings = create_model_settings()
+            model = create_model(model_name=state.get('model_name'), provider=state.get('provider'))
+            settings = create_model_settings(model_name=state.get('model_name'))
             agent = wilcoxon_agent(model=model, model_settings=settings)
             return call_test_agent(agent, state)
 
@@ -152,8 +152,8 @@ class WorkflowGraphBuilder:
 
         # Independent t-test
         def indep_t_wrapper(state: WorkflowState) -> WorkflowState:
-            model = create_model()
-            settings = create_model_settings()
+            model = create_model(model_name=state.get('model_name'), provider=state.get('provider'))
+            settings = create_model_settings(model_name=state.get('model_name'))
             agent = ttest_ind_agent(model=model, model_settings=settings)
             return call_test_agent(agent, state)
 
@@ -173,8 +173,8 @@ class WorkflowGraphBuilder:
 
         # Chi-square test
         def chi2_wrapper(state: WorkflowState) -> WorkflowState:
-            model = create_model()
-            settings = create_model_settings()
+            model = create_model(model_name=state.get('model_name'), provider=state.get('provider'))
+            settings = create_model_settings(model_name=state.get('model_name'))
             agent = chi2_agent(model=model, model_settings=settings)
             return call_test_agent(agent, state)
 
@@ -182,8 +182,8 @@ class WorkflowGraphBuilder:
 
         # Fisher exact test
         def fisher_wrapper(state: WorkflowState) -> WorkflowState:
-            model = create_model()
-            settings = create_model_settings()
+            model = create_model(model_name=state.get('model_name'), provider=state.get('provider'))
+            settings = create_model_settings(model_name=state.get('model_name'))
             agent = fisher_exact_agent(model=model, model_settings=settings)
             return call_test_agent(agent, state)
 

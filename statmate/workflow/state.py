@@ -38,6 +38,10 @@ class WorkflowState(BaseModel):
     results: list[AIMessage] = Field(default_factory=list, description='List of test results as AIMessages')
     probabilities: dict[str, float] = Field(default_factory=dict, description='P-values from executed tests')
 
+    # Model configuration
+    model_name: str | None = Field(default=None, description='AI model to use for analysis')
+    provider: str | None = Field(default=None, description='Model provider (openai, anthropic, etc.)')
+
     def add_result(self, message: AIMessage) -> None:
         """Add a result message to the results list.
 

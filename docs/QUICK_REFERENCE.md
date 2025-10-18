@@ -1,14 +1,16 @@
 # ⚡ Quick Reference Card
 
-## 🚀 Start Commands
+## 🚀 Start/Stop Commands
 
 ```bash
 # Development Mode (uses .env API keys)
 make dev              # Start API
 make ui               # Start UI (in another terminal)
+make kill             # Stop both API and UI
 
 # Production Mode (users enter credentials via UI)
 make prod             # Start both API and UI
+make kill             # Stop everything
 
 # First Time Setup
 make quickstart       # Complete setup wizard
@@ -54,6 +56,7 @@ make dev              # DEV mode
 make prod             # PROD mode
 make api              # API only
 make ui               # UI only
+make kill             # Stop all processes
 
 # Maintenance
 make status           # Check configuration
@@ -87,7 +90,8 @@ OLLAMA_ENABLED=true
 | API not starting | `make status` → Check .env has keys |
 | UI can't connect | Ensure API is running first |
 | No models available | Add API key to .env or enter via UI |
-| Port already in use | `pkill -f statmate` then restart |
+| Port already in use | `make kill` then restart |
+| Processes won't stop | `make kill` (force kills if needed) |
 
 ## 🌐 URLs
 

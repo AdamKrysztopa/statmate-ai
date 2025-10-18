@@ -1,4 +1,4 @@
-.PHONY: help install dev prod api ui db-init db-seed clean test lint format
+.PHONY: help install dev prod api ui db-init db-seed clean test lint format kill list-models
 
 # Colors for terminal output
 GREEN  := \033[0;32m
@@ -21,12 +21,12 @@ help: ## Show this help message
 
 install: ## Install all dependencies
 	@echo '$(GREEN)Installing dependencies...$(RESET)'
-	pip install -e .
+	uv sync
 	@echo '$(GREEN)✓ Installation complete!$(RESET)'
 
 install-dev: ## Install with development dependencies
 	@echo '$(GREEN)Installing with dev dependencies...$(RESET)'
-	pip install -e ".[dev]"
+	uv sync --all-extras
 	@echo '$(GREEN)✓ Dev installation complete!$(RESET)'
 
 setup-env: ## Create .env file from template
@@ -44,18 +44,18 @@ setup-env: ## Create .env file from template
 
 db-init: ## Initialize database
 	@echo '$(GREEN)Initializing database...$(RESET)'
-	python scripts/init_db.py
+	@export PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run python scripts/init_db.py
 	@echo '$(GREEN)✓ Database initialized!$(RESET)'
 
 db-seed: ## Seed database with sample data
 	@echo '$(GREEN)Seeding database...$(RESET)'
-	python scripts/seed_db.py
+	@export PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run python scripts/seed_db.py
 	@echo '$(GREEN)✓ Database seeded!$(RESET)'
 
 db-reset: ## Reset database (WARNING: deletes all data!)
 	@echo '$(RED)⚠️  Resetting database (all data will be lost)...$(RESET)'
 	rm -f database/statmate.db
-	python scripts/init_db.py --seed
+	@export PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run python scripts/init_db.py --seed
 	@echo '$(GREEN)✓ Database reset complete!$(RESET)'
 
 # =============================================================================
@@ -78,18 +78,18 @@ dev: ## Run in DEVELOPMENT mode (API keys from .env)
 	fi
 	@if [ ! -f database/statmate.db ]; then \
 		echo '$(YELLOW)Database not found, initializing...$(RESET)'; \
-		python scripts/init_db.py --seed; \
+		export PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run python scripts/init_db.py --seed; \
 	fi
 	@mkdir -p data/uploads data/results data/logs
 	@export ENVIRONMENT=development && bash scripts/run_dev.sh
 
 api: ## Run only the FastAPI backend
 	@echo '$(GREEN)Starting FastAPI backend...$(RESET)'
-	@export ENVIRONMENT=development && python statmate/api/main.py
+	@export ENVIRONMENT=development PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run python statmate/api/main.py
 
 ui: ## Run only the Streamlit UI
 	@echo '$(GREEN)Starting Streamlit UI...$(RESET)'
-	streamlit run statmate/ui/app.py
+	@export PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run streamlit run statmate/ui/app.py
 
 # =============================================================================
 # Production Mode (Users provide credentials via UI)
@@ -102,20 +102,20 @@ prod: ## Run in PRODUCTION mode (users provide their own credentials)
 	@echo '$(YELLOW)Users will be prompted to enter their API keys in the UI$(RESET)'
 	@if [ ! -f database/statmate.db ]; then \
 		echo '$(YELLOW)Database not found, initializing...$(RESET)'; \
-		python scripts/init_db.py; \
+		export PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run python scripts/init_db.py; \
 	fi
 	@mkdir -p data/uploads data/results data/logs
-	@export ENVIRONMENT=production DEBUG=false && python statmate/api/main.py &
+	@export ENVIRONMENT=production DEBUG=false PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run python statmate/api/main.py &
 	@sleep 2
-	@export ENVIRONMENT=production && streamlit run statmate/ui/app.py
+	@export ENVIRONMENT=production PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run streamlit run statmate/ui/app.py
 
 prod-api: ## Run API in production mode
 	@echo '$(GREEN)Starting API in PRODUCTION mode...$(RESET)'
-	@export ENVIRONMENT=production DEBUG=false && python statmate/api/main.py
+	@export ENVIRONMENT=production DEBUG=false PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run python statmate/api/main.py
 
 prod-ui: ## Run UI in production mode
 	@echo '$(GREEN)Starting UI in PRODUCTION mode...$(RESET)'
-	@export ENVIRONMENT=production && streamlit run statmate/ui/app.py
+	@export ENVIRONMENT=production PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run streamlit run statmate/ui/app.py
 
 # =============================================================================
 # Testing & Quality
@@ -123,27 +123,40 @@ prod-ui: ## Run UI in production mode
 
 test: ## Run tests
 	@echo '$(GREEN)Running tests...$(RESET)'
-	pytest tests/ -v
+	uv run pytest tests/ -v
 
 test-coverage: ## Run tests with coverage report
 	@echo '$(GREEN)Running tests with coverage...$(RESET)'
-	pytest tests/ --cov=statmate --cov-report=html --cov-report=term
+	uv run pytest tests/ --cov=statmate --cov-report=html --cov-report=term
 
 lint: ## Run linter (ruff)
 	@echo '$(GREEN)Running linter...$(RESET)'
-	ruff check .
+	uv run ruff check .
 
 format: ## Format code (ruff)
 	@echo '$(GREEN)Formatting code...$(RESET)'
-	ruff format .
+	uv run ruff format .
 
 type-check: ## Run type checker (mypy)
 	@echo '$(GREEN)Running type checker...$(RESET)'
-	mypy statmate
+	uv run mypy statmate
 
 # =============================================================================
 # Utilities
 # =============================================================================
+
+kill: ## Stop all running StatmateAI processes (API & UI)
+	@echo '$(YELLOW)Stopping StatmateAI processes...$(RESET)'
+	@pkill -f "uvicorn.*main:app" || true
+	@pkill -f "python.*statmate/api/main.py" || true
+	@pkill -f "streamlit run.*statmate/ui/app.py" || true
+	@sleep 1
+	@if pgrep -f "uvicorn.*main:app" > /dev/null || pgrep -f "streamlit run" > /dev/null; then \
+		echo '$(RED)⚠️  Some processes may still be running. Force killing...$(RESET)'; \
+		pkill -9 -f "uvicorn.*main:app" || true; \
+		pkill -9 -f "streamlit run" || true; \
+	fi
+	@echo '$(GREEN)✓ All processes stopped!$(RESET)'
 
 clean: ## Clean up temporary files
 	@echo '$(YELLOW)Cleaning up...$(RESET)'
@@ -162,6 +175,10 @@ clean-all: clean ## Clean everything including database and data
 logs: ## Show recent logs
 	@echo '$(GREEN)Recent logs:$(RESET)'
 	@ls -lt data/logs/*.log 2>/dev/null | head -5 || echo 'No logs found'
+
+list-models: ## List all available models from configured providers
+	@echo '$(GREEN)Checking available models from providers...$(RESET)'
+	@export PYTHONPATH=$${PYTHONPATH:+$$PYTHONPATH:}$$(pwd) && uv run python scripts/list_available_models.py
 
 status: ## Check system status
 	@echo '$(GREEN)System Status:$(RESET)'

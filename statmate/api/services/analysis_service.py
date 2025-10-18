@@ -26,6 +26,8 @@ class AnalysisService:
         dataset_id: str,
         selected_columns: list[str] | None = None,
         configuration: dict | None = None,
+        model_name: str | None = None,
+        provider: str | None = None,
     ) -> Analysis:
         """Create a new analysis record.
 
@@ -34,6 +36,8 @@ class AnalysisService:
             dataset_id: UUID of dataset to analyze
             selected_columns: Columns to analyze (None = all)
             configuration: Optional analysis configuration
+            model_name: AI model to use for analysis
+            provider: Model provider (e.g., 'openai', 'ollama')
 
         Returns:
             Created Analysis model
@@ -43,13 +47,15 @@ class AnalysisService:
             status=AnalysisStatus.PENDING,
             selected_columns=selected_columns,
             configuration=configuration or {},
+            model_name=model_name,
+            provider=provider,
         )
 
         db.add(analysis)
         db.commit()
         db.refresh(analysis)
 
-        logger.info(f'Created analysis: {analysis.id}')
+        logger.info(f'Created analysis: {analysis.id} with model: {model_name or "default"}')
         return analysis
 
     @staticmethod
@@ -131,10 +137,18 @@ class AnalysisService:
                 'number_of_samples': 0,
                 'results': [],
                 'probabilities': {},
+                'model_name': analysis.model_name,  # Pass selected model
+                'provider': analysis.provider,      # Pass selected provider
             }
 
             # Run the LangGraph workflow
-            logger.info(f'Starting workflow for analysis: {analysis_id}')
+            model_info = f' with {analysis.model_name}' if analysis.model_name else ' with default model'
+            logger.info('=' * 80)
+            logger.info(f'🚀 STARTING ANALYSIS: {analysis_id}')
+            logger.info(f'   Model: {analysis.model_name or "default"}')
+            logger.info(f'   Dataset ID: {analysis.dataset_id}')
+            logger.info(f'   Rows: {len(df)}, Columns: {len(df.columns)}')
+            logger.info('=' * 80)
             messages = []
             probabilities = {}
 
@@ -182,7 +196,12 @@ class AnalysisService:
             analysis.probabilities = probabilities
 
             db.commit()
-            logger.info(f'Analysis completed successfully: {analysis_id}')
+
+            logger.info('=' * 80)
+            logger.info(f'✅ ANALYSIS COMPLETED: {analysis_id}')
+            logger.info(f'   Duration: {(analysis.end_time - analysis.start_time).total_seconds():.2f}s')
+            logger.info(f'   Tests performed: {len(probabilities)}')
+            logger.info('=' * 80)
 
         except Exception as e:
             logger.error(f'Analysis failed: {analysis_id} - {e}', exc_info=True)
@@ -239,6 +258,8 @@ class AnalysisService:
             'status': analysis.status.value,
             'dataset_id': analysis.dataset_id,
             'dataset_name': dataset.original_filename if dataset else 'Unknown',
+            'model_name': analysis.model_name,
+            'provider': analysis.provider,
             'start_time': analysis.start_time,
             'end_time': analysis.end_time,
             'duration_seconds': duration,

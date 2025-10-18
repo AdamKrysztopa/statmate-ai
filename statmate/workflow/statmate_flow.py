@@ -7,7 +7,6 @@ import pandas as pd
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
-from pydantic_ai.models import ModelSettings
 from typing_extensions import TypedDict
 
 from statmate.agents import (
@@ -73,22 +72,31 @@ class WorkflowState(TypedDict):
     number_of_samples: int
     results: Annotated[list, add_messages]
     probabilities: dict[str, float]
+    model_name: str | None  # AI model to use for analysis
+    provider: str | None    # Model provider (openai, anthropic, etc.)
 
 
 def call_test_agent(test_agent: Callable, state: WorkflowState) -> WorkflowState:
     """Call a statistical agent and append its result."""
     try:
+        agent_name = test_agent.__name__
+        logger.info(f'🔬 Running test agent: {agent_name}')
+
         # Use flexible model factory for agent
         from statmate.agents.model_helper import create_agent_model_and_settings
 
         model, settings = create_agent_model_and_settings(
+            model_name=state.get('model_name'),
+            provider=state.get('provider'),
             temperature=0.0,
             top_p=1.0,
             frequency_penalty=0.0,
             presence_penalty=0.0,
         )
         deps = StatTestDeps(data=state['df'], data_secondary=state.get('secondary_df'))
+        logger.info(f'  → Agent {agent_name}: Calling model...')
         result = run_sync_agent(test_agent(model=model, model_settings=settings), user_prompt='', deps=deps)
+        logger.info(f'  ✅ Agent {agent_name}: Completed successfully')
         state['results'].append(AIMessage(content=str(result)))
         p_val = result.statistical_test_result.p_value
         state['probabilities'][test_agent.__name__] = (
@@ -104,13 +112,22 @@ def call_test_agent(test_agent: Callable, state: WorkflowState) -> WorkflowState
 def call_initialization_agent(state: WorkflowState) -> WorkflowState:
     """Run the initialization agent to analyze data and suggest tests."""
     try:
-        from statmate.agents.model_helper import get_agent_model
+        logger.info('🔍 Running initialization agent: Analyzing data and suggesting tests...')
+        from statmate.agents.model_helper import create_agent_model_and_settings
 
-        model = get_agent_model()
-        settings = ModelSettings(temperature=0.0, top_p=1.0, frequency_penalty=0.0, presence_penalty=0.0)
+        # Use model from state if specified, otherwise default
+        model, settings = create_agent_model_and_settings(
+            model_name=state.get('model_name'),
+            provider=state.get('provider'),
+            temperature=0.0,
+            top_p=1.0,
+            frequency_penalty=0.0,
+            presence_penalty=0.0,
+        )
         agent = build_initial_insights_agent(
             model=model, system_prompt=INITIAL_INSIGHTS_PROMPT, model_settings=settings
         )
+        logger.info('  → Initialization agent: Calling model...')
         results = agent.run_sync(
             user_prompt='Analyze the data and suggest the appropriate test.',
             deps=InitialInsightsAgentDeps(
@@ -126,8 +143,14 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         tool_args = results.data.tool_arguments or {}
         # apply transformation if any
         if results.data.data_transformation != 'None':
-            validated = validate_tool_args(results.data.data_transformation, tool_args)
-            state['df'] = TOOL_FUNCS[results.data.data_transformation](state['df'], **validated)
+            try:
+                validated = validate_tool_args(results.data.data_transformation, tool_args)
+                logger.info(f'  → Applying transformation: {results.data.data_transformation}')
+                state['df'] = TOOL_FUNCS[results.data.data_transformation](state['df'], **validated)
+                logger.info('  ✅ Transformation applied successfully')
+            except ValueError as e:
+                logger.warning(f'  ⚠️  Transformation skipped: {e}. Proceeding with original data.')
+                # Continue with original data instead of failing
         inp_df = state['df'] if isinstance(state['df'], pd.DataFrame) else pd.DataFrame(state['df'])
         # format for downstream tests
         formatted = format_data_by_recommendation(inp_df, results.data)
@@ -141,7 +164,8 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         cols = results.data.analysis_columns
         state['target_columns'] = cols if set(cols).issubset(set(inp_df.columns)) else list(inp_df.columns)
         state['results'].append(AIMessage(content=str(results.data)))
-        logger.info(f'Data type set: {state["data_type"]}')
+        logger.info(f'  ✅ Initialization agent: Data type detected = {state["data_type"]}')
+        logger.info(f'  ✅ Initialization agent: Suggested test = {results.data.suggested_test}')
         return state
     except Exception as e:
         logger.error(f'Error in call_initialization_agent: {e}')
@@ -164,7 +188,12 @@ def assess_study_design_node(state: WorkflowState) -> WorkflowState:
     from statmate.agents.model_helper import create_agent_model_and_settings
 
     model, settings = create_agent_model_and_settings(
-        temperature=0.0, top_p=1.0, frequency_penalty=0.0, presence_penalty=0.0
+        model_name=state.get('model_name'),
+        provider=state.get('provider'),
+        temperature=0.0,
+        top_p=1.0,
+        frequency_penalty=0.0,
+        presence_penalty=0.0,
     )
     agent = get_assess_design_study_agent(model=model, model_settings=settings)
     logger.info('assess_study_design_node\nmodel is fed with those data:')
@@ -178,17 +207,24 @@ def assess_study_design_node(state: WorkflowState) -> WorkflowState:
 
 # summariser node usage example (in your workflow)
 def summariser_node(state: WorkflowState) -> WorkflowState:
+    logger.info('📝 Running summarizer agent: Generating final summary...')
     from statmate.agents.model_helper import create_agent_model_and_settings
 
-    model, settings = create_agent_model_and_settings(temperature=0.0)
+    model, settings = create_agent_model_and_settings(
+        model_name=state.get('model_name'),
+        provider=state.get('provider'),
+        temperature=0.0,
+    )
 
     deps = SummariserDeps(results=state['results'], performed_tests=list(state['probabilities'].keys()))
 
     agent = get_summariser_agent(model, settings)
+    logger.info('  → Summarizer agent: Calling model...')
     res = agent.run_sync(deps=deps)
 
     state['results'].append(AIMessage(content=str(res.data)))
-    logger.info(f'Summariser output: {res.data}')
+    logger.info('  ✅ Summarizer agent: Summary generated')
+    logger.info(f'📊 Summary: {res.data[:200]}...' if len(str(res.data)) > 200 else f'📊 Summary: {res.data}')
 
     return state
 

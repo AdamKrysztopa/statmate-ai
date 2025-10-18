@@ -237,6 +237,13 @@ with tab2:
                 help='Select specific columns or leave empty to analyze all columns',
             )
 
+            # Model selection
+            st.divider()
+            st.subheader('AI Model Selection')
+            from statmate.ui.components.model_selector import render_model_selector
+
+            model_name, provider = render_model_selector(API_BASE_URL, key_prefix='analysis_model')
+
             # Run analysis
             st.divider()
             col1, col2 = st.columns([1, 3])
@@ -248,6 +255,8 @@ with tab2:
                             result = run_analysis(
                                 dataset_id,
                                 selected_columns if selected_columns else None,
+                                model_name=model_name,
+                                provider=provider,
                             )
                             st.session_state.current_analysis_id = result['id']
                             st.success(f'✅ Analysis started! ID: {result["id"]}')

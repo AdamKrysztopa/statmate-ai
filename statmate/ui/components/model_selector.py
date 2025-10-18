@@ -243,9 +243,9 @@ def render_model_info_page(api_base_url: str):
                 with col2:
                     capabilities = model.get('capabilities', [])
                     if 'reasoning' in capabilities:
-                        st.badge('🧠 Reasoning', type='primary')
+                        st.markdown('🧠 **Reasoning**')
                     if provider == 'ollama':
-                        st.badge('🏠 Local', type='success')
+                        st.markdown('🏠 **Local**')
 
                 st.caption(f'Model ID: `{model["name"]}` | Context: {model["context_window"]:,} tokens')
                 st.divider()

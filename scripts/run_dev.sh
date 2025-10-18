@@ -30,7 +30,8 @@ fi
 # Initialize database if needed
 if [ ! -f database/statmate.db ]; then
     echo "📦 Initializing database..."
-    python scripts/init_db.py --seed
+    export PYTHONPATH="${PYTHONPATH:+${PYTHONPATH}:}$(pwd)"
+    uv run python scripts/init_db.py --seed
     echo "✅ Database initialized with sample data"
 else
     echo "✅ Database already exists"
@@ -46,6 +47,9 @@ echo "   API: http://localhost:8000"
 echo "   Docs: http://localhost:8000/docs"
 echo ""
 
+# Set PYTHONPATH to project root
+export PYTHONPATH="${PYTHONPATH:+${PYTHONPATH}:}$(pwd)"
+
 # Start the API server
-python statmate/api/main.py
+uv run python statmate/api/main.py
 

@@ -49,7 +49,17 @@ class ModelInfo:
 
 # Popular models with reasoning capabilities
 SUPPORTED_MODELS: dict[str, ModelInfo] = {
-    # OpenAI models
+    # OpenAI models (2025 - Latest)
+    # NOTE: Reasoning models (gpt-5, o1, o3) only support temperature=1 (default)
+    'gpt-5': ModelInfo(
+        name='gpt-5',
+        provider=ModelProvider.OPENAI,
+        display_name='GPT-5',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=256000,
+        supports_tools=True,
+        description='Latest GPT-5 reasoning model - requires default temperature=1',
+    ),
     'gpt-4o': ModelInfo(
         name='gpt-4o',
         provider=ModelProvider.OPENAI,
@@ -58,6 +68,15 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         context_window=128000,
         supports_tools=True,
         description='Latest OpenAI model with vision and tool calling',
+    ),
+    'gpt-4o-2024-11-20': ModelInfo(
+        name='gpt-4o-2024-11-20',
+        provider=ModelProvider.OPENAI,
+        display_name='GPT-4o (Nov 2024)',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=128000,
+        supports_tools=True,
+        description='GPT-4o snapshot from November 2024',
     ),
     'gpt-4o-mini': ModelInfo(
         name='gpt-4o-mini',
@@ -68,6 +87,15 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         supports_tools=True,
         description='Faster and cheaper version of GPT-4o',
     ),
+    'gpt-4o-mini-2024-07-18': ModelInfo(
+        name='gpt-4o-mini-2024-07-18',
+        provider=ModelProvider.OPENAI,
+        display_name='GPT-4o Mini (Jul 2024)',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=128000,
+        supports_tools=True,
+        description='GPT-4o Mini snapshot from July 2024',
+    ),
     'gpt-4-turbo': ModelInfo(
         name='gpt-4-turbo',
         provider=ModelProvider.OPENAI,
@@ -77,6 +105,15 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         supports_tools=True,
         description='High-performance GPT-4 with extended context',
     ),
+    'gpt-4-turbo-2024-04-09': ModelInfo(
+        name='gpt-4-turbo-2024-04-09',
+        provider=ModelProvider.OPENAI,
+        display_name='GPT-4 Turbo (Apr 2024)',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING],
+        context_window=128000,
+        supports_tools=True,
+        description='GPT-4 Turbo snapshot from April 2024',
+    ),
     'o1': ModelInfo(
         name='o1',
         provider=ModelProvider.OPENAI,
@@ -84,7 +121,16 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING],
         context_window=200000,
         supports_tools=True,
-        description='OpenAI reasoning model',
+        description='OpenAI reasoning model - best for complex reasoning (requires temperature=1)',
+    ),
+    'o1-preview': ModelInfo(
+        name='o1-preview',
+        provider=ModelProvider.OPENAI,
+        display_name='OpenAI o1 Preview',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING],
+        context_window=128000,
+        supports_tools=True,
+        description='Preview version of o1 reasoning model (requires temperature=1)',
     ),
     'o1-mini': ModelInfo(
         name='o1-mini',
@@ -93,9 +139,18 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING],
         context_window=128000,
         supports_tools=True,
-        description='Faster reasoning model',
+        description='Faster reasoning model (requires temperature=1)',
     ),
-    # Anthropic models
+    'o3-mini': ModelInfo(
+        name='o3-mini',
+        provider=ModelProvider.OPENAI,
+        display_name='OpenAI o3 Mini',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING],
+        context_window=128000,
+        supports_tools=True,
+        description='Latest mini reasoning model (requires temperature=1)',
+    ),
+    # Anthropic models (2025 - Latest)
     'claude-3-7-sonnet-20250219': ModelInfo(
         name='claude-3-7-sonnet-20250219',
         provider=ModelProvider.ANTHROPIC,
@@ -103,16 +158,25 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
         context_window=200000,
         supports_tools=True,
-        description='Latest Claude with extended thinking',
+        description='Latest Claude with extended thinking - Feb 2025',
     ),
     'claude-3-5-sonnet-20241022': ModelInfo(
         name='claude-3-5-sonnet-20241022',
         provider=ModelProvider.ANTHROPIC,
-        display_name='Claude 3.5 Sonnet',
+        display_name='Claude 3.5 Sonnet (Oct 2024)',
         capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
         context_window=200000,
         supports_tools=True,
-        description='Claude 3.5 Sonnet',
+        description='Claude 3.5 Sonnet October 2024 snapshot',
+    ),
+    'claude-3-5-sonnet-latest': ModelInfo(
+        name='claude-3-5-sonnet-latest',
+        provider=ModelProvider.ANTHROPIC,
+        display_name='Claude 3.5 Sonnet (Latest)',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=200000,
+        supports_tools=True,
+        description='Always uses the latest Claude 3.5 Sonnet',
     ),
     'claude-3-5-haiku-20241022': ModelInfo(
         name='claude-3-5-haiku-20241022',
@@ -123,6 +187,15 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         supports_tools=True,
         description='Fast and efficient Claude model',
     ),
+    'claude-3-5-haiku-latest': ModelInfo(
+        name='claude-3-5-haiku-latest',
+        provider=ModelProvider.ANTHROPIC,
+        display_name='Claude 3.5 Haiku (Latest)',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING],
+        context_window=200000,
+        supports_tools=True,
+        description='Always uses the latest Claude 3.5 Haiku',
+    ),
     'claude-3-opus-20240229': ModelInfo(
         name='claude-3-opus-20240229',
         provider=ModelProvider.ANTHROPIC,
@@ -130,9 +203,27 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
         context_window=200000,
         supports_tools=True,
-        description='Most capable Claude model',
+        description='Most capable Claude 3 model',
     ),
-    # Google models
+    'claude-3-opus-latest': ModelInfo(
+        name='claude-3-opus-latest',
+        provider=ModelProvider.ANTHROPIC,
+        display_name='Claude 3 Opus (Latest)',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=200000,
+        supports_tools=True,
+        description='Always uses the latest Claude 3 Opus',
+    ),
+    # Google models (2025 - Latest)
+    'gemini-2.5-pro-preview': ModelInfo(
+        name='gemini-2.5-pro-preview',
+        provider=ModelProvider.GOOGLE,
+        display_name='Gemini 2.5 Pro Preview',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=2000000,
+        supports_tools=True,
+        description='Latest Gemini 2.5 Pro preview (when available)',
+    ),
     'gemini-2.0-flash-exp': ModelInfo(
         name='gemini-2.0-flash-exp',
         provider=ModelProvider.GOOGLE,
@@ -158,7 +249,34 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
         context_window=2000000,
         supports_tools=True,
-        description='Google Gemini Pro with huge context window',
+        description='Google Gemini Pro with huge context window (2M tokens)',
+    ),
+    'gemini-1.5-pro-latest': ModelInfo(
+        name='gemini-1.5-pro-latest',
+        provider=ModelProvider.GOOGLE,
+        display_name='Gemini 1.5 Pro (Latest)',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=2000000,
+        supports_tools=True,
+        description='Always uses the latest Gemini 1.5 Pro',
+    ),
+    'gemini-1.5-flash': ModelInfo(
+        name='gemini-1.5-flash',
+        provider=ModelProvider.GOOGLE,
+        display_name='Gemini 1.5 Flash',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=1000000,
+        supports_tools=True,
+        description='Fast and efficient Gemini model',
+    ),
+    'gemini-1.5-flash-latest': ModelInfo(
+        name='gemini-1.5-flash-latest',
+        provider=ModelProvider.GOOGLE,
+        display_name='Gemini 1.5 Flash (Latest)',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=1000000,
+        supports_tools=True,
+        description='Always uses the latest Gemini 1.5 Flash',
     ),
     # Groq models (fast inference)
     'llama-3.3-70b-versatile': ModelInfo(

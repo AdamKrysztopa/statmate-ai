@@ -177,7 +177,41 @@ StatmateAI combines the power of LLM agents with traditional statistical methods
 
 ## 🚀 Quick Start
 
-### One-Minute Setup
+### Option 1: Use Ollama (FREE & Local - Recommended!)
+
+**Run AI models locally with NO API costs:**
+
+```bash
+# 1. Clone and install
+git clone https://github.com/yourusername/statmate-ai.git
+cd statmate-ai
+make install
+
+# 2. Install Ollama (one-time)
+brew install ollama              # macOS
+# OR: curl -fsSL https://ollama.ai/install.sh | sh  # Linux
+
+# 3. Start Ollama and get model
+ollama serve &
+ollama pull deepseek-r1:8b      # Reasoning model, ~5GB
+
+# 4. Configure for Ollama
+make setup-env
+nano .env  # Set: OLLAMA_ENABLED=True, DEFAULT_MODEL_PROVIDER=ollama
+
+# 5. Initialize database
+make db-init db-seed
+
+# 6. Run!
+make dev    # Terminal 1 - API
+make ui     # Terminal 2 - UI
+```
+
+> 🎯 **Full Ollama Guide:** See [Ollama Setup Guide](docs/OLLAMA_SETUP.md) for detailed instructions
+
+---
+
+### Option 2: Use Cloud API (OpenAI, Anthropic, Google, etc.)
 
 ```bash
 # 1. Clone and install
@@ -187,7 +221,7 @@ make install
 
 # 2. Setup environment
 make setup-env
-nano .env  # Add your OPENAI_API_KEY=sk-...
+nano .env  # Add your OPENAI_API_KEY=sk-... (or other provider)
 
 # 3. Initialize database
 make db-init db-seed
@@ -197,10 +231,17 @@ make dev    # Terminal 1 - API
 make ui     # Terminal 2 - UI
 ```
 
+---
+
 **Access the Application:**
 - 🎨 **Streamlit UI**: http://localhost:8501
 - 🔌 **API Docs**: http://localhost:8000/docs
 - 📊 **API Base**: http://localhost:8000/api/v1
+
+**Stop the Application:**
+```bash
+make kill   # Stops both API and UI
+```
 
 ### Development vs Production
 
@@ -208,14 +249,17 @@ make ui     # Terminal 2 - UI
 ```bash
 make dev    # Start API with your .env credentials
 make ui     # Start UI
+make kill   # Stop everything
 ```
 
 **Production Mode** (Users provide credentials):
 ```bash
 make prod   # Users enter API keys via UI
+make kill   # Stop everything
 ```
 
-> 📖 **Detailed Setup:** See [Setup Guide](docs/SETUP_GUIDE.md) for comprehensive instructions
+> 📖 **Detailed Setup:** See [Setup Guide](docs/SETUP_GUIDE.md) for comprehensive instructions  
+> 🤖 **Ollama Guide:** See [Ollama Setup](docs/OLLAMA_SETUP.md) for local AI models
 
 ---
 
@@ -226,6 +270,8 @@ make prod   # Users enter API keys via UI
 | Guide | Description | For Who | Time |
 |-------|-------------|---------|------|
 | **[Setup Guide](docs/SETUP_GUIDE.md)** | Quick setup for DEV & PROD modes | First-time users | 5 min |
+| **[Ollama Setup](docs/OLLAMA_SETUP.md)** | 🔥 Run AI locally (FREE!) | Everyone | 10 min |
+| **[Adding Models](docs/ADDING_MODELS.md)** | How to add new AI models | Customizers | 5 min |
 | **[Quick Reference](docs/QUICK_REFERENCE.md)** | Command cheat sheet | Everyone | 2 min |
 | **[Dev vs Prod Guide](docs/DEV_VS_PROD_GUIDE.md)** | Credential management deep dive | Developers & Deployers | 15 min |
 | **[Quick Start](docs/QUICK_START.md)** | Fast API setup and first calls | API users | 5 min |
