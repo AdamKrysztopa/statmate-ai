@@ -91,8 +91,12 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         NodeExecutionError: If the initialization fails.
     """
     try:
-        model = create_model()
-        settings = create_model_settings()
+        # Use model from state if specified
+        model = create_model(
+            model_name=state.model_name,
+            provider=state.provider
+        )
+        settings = create_model_settings(model_name=state.model_name)
         agent = build_initial_insights_agent(
             model=model,
             system_prompt=ENHANCED_INITIAL_INSIGHTS_PROMPT,
@@ -154,8 +158,12 @@ def assess_study_design_node(state: WorkflowState) -> WorkflowState:
         NodeExecutionError: If the assessment fails.
     """
     try:
-        model = create_model()
-        settings = create_model_settings()
+        # Use model from state if specified
+        model = create_model(
+            model_name=state.model_name,
+            provider=state.provider
+        )
+        settings = create_model_settings(model_name=state.model_name)
         agent = get_assess_design_study_agent(model=model, model_settings=settings)
 
         logger.info('assess_study_design_node\nmodel is fed with those data:')
@@ -204,8 +212,8 @@ def two_independent_node(
 
         # Test group 1
         state.secondary_df = None
-        model = create_model()
-        settings = create_model_settings()
+        model = create_model(model_name=state.model_name, provider=state.provider)
+        settings = create_model_settings(model_name=state.model_name)
         agent1 = shapiro_agent_func(model=model, model_settings=settings)
         state = call_test_agent(agent1, state)
         p1 = state.probabilities.pop('shapiro_wilk_agent', 0)
@@ -263,8 +271,8 @@ def nonparametric_node(
         from statmate.agents import mannwhitneyu_agent as mann_whitney_agent_func
 
     try:
-        model = create_model()
-        settings = create_model_settings()
+        model = create_model(model_name=state.model_name, provider=state.provider)
+        settings = create_model_settings(model_name=state.model_name)
 
         welch_agent = welch_agent_func(model=model, model_settings=settings)
         state = call_test_agent(welch_agent, state)
@@ -291,8 +299,8 @@ def summariser_node(state: WorkflowState) -> WorkflowState:
         NodeExecutionError: If summary generation fails.
     """
     try:
-        model = create_model()
-        settings = create_model_settings()
+        model = create_model(model_name=state.model_name, provider=state.provider)
+        settings = create_model_settings(model_name=state.model_name)
 
         deps = SummariserDeps(
             results=state.results,

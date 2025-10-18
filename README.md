@@ -15,14 +15,11 @@ StatmateAI is a complete full-stack application that automates statistical analy
 
 - [Overview](#-overview)
 - [Features](#-features)
-- [Architecture](#-architecture)
 - [Quick Start](#-quick-start)
-- [Usage](#-usage)
+- [Documentation](#-documentation)
 - [Statistical Tests](#-statistical-tests)
-- [API Documentation](#-api-documentation)
-- [Project Structure](#-project-structure)
+- [Architecture](#-architecture)
 - [Development](#-development)
-- [Roadmap](#-roadmap)
 - [Contributing](#-contributing)
 
 ---
@@ -180,67 +177,161 @@ StatmateAI combines the power of LLM agents with traditional statistical methods
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Option 1: Use Ollama (FREE & Local - Recommended!)
 
-- Python 3.11 or higher
-- OpenAI API key (for LLM agents)
+**Run AI models locally with NO API costs:**
 
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/statmate-ai.git
-   cd statmate-ai
-   ```
-
-2. **Create virtual environment:**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
-
-3. **Install dependencies:**
-   ```bash
-   pip install -e .
-   ```
-
-4. **Set up environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env and add your OPENAI_API_KEY
-   ```
-
-5. **Initialize database:**
-   ```bash
-   python scripts/init_db.py
-   python scripts/seed_db.py  # Optional: add sample data
-   ```
-
-### Running the Application
-
-**Option 1: Development Script (Recommended)**
 ```bash
-bash scripts/run_dev.sh
+# 1. Clone and install
+git clone https://github.com/yourusername/statmate-ai.git
+cd statmate-ai
+make install
+
+# 2. Install Ollama (one-time)
+brew install ollama              # macOS
+# OR: curl -fsSL https://ollama.ai/install.sh | sh  # Linux
+
+# 3. Start Ollama and get model
+ollama serve &
+ollama pull deepseek-r1:8b      # Reasoning model, ~5GB
+
+# 4. Configure for Ollama
+make setup-env
+nano .env  # Set: OLLAMA_ENABLED=True, DEFAULT_MODEL_PROVIDER=ollama
+
+# 5. Initialize database
+make db-init db-seed
+
+# 6. Run!
+make dev    # Terminal 1 - API
+make ui     # Terminal 2 - UI
 ```
 
-**Option 2: Manual Start**
+> 🎯 **Full Ollama Guide:** See [Ollama Setup Guide](docs/OLLAMA_SETUP.md) for detailed instructions
 
-Terminal 1 - Start API:
+---
+
+### Option 2: Use Cloud API (OpenAI, Anthropic, Google, etc.)
+
 ```bash
-source .venv/bin/activate
-python statmate/api/main.py
+# 1. Clone and install
+git clone https://github.com/yourusername/statmate-ai.git
+cd statmate-ai
+make install
+
+# 2. Setup environment
+make setup-env
+nano .env  # Add your OPENAI_API_KEY=sk-... (or other provider)
+
+# 3. Initialize database
+make db-init db-seed
+
+# 4. Run!
+make dev    # Terminal 1 - API
+make ui     # Terminal 2 - UI
 ```
 
-Terminal 2 - Start UI:
-```bash
-source .venv/bin/activate
-streamlit run statmate/ui/app.py
-```
+---
 
 **Access the Application:**
 - 🎨 **Streamlit UI**: http://localhost:8501
 - 🔌 **API Docs**: http://localhost:8000/docs
 - 📊 **API Base**: http://localhost:8000/api/v1
+
+**Stop the Application:**
+```bash
+make kill   # Stops both API and UI
+```
+
+### Development vs Production
+
+**Development Mode** (Uses .env file):
+```bash
+make dev    # Start API with your .env credentials
+make ui     # Start UI
+make kill   # Stop everything
+```
+
+**Production Mode** (Users provide credentials):
+```bash
+make prod   # Users enter API keys via UI
+make kill   # Stop everything
+```
+
+> 📖 **Detailed Setup:** See [Setup Guide](docs/SETUP_GUIDE.md) for comprehensive instructions  
+> 🤖 **Ollama Guide:** See [Ollama Setup](docs/OLLAMA_SETUP.md) for local AI models
+
+---
+
+## 📚 Documentation
+
+### 📖 Getting Started Guides
+
+| Guide | Description | For Who | Time |
+|-------|-------------|---------|------|
+| **[Setup Guide](docs/SETUP_GUIDE.md)** | Quick setup for DEV & PROD modes | First-time users | 5 min |
+| **[Ollama Setup](docs/OLLAMA_SETUP.md)** | 🔥 Run AI locally (FREE!) | Everyone | 10 min |
+| **[Adding Models](docs/ADDING_MODELS.md)** | How to add new AI models | Customizers | 5 min |
+| **[Quick Reference](docs/QUICK_REFERENCE.md)** | Command cheat sheet | Everyone | 2 min |
+| **[Dev vs Prod Guide](docs/DEV_VS_PROD_GUIDE.md)** | Credential management deep dive | Developers & Deployers | 15 min |
+| **[Quick Start](docs/QUICK_START.md)** | Fast API setup and first calls | API users | 5 min |
+
+### 🏗️ Architecture & Design
+
+| Document | Description | For Who |
+|----------|-------------|---------|
+| **[Architecture Proposal](docs/ARCHITECTURE_PROPOSAL.md)** | System design & future plans | Architects, Contributors |
+| **[Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)** | How everything works internally | Backend developers |
+| **[Workflow Documentation](docs/WORKFLOW.md)** | LangGraph workflow & test selection | Data scientists |
+| **[Service Layer](docs/SERVICE_LAYER.md)** | Business logic reference | Backend developers |
+
+### 🔌 API & Integration
+
+| Document | Description | For Who |
+|----------|-------------|---------|
+| **[API Reference](docs/API_REFERENCE.md)** | Complete REST API docs (18 endpoints) | Frontend developers, Integrators |
+| **[Backend Setup](docs/BACKEND_SETUP.md)** | Development environment setup | Developers |
+
+### 🚀 Operations & Deployment
+
+| Document | Description | For Who |
+|----------|-------------|---------|
+| **[DevOps Plan](docs/DEVOPS_PLAN.md)** | CI/CD, Docker, monitoring | DevOps engineers |
+| **[Credentials System](docs/CREDENTIALS_SYSTEM.md)** | Security implementation details | Security-conscious deployers |
+
+### 🤖 AI Models
+
+| Document | Description | For Who |
+|----------|-------------|---------|
+| **[Model Configuration](docs/MODEL_CONFIGURATION.md)** | AI model setup & providers | AI/ML engineers |
+| **[Flexible Model System](docs/FLEXIBLE_MODEL_SYSTEM.md)** | Multi-provider model system | Developers |
+| **[Model Quick Reference](docs/QUICK_REFERENCE_MODELS.md)** | Model selection guide | Everyone |
+| **[UI Model Integration](docs/UI_MODEL_INTEGRATION.md)** | Frontend model integration | Frontend developers |
+
+### 📊 Additional Resources
+
+| Document | Description |
+|----------|-------------|
+| **[Flexible Models Summary](docs/FLEXIBLE_MODELS_SUMMARY.md)** | Multi-model implementation summary |
+| **[UI Integration Complete](docs/UI_INTEGRATION_COMPLETE.md)** | UI implementation status |
+| **[Documentation Summary](docs/DOCUMENTATION_SUMMARY.md)** | Overview of all documentation |
+
+### 🎯 Documentation by Use Case
+
+**"I want to try it quickly"**
+→ [Setup Guide](docs/SETUP_GUIDE.md) → [Quick Reference](docs/QUICK_REFERENCE.md)
+
+**"I want to understand the system"**
+→ [Architecture Proposal](docs/ARCHITECTURE_PROPOSAL.md) → [Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)
+
+**"I want to deploy it"**
+→ [Dev vs Prod Guide](docs/DEV_VS_PROD_GUIDE.md) → [DevOps Plan](docs/DEVOPS_PLAN.md)
+
+**"I want to contribute"**
+→ [Architecture](docs/ARCHITECTURE_PROPOSAL.md) → [Implementation Guide](docs/IMPLEMENTATION_GUIDE.md) → [Service Layer](docs/SERVICE_LAYER.md)
+
+**"I want to integrate the API"**
+→ [API Reference](docs/API_REFERENCE.md) → Interactive docs at `/docs`
 
 ---
 
@@ -385,220 +476,62 @@ flowchart TD
 
 ---
 
-## 📚 API Documentation
-
-### Endpoint Summary
-
-All endpoints are prefixed with `/api/v1`
-
-#### Datasets
-
-| Method | Endpoint                 | Description           |
-| ------ | ------------------------ | --------------------- |
-| POST   | `/datasets/upload`       | Upload CSV/Excel file |
-| GET    | `/datasets/`             | List all datasets     |
-| GET    | `/datasets/{id}`         | Get dataset details   |
-| GET    | `/datasets/{id}/preview` | Preview dataset rows  |
-| DELETE | `/datasets/{id}`         | Delete dataset        |
-
-#### Analysis
-
-| Method | Endpoint                 | Description              |
-| ------ | ------------------------ | ------------------------ |
-| POST   | `/analysis/run`          | Run statistical analysis |
-| GET    | `/analysis/{id}`         | Get analysis status      |
-| GET    | `/analysis/{id}/results` | Get full results         |
-| GET    | `/analysis/{id}/log`     | Get execution log        |
-| GET    | `/analysis/`             | List all analyses        |
-
-#### Scheduled Tasks
-
-| Method | Endpoint             | Description           |
-| ------ | -------------------- | --------------------- |
-| POST   | `/tasks/schedule`    | Create scheduled task |
-| GET    | `/tasks/`            | List all tasks        |
-| GET    | `/tasks/{id}`        | Get task details      |
-| PUT    | `/tasks/{id}/pause`  | Pause task            |
-| PUT    | `/tasks/{id}/resume` | Resume task           |
-| DELETE | `/tasks/{id}`        | Delete task           |
-
-#### Results
-
-| Method | Endpoint        | Description        |
-| ------ | --------------- | ------------------ |
-| GET    | `/results/`     | List all results   |
-| GET    | `/results/{id}` | Get result details |
-
-**Interactive Documentation:**  
-Visit http://localhost:8000/docs for full Swagger UI with try-it-out functionality.
-
----
-
-## 📁 Project Structure
-
-```
-statmate-ai/
-├── statmate/                   # Core application
-│   ├── core/                   # Core utilities
-│   │   ├── logging_config.py   # Logging setup
-│   │   └── exceptions.py       # Custom exceptions
-│   │
-│   ├── agents/                 # LLM agents
-│   │   ├── normality_agents.py # Normality test agents
-│   │   ├── comparison_agents.py# Comparison test agents
-│   │   └── ...                 # Other agent modules
-│   │
-│   ├── statistical_core/       # Statistical implementations
-│   │   ├── normality.py        # Normality tests
-│   │   ├── comparison.py       # T-tests, Mann-Whitney, etc.
-│   │   └── ...                 # Other test modules
-│   │
-│   ├── workflow/               # LangGraph workflows
-│   │   └── statmate_flow.py    # Main workflow graph
-│   │
-│   ├── api/                    # FastAPI backend
-│   │   ├── main.py             # API entry point
-│   │   ├── dependencies.py     # Shared dependencies
-│   │   │
-│   │   ├── models/             # Pydantic request/response models
-│   │   │   ├── dataset.py
-│   │   │   ├── analysis.py
-│   │   │   ├── task.py
-│   │   │   └── result.py
-│   │   │
-│   │   ├── routes/             # API route handlers
-│   │   │   ├── datasets.py
-│   │   │   ├── analysis.py
-│   │   │   ├── tasks.py
-│   │   │   └── results.py
-│   │   │
-│   │   ├── services/           # Business logic
-│   │   │   ├── storage_service.py
-│   │   │   ├── dataset_service.py
-│   │   │   ├── analysis_service.py
-│   │   │   └── task_service.py
-│   │   │
-│   │   └── scheduler/          # Background tasks
-│   │       ├── scheduler.py
-│   │       └── jobs.py
-│   │
-│   └── ui/                     # Streamlit frontend
-│       └── app.py              # UI application
-│
-├── database/                   # Database layer
-│   ├── models.py               # SQLAlchemy models
-│   └── session.py              # Session management
-│
-├── config/                     # Configuration
-│   └── settings.py             # Pydantic Settings
-│
-├── data/                       # Data storage
-│   ├── uploads/                # Uploaded datasets
-│   ├── results/                # Analysis results
-│   └── logs/                   # Execution logs
-│
-├── scripts/                    # Utility scripts
-│   ├── init_db.py              # Initialize database
-│   ├── seed_db.py              # Seed sample data
-│   └── run_dev.sh              # Development startup
-│
-├── tests/                      # Test suite
-│   ├── unit/
-│   ├── integration/
-│   └── e2e/
-│
-├── docs/                       # Documentation
-│   ├── ARCHITECTURE_PROPOSAL.md
-│   ├── BACKEND_SETUP.md
-│   ├── IMPLEMENTATION_GUIDE.md
-│   ├── DEVOPS_PLAN.md
-│   └── QUICK_START.md
-│
-├── pyproject.toml              # Project metadata & dependencies
-├── .env.example                # Environment template
-└── README.md                   # This file
-```
-
----
-
 ## 🛠️ Development
+
+### Quick Commands
+
+```bash
+# Development
+make dev              # Run in DEV mode
+make ui               # Run Streamlit UI
+make api              # Run FastAPI backend
+
+# Database
+make db-init          # Initialize database
+make db-seed          # Add sample data
+make db-reset         # Reset database
+
+# Quality
+make test             # Run tests
+make lint             # Check code quality
+make format           # Format code
+make type-check       # Type checking
+
+# Utilities
+make clean            # Clean temp files
+make status           # Check system status
+make help             # Show all commands
+```
 
 ### Setup Development Environment
 
 ```bash
-# Install development dependencies
+# Install with dev dependencies
+make install-dev
+
+# Or manually
 pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Run linter
-ruff check .
-
-# Format code
-ruff format .
-
-# Type checking
-mypy statmate
 ```
-
-### Database Migrations
-
-```bash
-# Create migration
-alembic revision --autogenerate -m "Description"
-
-# Apply migrations
-alembic upgrade head
-
-# Rollback
-alembic downgrade -1
-```
-
-### Adding New Statistical Tests
-
-1. **Implement test** in `statmate/statistical_core/`:
-   ```python
-   from statmate.core.models import TestResult
-   
-   def my_new_test(data: pd.DataFrame, **kwargs) -> TestResult:
-       # Implement test logic
-       return TestResult(...)
-   ```
-
-2. **Create agent** in `statmate/agents/`:
-   ```python
-   from pydantic_ai import Agent
-   
-   my_agent = Agent(
-       model='openai:gpt-4',
-       result_type=MyTestSchema,
-       system_prompt="You are a statistical test agent..."
-   )
-   ```
-
-3. **Update workflow** in `statmate/workflow/statmate_flow.py`:
-   ```python
-   graph.add_node('my_test', my_test_node)
-   graph.add_edge('previous_node', 'my_test')
-   ```
-
-4. **Add tests** in `tests/`:
-   ```python
-   def test_my_new_test():
-       result = my_new_test(test_data)
-       assert result.p_value < 0.05
-   ```
 
 ### Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions!
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+**Quick Start:**
+1. Read [Architecture Proposal](docs/ARCHITECTURE_PROPOSAL.md) - Understand the vision
+2. Read [Implementation Guide](docs/IMPLEMENTATION_GUIDE.md) - See what exists
+3. Fork the repository
+4. Create a feature branch (`git checkout -b feature/amazing-feature`)
+5. Make your changes
+6. Run tests and linting (`make test && make lint`)
+7. Commit changes (`git commit -m 'Add amazing feature'`)
+8. Push to branch (`git push origin feature/amazing-feature`)
+9. Open a Pull Request
+
+**Detailed Guides:**
+- [Backend Setup](docs/BACKEND_SETUP.md) - Development environment
+- [Service Layer](docs/SERVICE_LAYER.md) - Business logic patterns
+- [Workflow Documentation](docs/WORKFLOW.md) - Adding statistical tests
 
 ---
 

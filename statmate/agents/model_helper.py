@@ -49,6 +49,7 @@ def get_agent_model(
 
 
 def get_agent_model_settings(
+    model_name: str | None = None,
     temperature: float | None = None,
     top_p: float | None = None,
     frequency_penalty: float | None = None,
@@ -58,6 +59,7 @@ def get_agent_model_settings(
     """Get model settings for agent use.
 
     Args:
+        model_name: Name of the model (for parameter restriction adjustments).
         temperature: Temperature setting. If None, uses config default.
         top_p: Top-p setting. If None, uses config default.
         frequency_penalty: Frequency penalty. If None, uses config default.
@@ -72,6 +74,7 @@ def get_agent_model_settings(
         >>> settings = get_agent_model_settings(temperature=0.7, max_tokens=1000)
     """
     return create_model_settings(
+        model_name=model_name,
         temperature=temperature,
         top_p=top_p,
         frequency_penalty=frequency_penalty,
@@ -116,6 +119,7 @@ def create_agent_model_and_settings(
     """
     model = get_agent_model(model_name=model_name, provider=provider)
     settings = get_agent_model_settings(
+        model_name=model_name,
         temperature=temperature,
         top_p=top_p,
         frequency_penalty=frequency_penalty,

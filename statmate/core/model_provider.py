@@ -118,15 +118,19 @@ class ModelProviderSystem:
     ) -> Model:
         """Create OpenAI model."""
         from pydantic_ai.models.openai import OpenAIModel
+        from pydantic_ai.providers.openai import OpenAIProvider
 
-        params = {
-            'api_key': api_key,
-        }
+        # Create provider with API key and base_url
+        provider_params = {}
+        if api_key:
+            provider_params['api_key'] = api_key
         if provider_config.api_base:
-            params['base_url'] = provider_config.api_base
-        params.update(kwargs)
+            provider_params['base_url'] = provider_config.api_base
 
-        return OpenAIModel(model_name, **params)
+        provider = OpenAIProvider(**provider_params)
+
+        # Create model with provider
+        return OpenAIModel(model_name, provider=provider, **kwargs)
 
     def _create_anthropic_model(
         self,
@@ -137,15 +141,19 @@ class ModelProviderSystem:
     ) -> Model:
         """Create Anthropic model."""
         from pydantic_ai.models.anthropic import AnthropicModel
+        from pydantic_ai.providers.anthropic import AnthropicProvider
 
-        params = {
-            'api_key': api_key,
-        }
+        # Create provider with API key and base_url
+        provider_params = {}
+        if api_key:
+            provider_params['api_key'] = api_key
         if provider_config.api_base:
-            params['base_url'] = provider_config.api_base
-        params.update(kwargs)
+            provider_params['base_url'] = provider_config.api_base
 
-        return AnthropicModel(model_name, **params)
+        provider = AnthropicProvider(**provider_params)
+
+        # Create model with provider
+        return AnthropicModel(model_name, provider=provider, **kwargs)
 
     def _create_google_model(
         self,
@@ -156,13 +164,17 @@ class ModelProviderSystem:
     ) -> Model:
         """Create Google/Gemini model."""
         from pydantic_ai.models.gemini import GeminiModel
+        from pydantic_ai.providers.gemini import GeminiProvider
 
-        params = {
-            'api_key': api_key,
-        }
-        params.update(kwargs)
+        # Create provider with API key
+        provider_params = {}
+        if api_key:
+            provider_params['api_key'] = api_key
 
-        return GeminiModel(model_name, **params)
+        provider = GeminiProvider(**provider_params)
+
+        # Create model with provider
+        return GeminiModel(model_name, provider=provider, **kwargs)
 
     def _create_groq_model(
         self,
@@ -172,16 +184,20 @@ class ModelProviderSystem:
         **kwargs: Any,
     ) -> Model:
         """Create Groq model."""
-        from pydantic_ai.models.groq import GroqModel
+        from pydantic_ai.models.openai import OpenAIModel
+        from pydantic_ai.providers.groq import GroqProvider
 
-        params = {
-            'api_key': api_key,
-        }
+        # Create provider with API key and base_url
+        provider_params = {}
+        if api_key:
+            provider_params['api_key'] = api_key
         if provider_config.api_base:
-            params['base_url'] = provider_config.api_base
-        params.update(kwargs)
+            provider_params['base_url'] = provider_config.api_base
 
-        return GroqModel(model_name, **params)
+        provider = GroqProvider(**provider_params)
+
+        # Create model with provider (Groq uses OpenAI-compatible API)
+        return OpenAIModel(model_name, provider=provider, **kwargs)
 
     def _create_ollama_model(
         self,
@@ -190,17 +206,17 @@ class ModelProviderSystem:
         **kwargs: Any,
     ) -> Model:
         """Create Ollama (local) model."""
-        from pydantic_ai.models.ollama import OllamaModel
+        from pydantic_ai.models.openai import OpenAIModel
+        from pydantic_ai.providers.ollama import OllamaProvider
 
         # Default Ollama base URL
         base_url = provider_config.api_base or 'http://localhost:11434/v1'
 
-        params = {
-            'base_url': base_url,
-        }
-        params.update(kwargs)
+        # Create provider with base_url
+        provider = OllamaProvider(base_url=base_url)
 
-        return OllamaModel(model_name, **params)
+        # Create model with provider (Ollama uses OpenAI-compatible API)
+        return OpenAIModel(model_name, provider=provider, **kwargs)
 
     def get_model_for_tools(
         self,

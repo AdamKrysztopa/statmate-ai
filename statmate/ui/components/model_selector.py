@@ -55,13 +55,31 @@ def render_model_selector(api_base_url: str, key_prefix: str = 'model') -> tuple
     current_config = get_current_model(api_base_url)
 
     if not models_data['models']:
-        st.warning('⚠️ No AI models configured. Please set API keys in `.env` file.')
-        st.info(
-            '**Quick Setup:**\n'
-            '1. Copy `.env.example` to `.env`\n'
-            '2. Add your API keys (OpenAI, Anthropic, Google, Groq, or enable Ollama)\n'
-            '3. Restart the application'
-        )
+        # Check environment mode to show appropriate message
+        try:
+            import httpx
+            env_response = httpx.get(f'{api_base_url}/models/environment', timeout=5.0)
+            env_data = env_response.json()
+            is_prod = env_data.get('environment') == 'production'
+        except Exception:
+            is_prod = False
+
+        if is_prod:
+            st.warning('⚠️ No AI models configured. Please configure your credentials.')
+            st.info(
+                '**Quick Setup (PROD Mode):**\n'
+                '1. Click "⚙️ Change Keys" button above\n'
+                '2. Enter your API keys (OpenAI, Anthropic, Google, Groq, or enable Ollama)\n'
+                '3. Click "Configure & Start"'
+            )
+        else:
+            st.warning('⚠️ No AI models configured. Please set API keys in `.env` file.')
+            st.info(
+                '**Quick Setup (DEV Mode):**\n'
+                '1. Copy `.env.example` to `.env`\n'
+                '2. Add your API keys (OpenAI, Anthropic, Google, Groq, or enable Ollama)\n'
+                '3. Restart the application: `make dev`'
+            )
         return None, None
 
     # Display current default
@@ -170,16 +188,38 @@ def render_model_info_page(api_base_url: str):
     models_data = get_available_models(api_base_url)
 
     if not models_data['models']:
+        # Check environment mode
+        try:
+            import httpx
+            env_response = httpx.get(f'{api_base_url}/models/environment', timeout=5.0)
+            env_data = env_response.json()
+            is_prod = env_data.get('environment') == 'production'
+        except Exception:
+            is_prod = False
+
         st.warning('No models available. Please configure API keys.')
-        st.info(
-            '**Setup Instructions:**\n\n'
-            '1. **OpenAI:** Set `OPENAI_API_KEY` in `.env`\n'
-            '2. **Anthropic:** Set `ANTHROPIC_API_KEY` in `.env`\n'
-            '3. **Google:** Set `GOOGLE_API_KEY` in `.env`\n'
-            '4. **Groq:** Set `GROQ_API_KEY` in `.env`\n'
-            '5. **Ollama (Local):** Set `OLLAMA_ENABLED=True` and run `ollama serve`\n\n'
-            'Then restart the application.'
-        )
+
+        if is_prod:
+            st.info(
+                '**Setup Instructions (PROD Mode):**\n\n'
+                'Use the "⚙️ Change Keys" button on the main page to enter your credentials.\n\n'
+                '**Available Providers:**\n'
+                '1. **OpenAI** (GPT-4, GPT-4o)\n'
+                '2. **Anthropic** (Claude)\n'
+                '3. **Google** (Gemini)\n'
+                '4. **Groq** (Free fast inference)\n'
+                '5. **Ollama** (Local, FREE!)\n'
+            )
+        else:
+            st.info(
+                '**Setup Instructions (DEV Mode):**\n\n'
+                '1. **OpenAI:** Set `OPENAI_API_KEY` in `.env`\n'
+                '2. **Anthropic:** Set `ANTHROPIC_API_KEY` in `.env`\n'
+                '3. **Google:** Set `GOOGLE_API_KEY` in `.env`\n'
+                '4. **Groq:** Set `GROQ_API_KEY` in `.env`\n'
+                '5. **Ollama (Local):** Set `OLLAMA_ENABLED=True` and run `ollama serve`\n\n'
+                'Then restart the application with `make dev`'
+            )
         return
 
     # Group by provider
@@ -203,9 +243,9 @@ def render_model_info_page(api_base_url: str):
                 with col2:
                     capabilities = model.get('capabilities', [])
                     if 'reasoning' in capabilities:
-                        st.badge('🧠 Reasoning', type='primary')
+                        st.markdown('🧠 **Reasoning**')
                     if provider == 'ollama':
-                        st.badge('🏠 Local', type='success')
+                        st.markdown('🏠 **Local**')
 
                 st.caption(f'Model ID: `{model["name"]}` | Context: {model["context_window"]:,} tokens')
                 st.divider()

@@ -40,3 +40,21 @@ coverage.xml
 
 # uv cache
 .uv/
+
+# Environment variables (NEVER commit API keys!)
+.env
+.env.local
+.env.*.local
+
+# Database (local development)
+database/statmate.db
+database/statmate.db-*
+
+# Data directories (user uploads and results)
+# Ignore all files but keep directory structure with .gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
+data/results/*
+!data/results/.gitkeep
+data/logs/*
+!data/logs/.gitkeep

@@ -43,6 +43,8 @@ async def run_analysis(
             dataset_id=request.dataset_id,
             selected_columns=request.selected_columns,
             configuration=request.configuration,
+            model_name=request.model_name,
+            provider=request.provider,
         )
 
         # Run analysis in background
@@ -154,7 +156,7 @@ async def get_analysis_log(
     return {
         'analysis_id': analysis_id,
         'log_content': log_content,
-        'log_lines': len(log_content.split('\n')),
+        'log_lines': str(len(log_content.split('\n'))),
     }
 
 
