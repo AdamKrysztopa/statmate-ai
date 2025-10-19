@@ -61,3 +61,5 @@ data/results/*
 !data/results/.gitkeep
 data/logs/*
 !data/logs/.gitkeep
+
+tmp_*
