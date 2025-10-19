@@ -8,14 +8,14 @@ graph TD;
 	__start__([<p>__start__</p>]):::first
 	Initialization_Agent(Initialization Agent)
 	Assess_Study_Design(Assess Study Design)
-	Parametric_assumptions_hold_(Parametric assumptions hold?)
+	Two_Independent_Groups_(Two Independent Groups?)
 	Paired_t-test(Paired t-test)
 	Wilcoxon_Signed-Rank_test(Wilcoxon Signed-Rank test)
-	Two_Independent_Groups_(Two Independent Groups?)
 	Independent_t-test(Independent t-test)
-	Nonparametric_Tests(Nonparametric Tests)
-	Chi-square_test(Chi-square test)
 	Fisher_exact_test(Fisher exact test)
+	Chi-square_test(Chi-square test)
+	Parametric_assumptions_hold_(Parametric assumptions hold?)
+	Nonparametric_Tests(Nonparametric Tests)
 	Summary(Summary)
 	__end__([<p>__end__</p>]):::last
 	Chi-square_test --> Summary;

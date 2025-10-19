@@ -73,14 +73,14 @@ class WorkflowState(TypedDict):
     results: Annotated[list, add_messages]
     probabilities: dict[str, float]
     model_name: str | None  # AI model to use for analysis
-    provider: str | None    # Model provider (openai, anthropic, etc.)
+    provider: str | None  # Model provider (openai, anthropic, etc.)
 
 
 def call_test_agent(test_agent: Callable, state: WorkflowState) -> WorkflowState:
     """Call a statistical agent and append its result."""
     try:
         agent_name = test_agent.__name__
-        logger.info(f'🔬 Running test agent: {agent_name}')
+        logger.info('🔬 Running test agent: %s', agent_name)
 
         # Use flexible model factory for agent
         from statmate.agents.model_helper import create_agent_model_and_settings
@@ -93,10 +93,21 @@ def call_test_agent(test_agent: Callable, state: WorkflowState) -> WorkflowState
             frequency_penalty=0.0,
             presence_penalty=0.0,
         )
-        deps = StatTestDeps(data=state['df'], data_secondary=state.get('secondary_df'))
-        logger.info(f'  → Agent {agent_name}: Calling model...')
+
+        # Convert DataFrames to numpy arrays to avoid serialization errors.
+        data_for_agent = state['df']
+        if isinstance(data_for_agent, pd.DataFrame):
+            data_for_agent = data_for_agent.to_numpy()
+
+        secondary_data_for_agent = state.get('secondary_df')
+        if isinstance(secondary_data_for_agent, pd.DataFrame):
+            secondary_data_for_agent = secondary_data_for_agent.to_numpy()
+
+        deps = StatTestDeps(data=data_for_agent, data_secondary=secondary_data_for_agent)
+
+        logger.info('  → Agent %s: Calling model...', agent_name)
         result = run_sync_agent(test_agent(model=model, model_settings=settings), user_prompt='', deps=deps)
-        logger.info(f'  ✅ Agent {agent_name}: Completed successfully')
+        logger.info('  ✅ Agent %s: Completed successfully', agent_name)
         state['results'].append(AIMessage(content=str(result)))
         p_val = result.statistical_test_result.p_value
         state['probabilities'][test_agent.__name__] = (
@@ -104,7 +115,7 @@ def call_test_agent(test_agent: Callable, state: WorkflowState) -> WorkflowState
         )
         return state
     except Exception as e:
-        logger.error(f'Error in call_test_agent {test_agent.__name__}: {e}')
+        logger.error('Error in call_test_agent %s: %s', test_agent.__name__, e)
         state['results'].append(AIMessage(content=f'Error: {e}'))
         return state
 
@@ -127,12 +138,24 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         agent = build_initial_insights_agent(
             model=model, system_prompt=INITIAL_INSIGHTS_PROMPT, model_settings=settings
         )
+
+        # Sample large DataFrames to prevent context length errors.
+        input_df = state['df']
+        max_rows_for_prompt = 500
+        if len(input_df) > max_rows_for_prompt:
+            logger.warning(
+                'Input data has %s rows, which exceeds the sample limit for analysis. Sampling down to %s rows.',
+                len(input_df),
+                max_rows_for_prompt,
+            )
+            input_df = input_df.sample(n=max_rows_for_prompt, random_state=42)
+
         logger.info('  → Initialization agent: Calling model...')
         results = agent.run_sync(
             user_prompt='Analyze the data and suggest the appropriate test.',
             deps=InitialInsightsAgentDeps(
                 user_input='Perform a statistical test.',
-                input_data=state['df'],
+                input_data=input_df,
                 columns_decision=None,
             ),
         )
@@ -145,11 +168,11 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         if results.data.data_transformation != 'None':
             try:
                 validated = validate_tool_args(results.data.data_transformation, tool_args)
-                logger.info(f'  → Applying transformation: {results.data.data_transformation}')
+                logger.info('  → Applying transformation: %s', results.data.data_transformation)
                 state['df'] = TOOL_FUNCS[results.data.data_transformation](state['df'], **validated)
                 logger.info('  ✅ Transformation applied successfully')
             except ValueError as e:
-                logger.warning(f'  ⚠️  Transformation skipped: {e}. Proceeding with original data.')
+                logger.warning('  ⚠️  Transformation skipped: %s. Proceeding with original data.', e)
                 # Continue with original data instead of failing
         inp_df = state['df'] if isinstance(state['df'], pd.DataFrame) else pd.DataFrame(state['df'])
         # format for downstream tests
@@ -164,11 +187,10 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         cols = results.data.analysis_columns
         state['target_columns'] = cols if set(cols).issubset(set(inp_df.columns)) else list(inp_df.columns)
         state['results'].append(AIMessage(content=str(results.data)))
-        logger.info(f'  ✅ Initialization agent: Data type detected = {state["data_type"]}')
-        logger.info(f'  ✅ Initialization agent: Suggested test = {results.data.suggested_test}')
+        logger.info('  ✅ Initialization agent: Data type detected = %s', state['data_type'])
         return state
     except Exception as e:
-        logger.error(f'Error in call_initialization_agent: {e}')
+        logger.error('Error in call_initialization_agent: %s', e)
         state['results'].append(AIMessage(content=f'Error: {e}'))
         return state
 
@@ -180,7 +202,7 @@ def decide_outcome(state: WorkflowState) -> str:
             return NodeName.ASSESS_STUDY_DESIGN.value
         return NodeName.CHI2.value if state['number_of_samples'] > 10 else NodeName.FISHER.value
     except Exception as e:
-        logger.error(f'Error in decide_outcome: {e}')
+        logger.error('Error in decide_outcome: %s', e)
         return END
 
 
@@ -224,7 +246,10 @@ def summariser_node(state: WorkflowState) -> WorkflowState:
 
     state['results'].append(AIMessage(content=str(res.data)))
     logger.info('  ✅ Summarizer agent: Summary generated')
-    logger.info(f'📊 Summary: {res.data[:200]}...' if len(str(res.data)) > 200 else f'📊 Summary: {res.data}')
+    res_data_str = str(res.data)
+    logger.info('📊 Summary: %s...', res_data_str[:200]) if len(res_data_str) > 200 else logger.info(
+        '📊 Summary: %s', res_data_str
+    )
 
     return state
 
@@ -234,7 +259,7 @@ def assess_study_design(state: WorkflowState) -> str:
     try:
         return NodeName.NORMALITY_OF_DIFFERENCE.value if state['paired'] else NodeName.TWO_INDEPENDENT_GROUPS.value
     except Exception as e:
-        logger.error(f'Error in assess_study_design: {e}')
+        logger.error('Error in assess_study_design: %s', e)
         return END
 
 
@@ -244,7 +269,7 @@ def parametric_assumptions(state: WorkflowState) -> str:
         p_normality_of_difference = state['probabilities'].get('normality_of_difference', 0)
         return NodeName.PAIRED_T.value if p_normality_of_difference > 0.05 else NodeName.WILCOXON.value
     except Exception as e:
-        logger.error(f'Error in parametric_assumptions: {e}')
+        logger.error('Error in parametric_assumptions: %s', e)
         return END
 
 
@@ -280,7 +305,7 @@ def two_independent_node(state: WorkflowState) -> WorkflowState:
         state = call_test_agent(levene_agent, state)
         # call_test_agent already stores p under 'levene_agent'
     except Exception as e:
-        logger.error(f'Error in two_independent_node: {e}')
+        logger.error('Error in two_independent_node: %s', e)
     return state
 
 
@@ -294,7 +319,7 @@ def decide_two_independent(state: WorkflowState) -> str:
             return NodeName.INDEP_T.value
         return NodeName.NONPARAMETRIC.value
     except Exception as e:
-        logger.error(f'Error in decide_two_independent: {e}')
+        logger.error('Error in decide_two_independent: %s', e)
         return END
 
 
@@ -304,7 +329,7 @@ def nonparametric_node(state: WorkflowState) -> WorkflowState:
         state = call_test_agent(welch_t_agent, state)
         state = call_test_agent(mannwhitneyu_agent, state)
     except Exception as e:
-        logger.error(f'Error in nonparametric_node: {e}')
+        logger.error('Error in nonparametric_node: %s', e)
     return state
 
 
@@ -409,6 +434,8 @@ if __name__ == '__main__':
         'number_of_samples': 0,
         'results': [],
         'probabilities': {},
+        'model_name': None,
+        'provider': None,
     }
 
     try:
