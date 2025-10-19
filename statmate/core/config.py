@@ -7,18 +7,10 @@ used throughout the StatMate application.
 from dataclasses import dataclass, field
 from typing import Literal
 
-
-@dataclass
-class ModelConfig:
-    """Configuration for AI model settings."""
-
-    model_name: str = 'gpt-4o'
-    temperature: float = 0.0
-    top_p: float = 1.0
-    frequency_penalty: float = 0.0
-    presence_penalty: float = 0.0
-    max_tokens: int | None = None
-    retries: int = 3
+from statmate.core.model_config import (
+    MultiModelConfig,
+    create_default_multi_model_config,
+)
 
 
 @dataclass
@@ -79,7 +71,7 @@ class LoggingConfig:
 class Config:
     """Main configuration class for StatMate AI."""
 
-    model: ModelConfig = field(default_factory=ModelConfig)
+    model: MultiModelConfig = field(default_factory=create_default_multi_model_config)
     statistical: StatisticalTestConfig = field(default_factory=StatisticalTestConfig)
     workflow: WorkflowConfig = field(default_factory=WorkflowConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -94,8 +86,11 @@ class Config:
         Returns:
             Config instance.
         """
+        # Note: This simple conversion might not handle nested structures
+        # in MultiModelConfig correctly if loaded from a plain dict (e.g., JSON).
+        # It assumes the structure is already correct or that default values are sufficient.
         return cls(
-            model=ModelConfig(**config_dict.get('model', {})),
+            model=MultiModelConfig(**config_dict.get('model', {})),
             statistical=StatisticalTestConfig(**config_dict.get('statistical', {})),
             workflow=WorkflowConfig(**config_dict.get('workflow', {})),
             logging=LoggingConfig(**config_dict.get('logging', {})),

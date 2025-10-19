@@ -23,7 +23,8 @@ from statmate.agents.initial_insights_agent import (
     validate_tool_args,
 )
 from statmate.agents.summarizer_agent import SummariserDeps, get_summariser_agent
-from statmate.core import NodeExecutionError, default_config, get_logger
+from statmate.core import NodeExecutionError, get_logger
+from statmate.core.config import default_config
 from statmate.workflow.model_factory import create_model, create_model_settings
 from statmate.workflow.state import WorkflowState
 
@@ -92,10 +93,7 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
     """
     try:
         # Use model from state if specified
-        model = create_model(
-            model_name=state.model_name,
-            provider=state.provider
-        )
+        model = create_model(model_name=state.model_name, provider=state.provider)
         settings = create_model_settings(model_name=state.model_name)
         agent = build_initial_insights_agent(
             model=model,
@@ -159,10 +157,7 @@ def assess_study_design_node(state: WorkflowState) -> WorkflowState:
     """
     try:
         # Use model from state if specified
-        model = create_model(
-            model_name=state.model_name,
-            provider=state.provider
-        )
+        model = create_model(model_name=state.model_name, provider=state.provider)
         settings = create_model_settings(model_name=state.model_name)
         agent = get_assess_design_study_agent(model=model, model_settings=settings)
 

@@ -8,6 +8,9 @@ This module contains foundational components including:
 - Input validation utilities
 """
 
+# Import config and exceptions first, as they are dependencies
+# for other modules that may be part of an import cycle.
+# Now import base_interfaces, which triggers the cycle
 from statmate.core.base_interfaces import (
     AgentDependencies,
     AgentResult,
@@ -16,17 +19,6 @@ from statmate.core.base_interfaces import (
     StatisticalTest,
     StatMateAgent,
     WorkflowNode,
-)
-from statmate.core.config import (
-    Config,
-    DataType,
-    LoggingConfig,
-    ModelConfig,
-    NodeName,
-    StatisticalTestConfig,
-    TransformationType,
-    WorkflowConfig,
-    default_config,
 )
 from statmate.core.exceptions import (
     AgentError,
@@ -48,6 +40,8 @@ from statmate.core.exceptions import (
     TransformationError,
     WorkflowError,
 )
+
+# Import remaining modules
 from statmate.core.logging_config import get_logger, setup_logging
 from statmate.core.model_config import (
     SUPPORTED_MODELS,
@@ -79,16 +73,6 @@ from statmate.core.validation import (
 )
 
 __all__ = [
-    # Config
-    'Config',
-    'ModelConfig',
-    'StatisticalTestConfig',
-    'WorkflowConfig',
-    'LoggingConfig',
-    'default_config',
-    'NodeName',
-    'DataType',
-    'TransformationType',
     # Model Configuration
     'MultiModelConfig',
     'ModelProvider',

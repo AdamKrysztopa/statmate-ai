@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 
-from statmate.core import DataValidationError, default_config
+from statmate.core.config import default_config
+from statmate.core.exceptions import DataValidationError
 from statmate.core.validation import validate_contingency_table
 from statmate.statistical_core.base import StatTestResult
 

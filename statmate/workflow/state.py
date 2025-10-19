@@ -77,6 +77,8 @@ def create_initial_state(
     target_columns: list[str] | None = None,
     paired: bool = False,
     do_association: bool = False,
+    model_name: str | None = None,
+    provider: str | None = None,
 ) -> WorkflowState:
     """Create an initial workflow state.
 
@@ -85,6 +87,8 @@ def create_initial_state(
         target_columns: Columns to analyze. If None, uses all columns.
         paired: Whether data represents paired measurements.
         do_association: Whether to perform association tests.
+        model_name: Name of the AI model to use for analysis.
+        provider: Name of the model provider.
 
     Returns:
         Initialized WorkflowState.
@@ -99,4 +103,6 @@ def create_initial_state(
         number_of_samples=0,
         results=[],
         probabilities={},
+        model_name=model_name,
+        provider=provider,
     )

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import Model, ModelSettings
 
-from statmate.core import default_config
+from statmate.core.config import default_config
 
 
 class AssessDesignDeps(BaseModel):

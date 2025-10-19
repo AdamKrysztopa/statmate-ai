@@ -30,7 +30,7 @@ pip install -e .
 ### Step 2: Create `.env` File
 
 ```bash
-# Create from template
+# Create from templatev
 make setup-env
 
 # This copies .env.example to .env

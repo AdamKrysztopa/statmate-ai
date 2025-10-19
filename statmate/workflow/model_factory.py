@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic_ai.models import Model, ModelSettings
 
-from statmate.core import Config, default_config
+from statmate.core.config import Config, default_config
 from statmate.core.model_config import (
     ModelInfo,
     ModelProvider,
@@ -154,10 +154,10 @@ class ModelFactory:
 
     def _resolve_model_name(self, model_name: str | None) -> str | None:
         """Resolve model name to actual model (handle None or "default").
-        
+
         Args:
             model_name: Model name to resolve
-            
+
         Returns:
             Resolved model name, or None if unable to resolve
         """
@@ -172,18 +172,24 @@ class ModelFactory:
 
     def _is_restricted_model(self, model_name: str) -> bool:
         """Check if a model has parameter restrictions.
-        
+
         Args:
             model_name: Name of the model
-            
+
         Returns:
             True if model has temperature restrictions, False otherwise
         """
         # Models that require temperature=1 (reasoning models)
         restricted_models = [
-            'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5-pro',
-            'o1', 'o1-preview', 'o1-mini',
-            'o3', 'o3-mini',
+            'gpt-5',
+            'gpt-5-mini',
+            'gpt-5-nano',
+            'gpt-5-pro',
+            'o1',
+            'o1-preview',
+            'o1-mini',
+            'o3',
+            'o3-mini',
         ]
 
         # Check if model is restricted (partial match)
@@ -195,13 +201,13 @@ class ModelFactory:
 
     def _adjust_temperature_for_model(self, model_name: str, temperature: float | None) -> float | None:
         """Adjust temperature for models with restrictions.
-        
+
         Some models (GPT-5, o1, o3 series) only support default temperature=1.
-        
+
         Args:
             model_name: Name of the model
             temperature: Requested temperature
-            
+
         Returns:
             Adjusted temperature or None to use defaults
         """

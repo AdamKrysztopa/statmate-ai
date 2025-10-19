@@ -6,7 +6,7 @@ import numpy as np
 import scipy.stats
 from scipy.stats._result_classes import TtestResult
 
-from statmate.core import default_config
+from statmate.core.config import default_config
 from statmate.core.validation import validate_paired_data
 from statmate.statistical_core.base import StatTestResult
 

@@ -4,6 +4,7 @@ This module provides flexible configuration for various AI model providers
 including OpenAI, Anthropic, Google, Ollama (local), and Groq.
 """
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -444,9 +445,20 @@ class MultiModelConfig:
 
 
 def create_default_multi_model_config() -> MultiModelConfig:
-    """Create default multi-model configuration."""
+    """Create default multi-model configuration from environment variables."""
+    # Default provider configs (can be overridden by a settings file)
+    openai_api_key = os.getenv('OPENAI_API_KEY')
+    default_providers = {
+        ModelProvider.OPENAI: ModelProviderConfig(
+            provider=ModelProvider.OPENAI,
+            api_key=openai_api_key,
+            default_model='gpt-4o',
+            enabled=bool(openai_api_key),
+        )
+    }
+
     return MultiModelConfig(
         default_provider=ModelProvider.OPENAI,
         default_model_name='gpt-4o',
-        providers={},
+        providers=default_providers,
     )
