@@ -12,31 +12,25 @@
         "--name=statmate-ai_devcontainer"
     ],
     // =========================================================================
-    // SSH MOUNT CONFIGURATION - Choose one approach:
+    // SSH MOUNT CONFIGURATION
     // =========================================================================
+    // Mounts your entire ~/.ssh directory into the container
+    // All configuration (git, SSH keys) is handled via .env.devcontainer file
     // 
-    // APPROACH 1 (origin/fixes style): Mount specific SSH key
-    // Use when: Working from secondary repo, need specific SSH key
-    // Required: Set SSH_KEY_NAME in .env.devcontainer (e.g., SSH_KEY_NAME=adam_private_gh)
+    // Required setup:
+    // 1. Copy .devcontainer/env.devcontainer.example to .env.devcontainer (at project root)
+    // 2. Fill in your values in .env.devcontainer:
+    //    - GIT_USER_NAME
+    //    - GIT_USER_EMAIL  
+    //    - SSH_KEY_NAME (e.g., id_rsa, adam_private_gh, etc.)
+    //    - OPENAI_API_KEY
+    // =========================================================================
     "mounts": [
         "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
     ],
-    //
-    // APPROACH 2 (origin/fixes_local_dev_container style): Mount entire .ssh directory
-    // Use when: This is your primary machine/repo
-    // Required: Just GIT_USER_NAME and GIT_USER_EMAIL in .env.devcontainer
-    // To use this approach, REPLACE the "mounts" above with:
-    // "mounts": [
-    //     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
-    // ],
-    // =========================================================================
     "remoteUser": "vscode",
     "containerEnv": {
-        "HOME": "/home/vscode",
-        "GIT_USER_NAME": "${localEnv:GIT_USER_NAME}",
-        "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}",
-        "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
-        "SSH_KEY_NAME": "${localEnv:SSH_KEY_NAME:id_rsa}"
+        "HOME": "/home/vscode"
     },
     "customizations": {
         "vscode": {

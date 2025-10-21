@@ -3,6 +3,15 @@ set -e
 
 echo "Setting up SSH for GitHub..."
 
+# Load environment from .env.devcontainer if it exists
+ENV_FILE="/workspaces/statmate-ai/.env.devcontainer"
+if [ -f "$ENV_FILE" ]; then
+    echo "✓ Loading environment from .env.devcontainer"
+    set -a
+    source <(grep -v '^#' "$ENV_FILE" | grep -v '^$' | sed 's/\r$//')
+    set +a
+fi
+
 # Get SSH key name from environment variable, default to id_rsa
 SSH_KEY_NAME="${SSH_KEY_NAME:-id_rsa}"
 

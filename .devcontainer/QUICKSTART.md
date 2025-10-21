@@ -1,4 +1,4 @@
-# Quick Start Guide - Get Running in 5 Minutes
+# Quick Start Guide - Get Running in 3 Minutes
 
 ## The Problem
 
@@ -6,31 +6,35 @@ Push doesn't work because SSH isn't configured properly? Let's fix it!
 
 ## The Solution - Use `.env.devcontainer`
 
-Instead of shell environment variables, we'll use a `.env.devcontainer` file that you source before opening VS Code.
+The devcontainer setup scripts automatically load your configuration from `.env.devcontainer` at the project root. No need to source it manually!
 
 ---
 
-## 5-Minute Setup
+## 3-Minute Setup
 
 ### 1. Copy the Template (10 seconds)
 
 ```bash
-cd /path/to/statmate-ai
+cd /workspaces/statmate-ai
 cp .devcontainer/env.devcontainer.example .env.devcontainer
 ```
+
+**Important:** The file MUST be at the project root (`/workspaces/statmate-ai/.env.devcontainer`), NOT inside `.devcontainer/`
 
 ### 2. Edit Your Values (2 minutes)
 
 ```bash
 nano .env.devcontainer
+# or
+code .env.devcontainer
 ```
 
 Change these lines to YOUR values:
 
 ```bash
-GIT_USER_NAME=Adam Krysztopa          # ← YOUR NAME HERE
-GIT_USER_EMAIL=krysztopa@gmail.com    # ← YOUR EMAIL HERE
-SSH_KEY_NAME=adam_private_gh          # ← YOUR SSH KEY NAME HERE
+GIT_USER_NAME=Your Name Here          # ← YOUR NAME HERE
+GIT_USER_EMAIL=your.email@example.com # ← YOUR EMAIL HERE
+SSH_KEY_NAME=id_rsa                   # ← YOUR SSH KEY NAME HERE
 OPENAI_API_KEY=sk-your-key-here       # ← YOUR OPENAI KEY HERE
 ```
 
@@ -39,50 +43,32 @@ OPENAI_API_KEY=sk-your-key-here       # ← YOUR OPENAI KEY HERE
 ls -la ~/.ssh/
 ```
 
-Look for files like `id_rsa`, `id_ed25519`, `github_key`, etc. (without `.pub`)
+Look for files like `id_rsa`, `id_ed25519`, `adam_private_gh`, etc. (without `.pub`)
 
-### 3. Source It (5 seconds)
+### 3. Reopen in Container (1 minute)
 
-```bash
-source .env.devcontainer
-```
+In VS Code:
+- Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)
+- Type "Dev Containers: Rebuild Container"
+- Select it and wait for container to rebuild
 
-### 4. Verify Variables Are Set (10 seconds)
+The setup scripts will automatically load your `.env.devcontainer` configuration!
 
-```bash
-echo $GIT_USER_NAME
-echo $SSH_KEY_NAME
-```
-
-You should see your values printed.
-
-### 5. Open VS Code (5 seconds)
-
-```bash
-code .
-```
-
-### 6. Reopen in Container (2 minutes)
-
-- Click "Reopen in Container" when prompted
-- OR press `Ctrl+Shift+P` → "Dev Containers: Reopen in Container"
-
-Wait for container to build...
-
-### 7. Test It Works (30 seconds)
+### 4. Test It Works (30 seconds)
 
 Inside the container terminal:
 
 ```bash
 # Test Git config
 git config --global user.name
+git config --global user.email
 
-# Test SSH
+# Test SSH connection to GitHub
 ssh -T git@github.com
 # Should say: "Hi <username>! You've successfully authenticated"
 
-# Test Push
-git push origin unified-devcontainer
+# Test Git push (replace with your branch name)
+git push
 ```
 
 ✅ **Done!** Push should work now.
@@ -111,11 +97,17 @@ git push origin unified-devcontainer
 
 ### "GIT_USER_NAME not set"
 
-You forgot to source the .env file!
+The `.env.devcontainer` file doesn't exist or has incorrect values.
 
 ```bash
-source .env.devcontainer
-code .
+# Check if file exists at project root
+ls -la /workspaces/statmate-ai/.env.devcontainer
+
+# If not, create it:
+cp .devcontainer/env.devcontainer.example .env.devcontainer
+nano .env.devcontainer
+
+# Then rebuild container
 ```
 
 ### ".env.devcontainer not found"
@@ -123,76 +115,12 @@ code .
 The file must be in the **project root**, not in `.devcontainer/`
 
 ```bash
-# Should be here:
-/path/to/statmate-ai/.env.devcontainer
+# ✅ CORRECT location:
+/workspaces/statmate-ai/.env.devcontainer
 
-# NOT here:
-/path/to/statmate-ai/.devcontainer/.env.devcontainer
+# ❌ WRONG location:
+/workspaces/statmate-ai/.devcontainer/.env.devcontainer
 ```
-
----
-
-## Make It Permanent (Optional)
-
-Don't want to source `.env.devcontainer` every time?
-
-### Option 1: Add to Shell Profile
-
-```bash
-# Add this to ~/.bashrc or ~/.zshrc:
-if [ -f ~/Projects/statmate-ai/.env.devcontainer ]; then
-    source ~/Projects/statmate-ai/.env.devcontainer
-fi
-```
-
-Then:
-```bash
-source ~/.bashrc  # or ~/.zshrc
-```
-
-### Option 2: Create a Global Config
-
-```bash
-# Copy to your home directory
-cp .env.devcontainer ~/.env.statmate
-
-# Add to ~/.bashrc or ~/.zshrc:
-if [ -f ~/.env.statmate ]; then
-    source ~/.env.statmate
-fi
-```
-
----
-
-## Two Configuration Approaches
-
-### Current (Approach 1): Specific SSH Key
-
-**Configuration:**
-- In `.env.devcontainer`: `SSH_KEY_NAME=adam_private_gh`
-- In `devcontainer.json`: Mounts specific key
-
-**Use when:**
-- Working from secondary repo
-- Need specific SSH key for GitHub
-- More control over keys
-
-### Alternative (Approach 2): Mount Entire .ssh
-
-**Configuration:**
-- In `.env.devcontainer`: Remove or comment out `SSH_KEY_NAME`
-- In `devcontainer.json`: Change mounts section (see commented instructions)
-
-**Use when:**
-- Primary development machine
-- This is your main repo
-- Want all your SSH keys available
-
-**To switch to Approach 2:**
-
-1. Edit `devcontainer.json`
-2. Replace the `mounts` section with the commented alternative
-3. Rebuild container
 
 ---
 
@@ -207,14 +135,14 @@ For complete documentation, see:
 
 ## Summary
 
-1. ✅ Copy `env.devcontainer.example` → `.env.devcontainer`
-2. ✅ Edit with your values
-3. ✅ Source it: `source .env.devcontainer`
-4. ✅ Open VS Code: `code .`
-5. ✅ Reopen in Container
-6. ✅ Test: `git push`
+1. ✅ Copy `env.devcontainer.example` → `.env.devcontainer` (at project root)
+2. ✅ Edit with your values (GIT_USER_NAME, GIT_USER_EMAIL, SSH_KEY_NAME, OPENAI_API_KEY)
+3. ✅ Rebuild Container (Ctrl+Shift+P → "Dev Containers: Rebuild Container")
+4. ✅ Test: `git push`
 
-**Time: 5 minutes** ⏱️
+**Time: 3 minutes** ⏱️
+
+The setup scripts automatically load `.env.devcontainer` - no manual sourcing needed!
 
 ---
 
