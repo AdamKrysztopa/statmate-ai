@@ -19,8 +19,7 @@
     // Use when: Working from secondary repo, need specific SSH key
     // Required: Set SSH_KEY_NAME in .env.devcontainer (e.g., SSH_KEY_NAME=adam_private_gh)
     "mounts": [
-        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh/${localEnv:SSH_KEY_NAME},target=/home/vscode/.ssh/${localEnv:SSH_KEY_NAME},type=bind,consistency=cached",
-        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh/${localEnv:SSH_KEY_NAME}.pub,target=/home/vscode/.ssh/${localEnv:SSH_KEY_NAME}.pub,type=bind,consistency=cached"
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
     ],
     //
     // APPROACH 2 (origin/fixes_local_dev_container style): Mount entire .ssh directory
