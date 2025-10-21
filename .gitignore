@@ -63,3 +63,28 @@ data/logs/*
 !data/logs/.gitkeep
 
 tmp_*
+
+# Node.js / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.vercel/
+
+# TypeScript
+*.tsbuildinfo.json
+
+# Frontend build artifacts
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/dist/
+frontend/next-env.d.ts

@@ -2,26 +2,25 @@
     "name": "statmate-ai",
     "build": {
         "dockerfile": "Dockerfile",
+        "context": "..",
         "args": {
-            "VARIANT": "3.11.12",
-            "GIT_USER_NAME": "${localEnv:GIT_USER_NAME}",
-            "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}",
-            "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
-
+            "VARIANT": "3.11.12"
         }
     },
     "runArgs": [
         "--rm",
         "--name=statmate-ai_devcontainer"
     ],
+    "mounts": [
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+    ],
     "remoteUser": "vscode",
     "containerEnv": {
-        "MY_ENV_VAR": "${localEnv:MY_ENV_VAR}",
         "HOME": "/home/vscode",
         "GIT_USER_NAME": "${localEnv:GIT_USER_NAME}",
         "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}",
-        "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
-
+        "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+        "SSH_KEY_NAME": "${localEnv:SSH_KEY_NAME:id_rsa}"
     },
     "customizations": {
         "vscode": {
@@ -46,7 +45,6 @@
                     "editor.formatOnSave": true
                 },
                 "[json]": {
-                    "editor.defaultFormatter": "esbenp.prettier-vscode",
                     "editor.formatOnSave": true
                 },
                 "[toml]": {
@@ -56,24 +54,22 @@
                     "editor.defaultFormatter": "foxundermoon.shell-format",
                     "editor.formatOnSave": true
                 },
-                "eslint.format.enable": true
+                "eslint.format.enable": false
             },
             "extensions": [
                 "ms-python.python",
                 "emeraldwalk.runonsave",
                 "ms-python.vscode-pylance",
-                "dbaeumer.vscode-eslint",
                 "charliermarsh.ruff",
                 "tamasfe.even-better-toml",
                 "ms-toolsai.jupyter",
                 "redhat.vscode-yaml",
                 "yzhang.markdown-all-in-one",
-                "esbenp.prettier-vscode",
                 "foxundermoon.shell-format",
                 "github.copilot"
             ]
         }
     },
-    "postCreateCommand": "bash .devcontainer/setup_git.sh && uv sync && git config --global core.editor \"code --wait --new-window\"",
+    "postCreateCommand": "bash .devcontainer/setup_git.sh && bash .devcontainer/setup_ssh.sh && git config --global core.editor \"code --wait --new-window\"",
     "shutdownAction": "stopContainer"
 }

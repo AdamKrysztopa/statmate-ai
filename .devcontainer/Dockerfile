@@ -2,11 +2,22 @@
 ARG VARIANT="3.11"
 FROM python:${VARIANT}
 
-# Install uv and necessary tools
-RUN apt-get update && apt-get install -y curl ca-certificates \
+# Ensure non-interactive apt operations
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install uv and necessary tools including SSH
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    openssh-client \
+    gnupg \
+    dirmngr \
+    lsb-release \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && cp /root/.local/bin/uv /usr/local/bin/uv \
-    && pip install pyright ruff uvicorn
+    && pip install --no-cache-dir pyright ruff uvicorn \
+    && rm -rf /var/lib/apt/lists/*
+
 
 # Create vscode user
 ARG USERNAME=vscode
@@ -25,10 +36,22 @@ WORKDIR /workspace
 # Switch to vscode user
 USER $USERNAME
 
+# Create .ssh directory with proper permissions
+RUN mkdir -p /home/$USERNAME/.ssh && chmod 700 /home/$USERNAME/.ssh
+
 # Create virtual environment at workspace folder
 RUN uv venv .venv
 
 # Update PATH
 ENV PATH="/workspace/.venv/bin:$PATH"
 
-ENV PYTHONPATH=/workspaces/statmate-ai:$PYTHONPATH
+# Set PYTHONPATH for the workspace
+ENV PYTHONPATH=/workspaces/statmate-ai
+
+# Skip pre-installing frontend dependencies; handled at runtime if needed
+# Install Python dependencies
+COPY --chown=$USERNAME:$USERNAME pyproject.toml uv.lock /workspace/
+RUN cd /workspace && uv sync --frozen
+
+# Leave final image as root to ensure devcontainer features can install correctly
+USER root
