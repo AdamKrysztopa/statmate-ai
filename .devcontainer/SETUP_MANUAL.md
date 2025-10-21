@@ -498,14 +498,14 @@ git push origin your-branch
 
 ## Summary of Files
 
-| File | Location | Purpose |
-|------|----------|---------|
-| `env.devcontainer.example` | `.devcontainer/` | Template to copy |
-| `.env.devcontainer` | Project root | Your actual config (gitignored) |
-| `devcontainer.json` | `.devcontainer/` | Container configuration |
-| `setup_git.sh` | `.devcontainer/` | Sets up Git with your name/email |
-| `setup_ssh.sh` | `.devcontainer/` | Sets up SSH for GitHub |
-| `Dockerfile` | `.devcontainer/` | Container image definition |
+| File                       | Location         | Purpose                          |
+| -------------------------- | ---------------- | -------------------------------- |
+| `env.devcontainer.example` | `.devcontainer/` | Template to copy                 |
+| `.env.devcontainer`        | Project root     | Your actual config (gitignored)  |
+| `devcontainer.json`        | `.devcontainer/` | Container configuration          |
+| `setup_git.sh`             | `.devcontainer/` | Sets up Git with your name/email |
+| `setup_ssh.sh`             | `.devcontainer/` | Sets up SSH for GitHub           |
+| `Dockerfile`               | `.devcontainer/` | Container image definition       |
 
 ---
 

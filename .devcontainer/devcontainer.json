@@ -52,7 +52,9 @@
                     }
                 },
                 "python.languageServer": "Pylance",
-                "python.analysis.extraPaths": ["${workspaceFolder}/.venv/lib/python3.11/site-packages"],
+                "python.analysis.extraPaths": [
+                    "${workspaceFolder}/.venv/lib/python3.11/site-packages"
+                ],
                 "[yaml]": {
                     "editor.defaultFormatter": "redhat.vscode-yaml",
                     "editor.formatOnSave": true
