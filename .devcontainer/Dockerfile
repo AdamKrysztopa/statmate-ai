@@ -5,7 +5,8 @@ FROM python:${VARIANT}
 # Ensure non-interactive apt operations
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install uv and necessary tools including SSH
+# Install uv and necessary tools
+# Added openssh-client (from workstation) for SSH agent/key-add
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
@@ -18,13 +19,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && pip install --no-cache-dir pyright ruff uvicorn \
     && rm -rf /var/lib/apt/lists/*
 
-
 # Create vscode user
 ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=1000
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID -m -s /bin/bash $USERNAME
+
+# Accept optional build args
+ARG OPENAI_API_KEY
 
 # Set default shell
 SHELL ["/bin/bash", "-c"]
@@ -48,10 +51,8 @@ ENV PATH="/workspace/.venv/bin:$PATH"
 # Set PYTHONPATH for the workspace
 ENV PYTHONPATH=/workspaces/statmate-ai
 
-# Skip pre-installing frontend dependencies; handled at runtime if needed
-# Install Python dependencies
-COPY --chown=$USERNAME:$USERNAME pyproject.toml uv.lock /workspace/
-RUN cd /workspace && uv sync --frozen
+# Python dependencies will be installed via postCreateCommand to avoid
+# needing a rebuild every time pyproject.toml changes.
 
 # Leave final image as root to ensure devcontainer features can install correctly
 USER root

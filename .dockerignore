@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+
+# Data and logs
+data/
+*.log
+
+# Database
+*.db
+*.sqlite
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+docs/
+
+# Results
+results/
+uploads/
+
+# Devcontainer - allow the .devcontainer folder itself
+# to be part of the context, but ignore itself.
+.devcontainer/
