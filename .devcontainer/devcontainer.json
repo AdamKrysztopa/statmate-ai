@@ -69,7 +69,9 @@
                 "yzhang.markdown-all-in-one",
                 "esbenp.prettier-vscode",
                 "foxundermoon.shell-format",
-                "github.copilot"
+                "github.copilot",
+                "bierner.markdown-mermaid",
+                "shd101wyy.markdown-preview-enhanced"
             ]
         }
     },

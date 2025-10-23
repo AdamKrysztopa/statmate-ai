@@ -96,49 +96,48 @@ StatmateAI combines the power of LLM agents with traditional statistical methods
 
 ## 🏗️ Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│                   Browser (User)                    │
-└─────────────────────┬───────────────────────────────┘
-                      │
-          ┌───────────┴──────────┐
-          ▼                      ▼
-┌──────────────────┐   ┌──────────────────┐
-│  Streamlit UI    │   │  Custom Frontend │
-│  (Port 8501)     │   │  (React/Mobile)  │
-└────────┬─────────┘   └────────┬─────────┘
-         │                      │
-         └──────────┬───────────┘
-                    ▼ HTTP/REST
-         ┌────────────────────────┐
-         │   FastAPI Backend      │
-         │     (Port 8000)        │
-         ├────────────────────────┤
-         │  • Routes (endpoints)  │
-         │  • Services (logic)    │
-         │  • Scheduler (tasks)   │
-         └──────────┬─────────────┘
-                    │
-     ┌──────────────┼──────────────┐
-     ▼              ▼              ▼
-┌─────────┐   ┌──────────┐   ┌──────────┐
-│ SQLite  │   │ Parquet  │   │APScheduler│
-│Database │   │  Files   │   │Background │
-└─────────┘   └──────────┘   └──────────┘
-                    │
-                    ▼
-         ┌────────────────────────┐
-         │  StatMate Core Engine  │
-         ├────────────────────────┤
-         │  • LangGraph Workflow  │
-         │  • Pydantic AI Agents  │
-         │  • SciPy/Statsmodels   │
-         └──────────┬─────────────┘
-                    ▼
-              ┌──────────┐
-              │ OpenAI   │
-              │   API    │
-              └──────────┘
+```mermaid
+architecture-beta
+    group browser(cloud)[Browser Layer]
+    group frontend(cloud)[Frontend Layer]
+    group backend(cloud)[Backend Layer]
+    group storage(disk)[Storage Layer]
+    group core(server)[Core Engine]
+    group external(cloud)[External Services]
+
+    service user(internet)[User] in browser
+    service streamlit(server)[Streamlit UI Port 8501] in frontend
+    service react(server)[React or Mobile Future] in frontend
+    
+    service fastapi(server)[FastAPI Backen ort 8000] in backend
+    service routes(disk)[Routes] in backend
+    service services(disk)[Services] in backend
+    service scheduler(disk)[APScheduler] in backend
+    
+    service sqlite(database)[SQLite Database] in storage
+    service parquet(disk)[Parquet Files] in storage
+    
+    service langgraph(server)[LangGraph Workflow] in core
+    service pydantic(disk)[Pydantic AI Agents] in core
+    service scipy(disk)[SciPy Statsmodels] in core
+    
+    service openai(internet)[OpenAI API] in external
+    service ollama(server)[Ollama Local LLM] in external
+
+    user:B -- T:streamlit
+    user:B -- T:react
+    streamlit:B -- T:fastapi
+    react:B -- T:fastapi
+    fastapi:L -- R:routes
+    fastapi:L -- R:services
+    fastapi:R -- L:scheduler
+    fastapi:B -- T:sqlite
+    fastapi:B -- T:parquet
+    services:B -- T:langgraph
+    langgraph:L -- R:pydantic
+    langgraph:R -- L:scipy
+    pydantic:B -- T:openai
+    pydantic:B -- T:ollama
 ```
 
 ### Technology Stack
@@ -267,54 +266,54 @@ make kill   # Stop everything
 
 ### 📖 Getting Started Guides
 
-| Guide | Description | For Who | Time |
-|-------|-------------|---------|------|
-| **[Setup Guide](docs/SETUP_GUIDE.md)** | Quick setup for DEV & PROD modes | First-time users | 5 min |
-| **[Ollama Setup](docs/OLLAMA_SETUP.md)** | 🔥 Run AI locally (FREE!) | Everyone | 10 min |
-| **[Adding Models](docs/ADDING_MODELS.md)** | How to add new AI models | Customizers | 5 min |
-| **[Quick Reference](docs/QUICK_REFERENCE.md)** | Command cheat sheet | Everyone | 2 min |
-| **[Dev vs Prod Guide](docs/DEV_VS_PROD_GUIDE.md)** | Credential management deep dive | Developers & Deployers | 15 min |
-| **[Quick Start](docs/QUICK_START.md)** | Fast API setup and first calls | API users | 5 min |
+| Guide                                              | Description                      | For Who                | Time   |
+| -------------------------------------------------- | -------------------------------- | ---------------------- | ------ |
+| **[Setup Guide](docs/SETUP_GUIDE.md)**             | Quick setup for DEV & PROD modes | First-time users       | 5 min  |
+| **[Ollama Setup](docs/OLLAMA_SETUP.md)**           | 🔥 Run AI locally (FREE!)         | Everyone               | 10 min |
+| **[Adding Models](docs/ADDING_MODELS.md)**         | How to add new AI models         | Customizers            | 5 min  |
+| **[Quick Reference](docs/QUICK_REFERENCE.md)**     | Command cheat sheet              | Everyone               | 2 min  |
+| **[Dev vs Prod Guide](docs/DEV_VS_PROD_GUIDE.md)** | Credential management deep dive  | Developers & Deployers | 15 min |
+| **[Quick Start](docs/QUICK_START.md)**             | Fast API setup and first calls   | API users              | 5 min  |
 
 ### 🏗️ Architecture & Design
 
-| Document | Description | For Who |
-|----------|-------------|---------|
-| **[Architecture Proposal](docs/ARCHITECTURE_PROPOSAL.md)** | System design & future plans | Architects, Contributors |
-| **[Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)** | How everything works internally | Backend developers |
-| **[Workflow Documentation](docs/WORKFLOW.md)** | LangGraph workflow & test selection | Data scientists |
-| **[Service Layer](docs/SERVICE_LAYER.md)** | Business logic reference | Backend developers |
+| Document                                                   | Description                         | For Who                  |
+| ---------------------------------------------------------- | ----------------------------------- | ------------------------ |
+| **[Architecture Proposal](docs/ARCHITECTURE_PROPOSAL.md)** | System design & future plans        | Architects, Contributors |
+| **[Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)**   | How everything works internally     | Backend developers       |
+| **[Workflow Documentation](docs/WORKFLOW.md)**             | LangGraph workflow & test selection | Data scientists          |
+| **[Service Layer](docs/SERVICE_LAYER.md)**                 | Business logic reference            | Backend developers       |
 
 ### 🔌 API & Integration
 
-| Document | Description | For Who |
-|----------|-------------|---------|
+| Document                                   | Description                           | For Who                          |
+| ------------------------------------------ | ------------------------------------- | -------------------------------- |
 | **[API Reference](docs/API_REFERENCE.md)** | Complete REST API docs (18 endpoints) | Frontend developers, Integrators |
-| **[Backend Setup](docs/BACKEND_SETUP.md)** | Development environment setup | Developers |
+| **[Backend Setup](docs/BACKEND_SETUP.md)** | Development environment setup         | Developers                       |
 
 ### 🚀 Operations & Deployment
 
-| Document | Description | For Who |
-|----------|-------------|---------|
-| **[DevOps Plan](docs/DEVOPS_PLAN.md)** | CI/CD, Docker, monitoring | DevOps engineers |
+| Document                                             | Description                     | For Who                      |
+| ---------------------------------------------------- | ------------------------------- | ---------------------------- |
+| **[DevOps Plan](docs/DEVOPS_PLAN.md)**               | CI/CD, Docker, monitoring       | DevOps engineers             |
 | **[Credentials System](docs/CREDENTIALS_SYSTEM.md)** | Security implementation details | Security-conscious deployers |
 
 ### 🤖 AI Models
 
-| Document | Description | For Who |
-|----------|-------------|---------|
-| **[Model Configuration](docs/MODEL_CONFIGURATION.md)** | AI model setup & providers | AI/ML engineers |
-| **[Flexible Model System](docs/FLEXIBLE_MODEL_SYSTEM.md)** | Multi-provider model system | Developers |
-| **[Model Quick Reference](docs/QUICK_REFERENCE_MODELS.md)** | Model selection guide | Everyone |
-| **[UI Model Integration](docs/UI_MODEL_INTEGRATION.md)** | Frontend model integration | Frontend developers |
+| Document                                                    | Description                 | For Who             |
+| ----------------------------------------------------------- | --------------------------- | ------------------- |
+| **[Model Configuration](docs/MODEL_CONFIGURATION.md)**      | AI model setup & providers  | AI/ML engineers     |
+| **[Flexible Model System](docs/FLEXIBLE_MODEL_SYSTEM.md)**  | Multi-provider model system | Developers          |
+| **[Model Quick Reference](docs/QUICK_REFERENCE_MODELS.md)** | Model selection guide       | Everyone            |
+| **[UI Model Integration](docs/UI_MODEL_INTEGRATION.md)**    | Frontend model integration  | Frontend developers |
 
 ### 📊 Additional Resources
 
-| Document | Description |
-|----------|-------------|
+| Document                                                       | Description                        |
+| -------------------------------------------------------------- | ---------------------------------- |
 | **[Flexible Models Summary](docs/FLEXIBLE_MODELS_SUMMARY.md)** | Multi-model implementation summary |
-| **[UI Integration Complete](docs/UI_INTEGRATION_COMPLETE.md)** | UI implementation status |
-| **[Documentation Summary](docs/DOCUMENTATION_SUMMARY.md)** | Overview of all documentation |
+| **[UI Integration Complete](docs/UI_INTEGRATION_COMPLETE.md)** | UI implementation status           |
+| **[Documentation Summary](docs/DOCUMENTATION_SUMMARY.md)**     | Overview of all documentation      |
 
 ### 🎯 Documentation by Use Case
 
@@ -582,6 +581,51 @@ We welcome contributions!
 - [ ] Data encryption at rest
 - [ ] Compliance reporting (HIPAA, GDPR)
 - [ ] On-premise deployment
+
+### Development Timeline
+
+```mermaid
+gantt
+    title StatmateAI Development Roadmap
+    dateFormat YYYY-MM-DD
+    
+    section Phase 1: Core ✅
+    Backend API              :done, p1_api, 2024-09-01, 2024-10-15
+    Streamlit Frontend       :done, p1_ui, 2024-09-15, 2024-10-15
+    Database & Storage       :done, p1_db, 2024-09-01, 2024-09-20
+    Statistical Tests        :done, p1_stats, 2024-09-10, 2024-10-10
+    LangGraph Workflow       :done, p1_workflow, 2024-09-20, 2024-10-10
+    Task Scheduling          :done, p1_tasks, 2024-10-01, 2024-10-15
+    
+    section Phase 2: Advanced 🚧
+    Effect Size Calculations :active, p2_effect, 2024-10-15, 60d
+    Post-hoc Tests           :active, p2_posthoc, 2024-10-20, 45d
+    Regression Models        :p2_regression, 2024-11-01, 60d
+    Survival Analysis        :p2_survival, 2024-11-15, 45d
+    Authentication           :crit, p2_auth, 2024-12-01, 30d
+    Export Formats           :p2_export, 2024-12-15, 30d
+    
+    section Phase 3: Enhanced UI 🔮
+    React Frontend           :crit, p3_react, 2025-01-15, 90d
+    WebSocket Support        :p3_ws, after p3_react, 30d
+    Interactive Viz          :p3_viz, after p3_react, 45d
+    Collaborative Features   :p3_collab, 2025-04-01, 60d
+    Version Control          :p3_version, 2025-05-01, 45d
+    Dashboard Analytics      :p3_dashboard, 2025-05-15, 45d
+    
+    section Phase 4: Mobile 🔮
+    PWA Development          :milestone, p4_pwa, 2025-07-01, 0d
+    React Native App         :p4_rn, 2025-07-01, 90d
+    Flutter App              :p4_flutter, 2025-08-01, 90d
+    Offline Mode             :p4_offline, 2025-09-01, 60d
+    
+    section Phase 5: Enterprise 🔮
+    Multi-tenancy            :crit, p5_tenant, 2025-11-01, 60d
+    RBAC System              :crit, p5_rbac, 2025-11-15, 45d
+    SSO Integration          :p5_sso, 2026-01-01, 45d
+    Compliance Reporting     :p5_compliance, 2026-02-01, 60d
+    On-premise Deployment    :p5_onprem, 2026-03-01, 60d
+```
 
 ---
 
