@@ -3,8 +3,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from database.models import TaskStatus
+from config.settings import settings
+from database.models import TaskStatus, User
 from database.session import get_db
+from statmate.api.dependencies import get_current_user_optional
 from statmate.api.models.task import (
     TaskCreate,
     TaskPauseResponse,
@@ -20,6 +22,7 @@ router = APIRouter(prefix='/tasks', tags=['tasks'])
 async def schedule_task(
     request: TaskCreate,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> TaskResponse:
     """Schedule a new analysis task.
 
@@ -33,6 +36,9 @@ async def schedule_task(
     Raises:
         HTTPException: If dataset not found or validation fails
     """
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
     try:
         task = TaskService.create_task(
             db=db,
@@ -42,6 +48,7 @@ async def schedule_task(
             schedule=request.schedule,
             selected_columns=request.selected_columns,
             configuration=request.configuration,
+            user_id=current_user.id if current_user else None,
         )
 
         # Get dataset name for response
@@ -67,6 +74,7 @@ async def list_tasks(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> list[TaskResponse]:
     """List scheduled tasks with optional filtering.
 
@@ -82,6 +90,9 @@ async def list_tasks(
     Raises:
         HTTPException: If invalid status filter
     """
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
     status_enum = None
     if status_filter:
         try:
@@ -92,7 +103,13 @@ async def list_tasks(
                 detail=f'Invalid status: {status_filter}',
             )
 
-    tasks = TaskService.list_tasks(db, status=status_enum, skip=skip, limit=limit)
+    tasks = TaskService.list_tasks(
+        db,
+        status=status_enum,
+        skip=skip,
+        limit=limit,
+        user_id=current_user.id if current_user else None,
+    )
 
     # Enhance with dataset names
     responses = []
@@ -109,6 +126,7 @@ async def list_tasks(
 async def get_task(
     task_id: str,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> TaskResponse:
     """Get a specific task by ID.
 
@@ -122,7 +140,10 @@ async def get_task(
     Raises:
         HTTPException: If task not found
     """
-    task = TaskService.get_task(db, task_id)
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    task = TaskService.get_task(db, task_id, user_id=current_user.id if current_user else None)
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Task not found')
 
@@ -137,6 +158,7 @@ async def get_task(
 async def pause_task(
     task_id: str,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> TaskPauseResponse:
     """Pause a scheduled task.
 
@@ -150,8 +172,11 @@ async def pause_task(
     Raises:
         HTTPException: If task not found
     """
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
     try:
-        task = TaskService.pause_task(db, task_id)
+        task = TaskService.pause_task(db, task_id, user_id=current_user.id if current_user else None)
         return TaskPauseResponse(
             task_id=task.id,
             status=task.status.value,
@@ -165,6 +190,7 @@ async def pause_task(
 async def resume_task(
     task_id: str,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> TaskPauseResponse:
     """Resume a paused task.
 
@@ -178,8 +204,11 @@ async def resume_task(
     Raises:
         HTTPException: If task not found
     """
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
     try:
-        task = TaskService.resume_task(db, task_id)
+        task = TaskService.resume_task(db, task_id, user_id=current_user.id if current_user else None)
         return TaskPauseResponse(
             task_id=task.id,
             status=task.status.value,
@@ -193,6 +222,7 @@ async def resume_task(
 async def delete_task(
     task_id: str,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> None:
     """Delete a scheduled task.
 
@@ -203,6 +233,9 @@ async def delete_task(
     Raises:
         HTTPException: If task not found
     """
-    deleted = TaskService.delete_task(db, task_id)
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    deleted = TaskService.delete_task(db, task_id, user_id=current_user.id if current_user else None)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Task not found')

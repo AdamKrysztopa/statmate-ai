@@ -2,9 +2,11 @@
 
 import logging
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from config.settings import settings
 from database.models import ScheduledTask, TaskStatus, TaskType
 from statmate.api.services.dataset_service import DatasetService
 
@@ -23,6 +25,7 @@ class TaskService:
         schedule: str,
         selected_columns: list[str] | None = None,
         configuration: dict | None = None,
+        user_id: str | None = None,
     ) -> ScheduledTask:
         """Create a new scheduled task.
 
@@ -34,6 +37,7 @@ class TaskService:
             schedule: Cron expression or ISO datetime
             selected_columns: Columns to analyze (None = all)
             configuration: Optional task configuration
+            user_id: Optional owner user ID
 
         Returns:
             Created ScheduledTask model
@@ -42,7 +46,7 @@ class TaskService:
             ValueError: If dataset not found or invalid task_type
         """
         # Validate dataset exists
-        dataset = DatasetService.get_dataset(db, dataset_id)
+        dataset = DatasetService.get_dataset(db, dataset_id, user_id=user_id if settings.AUTH_REQUIRED else None)
         if not dataset:
             msg = f'Dataset not found: {dataset_id}'
             raise ValueError(msg)
@@ -67,6 +71,7 @@ class TaskService:
             schedule=schedule,
             status=TaskStatus.ACTIVE,
             next_run=next_run,
+            user_id=user_id,
         )
 
         db.add(task)
@@ -77,7 +82,7 @@ class TaskService:
         return task
 
     @staticmethod
-    def get_task(db: Session, task_id: str) -> ScheduledTask | None:
+    def get_task(db: Session, task_id: str, *, user_id: Optional[str] = None) -> ScheduledTask | None:
         """Get a task by ID.
 
         Args:
@@ -87,7 +92,10 @@ class TaskService:
         Returns:
             ScheduledTask model or None if not found
         """
-        return db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+        query = db.query(ScheduledTask).filter(ScheduledTask.id == task_id)
+        if user_id:
+            query = query.filter(ScheduledTask.user_id == user_id)
+        return query.first()
 
     @staticmethod
     def list_tasks(
@@ -95,6 +103,7 @@ class TaskService:
         status: TaskStatus | None = None,
         skip: int = 0,
         limit: int = 100,
+        user_id: str | None = None,
     ) -> list[ScheduledTask]:
         """List scheduled tasks with optional filtering.
 
@@ -109,13 +118,16 @@ class TaskService:
         """
         query = db.query(ScheduledTask)
 
+        if user_id:
+            query = query.filter(ScheduledTask.user_id == user_id)
+
         if status:
             query = query.filter(ScheduledTask.status == status)
 
         return query.order_by(ScheduledTask.created_at.desc()).offset(skip).limit(limit).all()
 
     @staticmethod
-    def pause_task(db: Session, task_id: str) -> ScheduledTask:
+    def pause_task(db: Session, task_id: str, *, user_id: Optional[str] = None) -> ScheduledTask:
         """Pause a scheduled task.
 
         Args:
@@ -128,7 +140,7 @@ class TaskService:
         Raises:
             ValueError: If task not found
         """
-        task = TaskService.get_task(db, task_id)
+        task = TaskService.get_task(db, task_id, user_id=user_id)
         if not task:
             msg = f'Task not found: {task_id}'
             raise ValueError(msg)
@@ -142,7 +154,7 @@ class TaskService:
         return task
 
     @staticmethod
-    def resume_task(db: Session, task_id: str) -> ScheduledTask:
+    def resume_task(db: Session, task_id: str, *, user_id: Optional[str] = None) -> ScheduledTask:
         """Resume a paused task.
 
         Args:
@@ -155,7 +167,7 @@ class TaskService:
         Raises:
             ValueError: If task not found
         """
-        task = TaskService.get_task(db, task_id)
+        task = TaskService.get_task(db, task_id, user_id=user_id)
         if not task:
             msg = f'Task not found: {task_id}'
             raise ValueError(msg)
@@ -169,7 +181,7 @@ class TaskService:
         return task
 
     @staticmethod
-    def delete_task(db: Session, task_id: str) -> bool:
+    def delete_task(db: Session, task_id: str, *, user_id: Optional[str] = None) -> bool:
         """Delete a scheduled task.
 
         Args:
@@ -179,7 +191,7 @@ class TaskService:
         Returns:
             True if deleted, False if not found
         """
-        task = TaskService.get_task(db, task_id)
+        task = TaskService.get_task(db, task_id, user_id=user_id)
         if not task:
             return False
 

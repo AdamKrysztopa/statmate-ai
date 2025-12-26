@@ -40,6 +40,7 @@ def execute_scheduled_analysis(task_id: str) -> None:
             dataset_id=task.dataset_id,
             selected_columns=task.selected_columns,
             configuration=task.configuration,
+            user_id=task.user_id,
         )
 
         # Link analysis to task

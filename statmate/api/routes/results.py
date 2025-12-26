@@ -3,10 +3,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from config.settings import settings
 from database.session import get_db
+from statmate.api.dependencies import get_current_user_optional
 from statmate.api.models.result import LogResponse, ResultDetailResponse, ResultListItem, ResultListResponse
 from statmate.api.services.analysis_service import AnalysisService
 from statmate.api.services.dataset_service import DatasetService
+from database.models import User
 
 router = APIRouter(prefix='/results', tags=['results'])
 
@@ -16,6 +19,7 @@ async def list_results(
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> ResultListResponse:
     """List all analysis results with pagination.
 
@@ -27,7 +31,12 @@ async def list_results(
     Returns:
         ResultListResponse with list of results
     """
-    analyses = AnalysisService.list_analyses(db, skip=skip, limit=limit)
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    analyses = AnalysisService.list_analyses(
+        db, skip=skip, limit=limit, user_id=current_user.id if current_user else None
+    )
 
     items = []
     for analysis in analyses:
@@ -47,7 +56,10 @@ async def list_results(
     # Get total count
     from database.models import Analysis
 
-    total = db.query(Analysis).count()
+    total_query = db.query(Analysis)
+    if current_user:
+        total_query = total_query.filter(Analysis.user_id == current_user.id)
+    total = total_query.count()
 
     return ResultListResponse(
         results=items,
@@ -61,6 +73,7 @@ async def list_results(
 async def get_result_detail(
     result_id: str,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> ResultDetailResponse:
     """Get detailed result information.
 
@@ -74,7 +87,10 @@ async def get_result_detail(
     Raises:
         HTTPException: If result not found
     """
-    analysis = AnalysisService.get_analysis(db, result_id)
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    analysis = AnalysisService.get_analysis(db, result_id, user_id=current_user.id if current_user else None)
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Result not found')
 
@@ -113,6 +129,7 @@ async def get_result_detail(
 async def get_result_log(
     result_id: str,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> LogResponse:
     """Get execution log for a result.
 
@@ -126,7 +143,10 @@ async def get_result_log(
     Raises:
         HTTPException: If log not found
     """
-    log_content = AnalysisService.get_analysis_log(db, result_id)
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    log_content = AnalysisService.get_analysis_log(db, result_id, user_id=current_user.id if current_user else None)
     if log_content is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Log not found')
 
