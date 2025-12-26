@@ -22,12 +22,6 @@ router = APIRouter(prefix='/auth', tags=['auth'])
 @router.post('/register', response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register_user(payload: UserCreate, db: Session = Depends(get_db)) -> UserResponse:
     """Register a new user account."""
-    # Bcrypt only hashes the first 72 bytes; reject longer passwords up front so we return 400 instead of 500.
-    if len(payload.password.encode('utf-8')) > 72:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail='Password too long (bcrypt limit is 72 bytes). Please shorten your password.',
-        )
     try:
         existing = db.query(User).filter(User.email == payload.email.lower()).first()
         if existing:
@@ -36,11 +30,9 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)) -> UserRes
         try:
             hashed = get_password_hash(payload.password)
         except ValueError as exc:
-            # passlib raises ValueError when the password exceeds bcrypt limits
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail='Password too long (bcrypt limit is 72 bytes). Please shorten your password.',
-            ) from exc
+            logger.warning('Password rejected during hashing for %s: %s', payload.email, exc)
+            detail = str(exc) or 'Invalid password'
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
 
         user = User(email=payload.email.lower(), hashed_password=hashed)
         db.add(user)

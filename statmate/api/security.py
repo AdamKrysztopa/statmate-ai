@@ -9,7 +9,8 @@ from passlib.context import CryptContext
 
 from config.settings import settings
 
-pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+# Use pbkdf2_sha256 for new hashes (no 72-byte limit) and keep bcrypt variants for legacy verification.
+pwd_context = CryptContext(schemes=['pbkdf2_sha256', 'bcrypt_sha256', 'bcrypt'], deprecated='auto')
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

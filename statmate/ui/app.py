@@ -213,7 +213,7 @@ with st.sidebar:
             clear_auth_state()
             st.session_state.current_dataset_id = None
             st.session_state.current_analysis_id = None
-            st.experimental_rerun()
+            st.rerun()
     else:
         login_tab, register_tab = st.tabs(['Login', 'Create Account'])
 
@@ -227,7 +227,7 @@ with st.sidebar:
                     user = fetch_current_user()
                     set_auth_state(token, user)
                     st.success('Logged in successfully!')
-                    st.experimental_rerun()
+                    st.rerun()
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 401:
                         st.error('Invalid credentials')
@@ -240,23 +240,15 @@ with st.sidebar:
             reg_email = st.text_input('Email', key='register_email', placeholder='you@example.com')
             reg_password = st.text_input('Password', type='password', key='register_password')
             reg_confirm = st.text_input('Confirm Password', type='password', key='register_confirm')
-            pwd_bytes = len(reg_password.encode('utf-8'))
             if st.button('Create Account', type='primary', use_container_width=True):
                 if not reg_email or not reg_password:
                     st.error('Email and password are required')
                 elif reg_password != reg_confirm:
                     st.error('Passwords do not match')
-                elif pwd_bytes > 72:
-                    st.error('Password too long; maximum 72 bytes due to bcrypt limitations')
                 else:
                     try:
                         register_user(reg_email, reg_password)
-                        token = login_user(reg_email, reg_password)
-                        set_auth_state(token)
-                        user = fetch_current_user()
-                        set_auth_state(token, user)
-                        st.success('Account created and logged in!')
-                        st.experimental_rerun()
+                        st.success('Account created! Please log in.')
                     except httpx.HTTPStatusError as e:
                         detail = ''
                         try:

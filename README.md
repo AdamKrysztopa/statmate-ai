@@ -21,6 +21,7 @@ StatmateAI is a complete full-stack application that automates statistical analy
 - [Architecture](#-architecture)
 - [Development](#-development)
 - [Contributing](#-contributing)
+- [Accounts & Data Storage](#-accounts--data-storage)
 
 ---
 
@@ -91,6 +92,11 @@ StatmateAI combines the power of LLM agents with traditional statistical methods
 - 📦 **File Handling**: Efficient parquet-based storage
 - ⚡ **Background Jobs**: Non-blocking analysis execution
 - 🗃️ **SQLite/PostgreSQL**: Flexible database backend
+
+## 🗝️ Accounts & Data Storage
+
+- User accounts live in the API database configured via `DATABASE_URL` (default: SQLite at `database/statmate.db`).  
+- Switching to PostgreSQL or another database is supported by setting `DATABASE_URL` before starting the API/Streamlit services.
 
 ---
 
