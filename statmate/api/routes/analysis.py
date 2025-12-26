@@ -114,6 +114,7 @@ async def get_analysis_status(
         id=analysis.id,
         status=analysis.status.value,
         message=analysis.summary or analysis.error_message,
+        log_available=bool(analysis.log_path),
     )
 
 

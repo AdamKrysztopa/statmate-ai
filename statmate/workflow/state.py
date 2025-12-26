@@ -5,11 +5,16 @@ replacing the TypedDict approach with proper Pydantic models for better
 validation and type safety.
 """
 
-from typing import Literal
+from datetime import datetime
+from typing import Any, Literal
 
 import pandas as pd
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel, Field
+
+from statmate.core import get_logger
+
+logger = get_logger(__name__)
 
 
 class WorkflowState(BaseModel):
@@ -41,6 +46,10 @@ class WorkflowState(BaseModel):
     # Model configuration
     model_name: str | None = Field(default=None, description='AI model to use for analysis')
     provider: str | None = Field(default=None, description='Model provider (openai, anthropic, etc.)')
+    execution_trace: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description='Ordered record of each node/agent execution for UI display',
+    )
 
     def add_result(self, message: AIMessage) -> None:
         """Add a result message to the results list.
@@ -70,6 +79,26 @@ class WorkflowState(BaseModel):
             P-value for the test, or default if not found.
         """
         return self.probabilities.get(test_name, default)
+
+    def add_step(
+        self,
+        *,
+        step: str,
+        detail: str | None = None,
+        data: dict[str, Any] | None = None,
+        p_value: float | None = None,
+    ) -> None:
+        """Append a serializable execution step for downstream consumers."""
+        entry: dict[str, Any] = {
+            'step': step,
+            'detail': detail,
+            'p_value': p_value,
+            'timestamp': datetime.utcnow().isoformat(),
+        }
+        if data:
+            entry['data'] = data
+        self.execution_trace.append(entry)
+        logger.info('Trace step: %s | %s', step, (detail or '').strip() or 'No detail')
 
 
 def create_initial_state(
@@ -105,4 +134,5 @@ def create_initial_state(
         probabilities={},
         model_name=model_name,
         provider=provider,
+        execution_trace=[],
     )

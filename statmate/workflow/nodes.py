@@ -97,6 +97,26 @@ def call_test_agent(
         prob_key = probability_key or test_agent.name
         state.add_probability(prob_key, p_float)
 
+        # Record structured step for UI/clients
+        test_label = getattr(test_agent, '_statmate_test_name', None) or test_agent.name
+        stats_value = result.statistical_test_result.statistics
+        if isinstance(stats_value, np.ndarray):
+            stats_value = stats_value.tolist()
+        state.add_step(
+            step=test_label,
+            detail=result.result,
+            data={
+                'test_name': test_label,
+                'statistics': float(stats_value)
+                if isinstance(stats_value, (float, int, np.floating))
+                else stats_value,
+                'null_hypothesis': result.statistical_test_result.null_hypothesis,
+                'alternative': result.statistical_test_result.alternative,
+                'comments': result.comments,
+            },
+            p_value=p_float,
+        )
+
         return state
     except Exception as e:
         logger.error(f'Error in call_test_agent {test_agent.name}: {e}')
@@ -159,6 +179,18 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         cols = results.data.analysis_columns
         state.target_columns = cols if set(cols).issubset(set(inp_df.columns)) else list(inp_df.columns)
         state.add_result(AIMessage(content=str(results.data)))
+        state.add_step(
+            step='Initialization',
+            detail=results.data.data_analysis_result,
+            data={
+                'route_to_test': [getattr(r, 'value', str(r)) for r in results.data.route_to_test],
+                'data_type': results.data.data_type,
+                'analysis_columns': results.data.analysis_columns,
+                'group_column': results.data.group_column,
+                'data_transformation': results.data.data_transformation,
+                'tool_arguments': results.data.tool_arguments,
+            },
+        )
 
         logger.info(f'Data type set: {state.data_type}')
         return state
@@ -193,6 +225,11 @@ def assess_study_design_node(state: WorkflowState) -> WorkflowState:
 
         msg = '~~~Paired comparison~~~' if res.data.paired else '~~~Two independent groups~~~'
         logger.info(msg)
+        state.add_step(
+            step='Assess Study Design',
+            detail='Paired comparison' if res.data.paired else 'Two independent groups',
+            data={'paired': res.data.paired},
+        )
 
         return state
     except Exception as e:
@@ -331,6 +368,11 @@ def summariser_node(state: WorkflowState) -> WorkflowState:
 
         state.add_result(AIMessage(content=str(res.data)))
         logger.info(f'Summariser output: {res.data}')
+        state.add_step(
+            step='Summary',
+            detail=res.data.summary if hasattr(res, 'data') and hasattr(res.data, 'summary') else str(res.data),
+            data={'performed_tests': deps.performed_tests},
+        )
 
         return state
     except Exception as e:

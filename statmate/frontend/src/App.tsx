@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { ApiClient, AnalysisResult, AnalysisStatus, DatasetPreview, Dataset, User } from './api/client';
+import { ApiClient, AnalysisResult, AnalysisStatus, DatasetPreview, Dataset, TraceStep, User } from './api/client';
 import { useTheme } from './hooks/useTheme';
 
 const resolveDefaultApi = () => {
@@ -48,6 +48,9 @@ function App() {
   const [analysisId, setAnalysisId] = useState<string>('');
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | undefined>();
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult | undefined>();
+  const [logContent, setLogContent] = useState<string>('');
+  const [loadingLog, setLoadingLog] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [modelName, setModelName] = useState('gpt-4o');
@@ -111,6 +114,7 @@ function App() {
     setAnalysisResults(undefined);
     setAnalysisStatus(undefined);
     setAnalysisId('');
+    setLogContent('');
     if (!id) return;
     try {
       const p = await api.previewDataset(id);
@@ -155,6 +159,8 @@ function App() {
       setAnalysisId(id);
       setAnalysisStatus({ id, status: 'pending' });
       setAnalysisResults(undefined);
+      setLogContent('');
+      setViewerOpen(true);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -168,9 +174,33 @@ function App() {
       if (status.status === 'completed') {
         const results = await api.analysisResults(analysisId);
         setAnalysisResults(results);
+        setViewerOpen(true);
       }
     } catch (e) {
       setError((e as Error).message);
+    }
+  };
+
+  const pollLog = async (silent = false) => {
+    if (!analysisId) return;
+    try {
+      const log = await api.analysisLog(analysisId);
+      setLogContent(log.log_content);
+    } catch (e) {
+      const message = (e as Error).message || '';
+      if (!silent && !message.toLowerCase().includes('not found')) {
+        setError(message);
+      }
+    }
+  };
+
+  const loadLog = async () => {
+    if (!analysisId) return;
+    setLoadingLog(true);
+    try {
+      await pollLog();
+    } finally {
+      setLoadingLog(false);
     }
   };
 
@@ -198,12 +228,49 @@ function App() {
   }, [token]);
 
   useEffect(() => {
-    if (analysisId) {
-      const interval = setInterval(refreshStatus, 4000);
-      return () => clearInterval(interval);
-    }
-    return undefined;
+    if (!analysisId) return undefined;
+    const tick = () => {
+      refreshStatus();
+      pollLog(true);
+    };
+    tick();
+    const interval = setInterval(tick, 3000);
+    return () => clearInterval(interval);
   }, [analysisId]);
+
+  const trace: TraceStep[] = useMemo(() => {
+    if (!analysisResults) return [];
+    if (analysisResults.execution_trace?.length) return analysisResults.execution_trace;
+    if (analysisResults.results_detail?.execution_trace?.length) return analysisResults.results_detail.execution_trace;
+    if (analysisResults.results_detail?.messages?.length) {
+      return analysisResults.results_detail.messages.map((msg, idx) => ({
+        step: `Message ${idx + 1}`,
+        detail: msg,
+        data: {},
+      }));
+    }
+    return [];
+  }, [analysisResults]);
+
+  const liveTrace: TraceStep[] = useMemo(() => {
+    if (trace.length) return trace;
+    if (!logContent) return [];
+    const lines = logContent.split('\n').filter((line) => line.includes('Trace step:'));
+    return lines.map((line, idx) => {
+      const [, rest] = line.split('Trace step:');
+      const [stepPart, detailPart] = rest ? rest.split('|') : [];
+      const step = stepPart?.trim() || `Step ${idx + 1}`;
+      const detail = detailPart?.trim() || '';
+      return { step, detail, data: {} };
+    });
+  }, [trace, logContent]);
+
+  const plots = useMemo(() => {
+    if (!analysisResults) return [];
+    return analysisResults.plots || analysisResults.results_detail?.plots || [];
+  }, [analysisResults]);
+
+  const agentMessages = useMemo(() => analysisResults?.results_detail?.messages || [], [analysisResults]);
 
   if (!token) {
     return (
@@ -457,6 +524,11 @@ function App() {
               Refresh
             </button>
             <span className="badge">{analysisStatus ? `Status: ${analysisStatus.status}` : 'Waiting to start'}</span>
+            {analysisResults && (
+              <button className="button" type="button" onClick={() => setViewerOpen(true)}>
+                Open detailed view
+              </button>
+            )}
           </div>
           {analysisStatus?.message && <p className="muted">{analysisStatus.message}</p>}
         </div>
@@ -469,34 +541,169 @@ function App() {
             {analysisResults.model_name && <span className="tag">Model: {analysisResults.model_name}</span>}
             {analysisResults.provider && <span className="tag">Provider: {analysisResults.provider}</span>}
           </div>
-          {analysisResults.summary && <p>{analysisResults.summary}</p>}
-          {analysisResults.probabilities && (
-            <div className="table-like" style={{ marginTop: 12 }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Test</th>
-                    <th>P-Value</th>
-                    <th>Significance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(analysisResults.probabilities).map(([name, value]) => (
-                    <tr key={name}>
-                      <td>{name}</td>
-                      <td>{value.toFixed(4)}</td>
-                      <td>{value < 0.05 ? 'Significant' : 'Not significant'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {(analysisResults.summary || analysisResults.results_detail?.summary) && (
+            <p>{analysisResults.summary || analysisResults.results_detail?.summary}</p>
+          )}
+          <div className="pill-row" style={{ marginTop: 8 }}>
+            <button className="button primary" type="button" onClick={() => setViewerOpen(true)}>
+              Open detailed view
+            </button>
+          </div>
+        </div>
+      )}
+
+      {viewerOpen && (
+        <div className="viewer-overlay">
+          <div className="viewer-backdrop" onClick={() => setViewerOpen(false)} />
+          <div className="viewer-panel">
+            <div className="viewer-header">
+              <div>
+                <div className="section-title" style={{ margin: 0 }}>Analysis Detail</div>
+                <div className="pill-row" style={{ marginTop: 6 }}>
+                  {analysisId && <span className="tag">ID: {analysisId.slice(0, 8)}…</span>}
+                  <span className="tag">Status: {analysisStatus?.status || analysisResults?.status || 'pending'}</span>
+                  {analysisResults?.model_name && <span className="tag">Model: {analysisResults.model_name}</span>}
+                  {analysisResults?.provider && <span className="tag">Provider: {analysisResults.provider}</span>}
+                </div>
+              </div>
+              <div className="pill-row" style={{ gap: 8 }}>
+                <button className="button" onClick={() => { refreshStatus(); pollLog(); }}>
+                  Refresh now
+                </button>
+                <button className="button" onClick={() => setViewerOpen(false)}>Close</button>
+              </div>
             </div>
-          )}
-          {analysisResults.results_detail && (
-            <pre className="card" style={{ overflow: 'auto', background: 'var(--bg-input)' }}>
+
+            {analysisStatus?.message && <p className="muted">{analysisStatus.message}</p>}
+            {(analysisResults?.summary || analysisResults?.results_detail?.summary) && (
+              <p>{analysisResults?.summary || analysisResults?.results_detail?.summary}</p>
+            )}
+
+            <div style={{ marginTop: 12 }}>
+              <div className="section-title" style={{ marginTop: 0 }}>
+                Live agent steps
+              </div>
+              {liveTrace.length > 0 ? (
+                <div className="trace-grid">
+                  {liveTrace.map((item, idx) => (
+                    <div className="trace-card" key={`${item.step}-${idx}`}>
+                      <div className="trace-header">
+                        <span className="badge">{item.step || `Step ${idx + 1}`}</span>
+                        {typeof item.p_value === 'number' && (
+                          <span className="tag">p = {item.p_value.toFixed(4)}</span>
+                        )}
+                      </div>
+                      {item.detail && <p className="muted">{item.detail}</p>}
+                      {item.data && (
+                        <div className="trace-data">
+                          {Object.entries(item.data).map(([key, value]) => (
+                            <div key={key} className="pill mono">
+                              {key}: {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">Waiting for the first agent decision…</p>
+              )}
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className="section-title" style={{ marginTop: 0 }}>
+                Live log
+              </div>
+              <div className="pill-row" style={{ marginBottom: 8 }}>
+                <button className="button" onClick={() => pollLog()} disabled={!analysisId}>
+                  Fetch latest log
+                </button>
+                {loadingLog && <span className="badge">Loading…</span>}
+                {analysisStatus?.log_available && <span className="badge">Log streaming</span>}
+              </div>
+              <pre className="log-viewer">{logContent || 'Collecting log output…'}</pre>
+            </div>
+
+            {analysisResults && (
+              <>
+                {analysisResults.probabilities && (
+                  <div className="table-like" style={{ marginTop: 12 }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Test</th>
+                          <th>P-Value</th>
+                          <th>Significance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(analysisResults.probabilities).map(([name, value]) => (
+                          <tr key={name}>
+                            <td>{name}</td>
+                            <td>{value.toFixed(4)}</td>
+                            <td>{value < 0.05 ? 'Significant' : 'Not significant'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {plots.length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <div className="section-title" style={{ marginTop: 0 }}>
+                      Visual Diagnostics
+                    </div>
+                    <div className="plot-grid">
+                      {plots.map((plot, idx) => (
+                        <div className="plot-card" key={`${plot.title}-${idx}`}>
+                          <img src={`data:image/png;base64,${plot.image_base64}`} alt={plot.title} />
+                          <div className="plot-meta">
+                            <div className="plot-title">{plot.title}</div>
+                            {plot.description && <p className="muted">{plot.description}</p>}
+                            {plot.column && <span className="tag">Column: {plot.column}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {agentMessages.length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <div className="section-title" style={{ marginTop: 0 }}>
+                      Agent messages
+                    </div>
+                    <div className="trace-messages">
+                      {agentMessages.map((msg, idx) => (
+                        <div key={idx} className="message-block">
+                          <div className="tag">Message {idx + 1}</div>
+                          <p>{msg}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pill-row" style={{ marginTop: 12 }}>
+                  <button className="button" onClick={loadLog} disabled={loadingLog}>
+                    {loadingLog ? 'Loading log…' : 'Force reload log'}
+                  </button>
+                  {logContent && <span className="badge">Log loaded</span>}
+                </div>
+
+                {analysisResults.results_detail && (
+                  <details style={{ marginTop: 12 }}>
+                    <summary>Raw result payload</summary>
+                    <pre className="card" style={{ overflow: 'auto', background: 'var(--bg-input)' }}>
 {JSON.stringify(analysisResults.results_detail, null, 2)}
-            </pre>
-          )}
+                    </pre>
+                  </details>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 

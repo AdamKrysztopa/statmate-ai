@@ -8,16 +8,45 @@ export type DatasetPreview = {
   column_names: string[];
   preview_data: Record<string, unknown>[];
 };
-export type AnalysisStatus = { id: string; status: 'pending' | 'running' | 'completed' | 'failed'; message?: string };
+export type AnalysisStatus = {
+  id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  message?: string;
+  log_available?: boolean;
+};
+export type TraceStep = { step: string; detail?: string; data?: Record<string, unknown>; p_value?: number; timestamp?: string };
+export type PlotInfo = {
+  title: string;
+  description?: string;
+  image_base64: string;
+  column?: string;
+  type?: string;
+  content_type?: string;
+};
+export type ResultsDetail = {
+  messages?: string[];
+  probabilities?: Record<string, number>;
+  summary?: string;
+  full_output?: string;
+  execution_trace?: TraceStep[];
+  plots?: PlotInfo[];
+  timestamp?: string;
+};
 export type AnalysisResult = {
   id: string;
+  status?: string;
+  dataset_id?: string;
+  dataset_name?: string;
   summary?: string;
   probabilities?: Record<string, number>;
-  results_detail?: unknown;
+  results_detail?: ResultsDetail;
+  execution_trace?: TraceStep[];
+  plots?: PlotInfo[];
   log_available?: boolean;
   model_name?: string;
   provider?: string;
 };
+export type AnalysisLog = { analysis_id: string; log_content: string; log_lines: string };
 
 export class ApiClient {
   baseUrl: string;
@@ -117,6 +146,12 @@ export class ApiClient {
 
   async analysisResults(id: string): Promise<AnalysisResult> {
     const res = await fetch(`${this.baseUrl}/analysis/${id}/results`, { headers: this.headers(false) });
+    if (!res.ok) throw await this.error(res);
+    return res.json();
+  }
+
+  async analysisLog(id: string): Promise<AnalysisLog> {
+    const res = await fetch(`${this.baseUrl}/analysis/${id}/log`, { headers: this.headers(false) });
     if (!res.ok) throw await this.error(res);
     return res.json();
   }

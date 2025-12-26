@@ -93,6 +93,8 @@ class Settings(BaseSettings):
     MODEL_PRESENCE_PENALTY: float = Field(default=0.0)
     MODEL_MAX_TOKENS: int | None = Field(default=None)
     REQUIRE_REASONING_MODELS_FOR_TOOLS: bool = Field(default=True)
+    OPENAI_FALLBACK_MODEL: str = Field(default='gpt-4o-mini', description='Fallback OpenAI model when primary is rate limited')
+    OPENAI_FALLBACK_ENABLED: bool = Field(default=True, description='Enable automatic fallback to smaller OpenAI model on rate limits')
 
     # OpenAI
     OPENAI_API_KEY: str = Field(default='')
