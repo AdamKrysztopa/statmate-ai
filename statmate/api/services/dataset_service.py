@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 class DatasetService:
     """Service for dataset management operations."""
 
+    SUPPORTED_EXTENSIONS = {
+        '.csv',
+        '.tsv',
+        '.txt',
+        '.xlsx',
+        '.xls',
+        '.json',
+        '.parquet',
+        '.md',
+        '.doc',
+        '.docx',
+    }
+
     @staticmethod
     def create_dataset(
         db: Session,
@@ -45,13 +58,7 @@ class DatasetService:
 
         # Determine file type and read
         suffix = Path(original_filename).suffix.lower()
-        if suffix == '.csv':
-            df = pd.read_csv(pd.io.common.BytesIO(file_content))
-        elif suffix in ['.xlsx', '.xls']:
-            df = pd.read_excel(pd.io.common.BytesIO(file_content))
-        else:
-            msg = f'Unsupported file format: {suffix}'
-            raise ValueError(msg)
+        df = DatasetService._load_dataframe(file_content, suffix)
 
         # Extract metadata
         row_count = len(df)
@@ -80,6 +87,47 @@ class DatasetService:
 
         logger.info(f'Created dataset: {dataset.id} ({original_filename})')
         return dataset
+
+    @staticmethod
+    def _load_dataframe(file_content: bytes, suffix: str) -> pd.DataFrame:
+        """Load an uploaded file into a DataFrame based on extension."""
+        buffer = pd.io.common.BytesIO(file_content)
+
+        if suffix == '.csv':
+            return pd.read_csv(buffer)
+        if suffix == '.tsv':
+            buffer.seek(0)
+            return pd.read_csv(buffer, sep='\t')
+        if suffix == '.txt':
+            buffer.seek(0)
+            try:
+                return pd.read_csv(buffer, sep=None, engine='python')  # auto-detect delimiter
+            except Exception:
+                text = file_content.decode('utf-8', errors='replace')
+                lines = [line for line in text.splitlines() if line.strip()] or [text]
+                return pd.DataFrame({'text': lines})
+        if suffix in {'.xlsx', '.xls'}:
+            buffer.seek(0)
+            return pd.read_excel(buffer)
+        if suffix == '.json':
+            buffer.seek(0)
+            return pd.read_json(buffer)
+        if suffix == '.parquet':
+            buffer.seek(0)
+            return pd.read_parquet(buffer)
+        if suffix in {'.md', '.doc', '.docx'}:
+            text = file_content.decode('utf-8', errors='replace')
+            lines = [line for line in text.splitlines() if line.strip()] or [text]
+            return pd.DataFrame({'text': lines})
+
+        msg = f'Unsupported file format: {suffix}'
+        raise ValueError(msg)
+
+    @classmethod
+    def is_supported_extension(cls, filename: str) -> bool:
+        """Check whether the given filename has a supported extension."""
+        suffix = Path(filename).suffix.lower()
+        return suffix in cls.SUPPORTED_EXTENSIONS
 
     @staticmethod
     def get_dataset(db: Session, dataset_id: str, *, user_id: str | None = None) -> Dataset | None:

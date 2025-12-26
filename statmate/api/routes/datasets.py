@@ -38,11 +38,10 @@ async def upload_dataset(
         HTTPException: If file format is unsupported or upload fails
     """
     # Validate file extension
-    allowed_extensions = ['.csv', '.xlsx', '.xls']
-    if not any(file.filename.endswith(ext) for ext in allowed_extensions):
+    if not DatasetService.is_supported_extension(file.filename):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f'Unsupported file format. Allowed: {", ".join(allowed_extensions)}',
+            detail=f'Unsupported file format. Allowed: {", ".join(sorted(DatasetService.SUPPORTED_EXTENSIONS))}',
         )
 
     if settings.AUTH_REQUIRED and not current_user:

@@ -205,6 +205,72 @@ function App() {
     return undefined;
   }, [analysisId]);
 
+  if (!token) {
+    return (
+      <div className="app-shell">
+        <header className="header">
+          <div className="logo">
+            <div className="logo-mark">Σ</div>
+            <div className="title-block">
+              <h1>StatmateAI Frontend</h1>
+              <p>Modern React client for FastAPI + LangGraph</p>
+            </div>
+          </div>
+          <div className="controls">
+            <button className="button" onClick={toggleTheme} aria-label="Toggle theme">
+              {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
+            </button>
+            <button className="button" onClick={connect}>
+              🔌 Check API
+            </button>
+          </div>
+        </header>
+
+        {error && <div className="toast error">{error}</div>}
+        {health && <div className="toast">{health}</div>}
+
+        <section className="card-grid">
+          <div className="card">
+            <h3>API Connection</h3>
+            <p className="muted">Point to your running FastAPI instance.</p>
+            <div className="input-group">
+              <label>API Base URL</label>
+              <input value={apiBase} onChange={(e) => setApiBase(e.target.value)} placeholder="http://localhost:8000/api/v1" />
+            </div>
+            <div className="pill-row">
+              <span className="badge">ENV: {import.meta.env.MODE}</span>
+              <span className="badge">Theme: {theme}</span>
+              <span className="badge">Auth: required</span>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3>{registering ? 'Create Account' : 'Sign In'}</h3>
+            <form onSubmit={registering ? handleRegister : handleLogin}>
+              <div className="input-group">
+                <label>Email</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              </div>
+              <div className="input-group">
+                <label>Password</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+              </div>
+              <div className="pill-row">
+                <button className="button primary" type="submit">
+                  {registering ? 'Create & Login' : 'Login'}
+                </button>
+                <button className="button" type="button" onClick={() => setRegistering((v) => !v)}>
+                  {registering ? 'Have an account? Sign in' : 'Need an account? Register'}
+                </button>
+              </div>
+              <p className="muted">Sign in to access datasets and analysis.</p>
+            </form>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="header">
@@ -216,11 +282,15 @@ function App() {
           </div>
         </div>
         <div className="controls">
+          <span className="badge">{user ? `Signed in: ${user.email}` : 'Signed in'}</span>
           <button className="button" onClick={toggleTheme} aria-label="Toggle theme">
             {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
           </button>
           <button className="button" onClick={connect}>
             🔌 Check API
+          </button>
+          <button className="button" type="button" onClick={() => setToken(undefined)}>
+            Log out
           </button>
         </div>
       </header>
@@ -239,42 +309,30 @@ function App() {
           <div className="pill-row">
             <span className="badge">ENV: {import.meta.env.MODE}</span>
             <span className="badge">Theme: {theme}</span>
-            <span className="badge">{user ? `Signed in: ${user.email}` : 'Anon mode'}</span>
+            <span className="badge">{user ? `Signed in: ${user.email}` : 'Signed in'}</span>
           </div>
         </div>
 
         <div className="card">
-          <h3>{registering ? 'Create Account' : 'Sign In'}</h3>
-          <form onSubmit={registering ? handleRegister : handleLogin}>
-            <div className="input-group">
-              <label>Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </div>
-            <div className="input-group">
-              <label>Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            </div>
-            <div className="pill-row">
-              <button className="button primary" type="submit">
-                {registering ? 'Create & Login' : 'Login'}
-              </button>
-              <button className="button" type="button" onClick={() => setRegistering((v) => !v)}>
-                {registering ? 'Have an account? Sign in' : 'Need an account? Register'}
-              </button>
-              {token && (
-                <button className="button" type="button" onClick={() => setToken(undefined)}>
-                  Log out
-                </button>
-              )}
-            </div>
-          </form>
+          <h3>Account</h3>
+          <p className="muted">You are signed in.</p>
+          <div className="pill-row">
+            <span className="badge">{user?.email}</span>
+            <button className="button" type="button" onClick={() => setToken(undefined)}>
+              Log out
+            </button>
+          </div>
         </div>
 
         <div className="card">
           <h3>Upload Dataset</h3>
           <div className="input-group">
             <label>File</label>
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              accept=".csv,.tsv,.txt,.xlsx,.xls,.json,.parquet,.md,.doc,.docx"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            />
           </div>
           <div className="input-group">
             <label>Description (optional)</label>
@@ -283,7 +341,6 @@ function App() {
           <button className="button primary" disabled={!file || uploading || !token} onClick={handleUpload}>
             {uploading ? 'Uploading…' : 'Upload'}
           </button>
-          {!token && <p className="muted">Sign in to upload.</p>}
         </div>
       </section>
 
