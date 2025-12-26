@@ -2,7 +2,28 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { ApiClient, AnalysisResult, AnalysisStatus, DatasetPreview, Dataset, User } from './api/client';
 import { useTheme } from './hooks/useTheme';
 
-const defaultApi = import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/v1';
+const resolveDefaultApi = () => {
+  const envBase = import.meta.env.VITE_API_BASE;
+  if (envBase) return envBase;
+
+  if (typeof window === 'undefined') return 'http://localhost:8000/api/v1';
+
+  const { protocol, hostname, port } = window.location;
+
+  // GitHub Codespaces/VS Code remote: ports encoded in subdomain (e.g., -3000 → -8000)
+  if (hostname.endsWith('.app.github.dev')) {
+    return `${protocol}//${hostname.replace(/-\d+\.app\.github\.dev$/, '-8000.app.github.dev')}/api/v1`;
+  }
+
+  // Local/dev servers: swap current port for API port
+  if (port) {
+    return `${protocol}//${hostname}:8000/api/v1`;
+  }
+
+  return `${protocol}//${hostname}:8000/api/v1`;
+};
+
+const defaultApi = resolveDefaultApi();
 
 function App() {
   const [theme, toggleTheme] = useTheme();

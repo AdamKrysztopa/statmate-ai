@@ -46,6 +46,7 @@ coverage.xml
 .env.local
 .env.*.local
 .env.devcontainer
+.dev.secrets.env
 
 # Database (local development)
 database/statmate.db

@@ -1,10 +1,17 @@
-.PHONY: help install dev prod api ui db-init db-seed clean test lint format kill list-models frontend-install frontend-dev frontend-build frontend-preview
+.PHONY: help install dev prod api ui db-init db-seed clean test lint format kill list-models frontend-install frontend-dev frontend-build frontend-preview node-install
 
 # Colors for terminal output
 GREEN  := \033[0;32m
 YELLOW := \033[0;33m
 RED    := \033[0;31m
 RESET  := \033[0m
+
+# Local Node.js (for frontend) - installs into ~/.local (no sudo)
+NODE_VERSION ?= 20.18.1
+NODE_ARCH    := $(shell uname -m)
+NODE_DIST    := $(if $(filter x86_64,$(NODE_ARCH)),x64,$(if $(filter aarch64 arm64,$(NODE_ARCH)),arm64,$(NODE_ARCH)))
+NODE_HOME    := $(HOME)/.local/node-v$(NODE_VERSION)-linux-$(NODE_DIST)
+NODE_BIN     := $(NODE_HOME)/bin
 
 help: ## Show this help message
 	@echo '$(GREEN)StatmateAI - Makefile Commands$(RESET)'
@@ -145,19 +152,33 @@ type-check: ## Run type checker (mypy)
 # Frontend (React + Vite)
 # =============================================================================
 
+node-install: ## Install local Node.js (no sudo) to ~/.local
+	@echo '$(GREEN)Installing Node.js $(NODE_VERSION) for $(NODE_DIST)...$(RESET)'
+	@mkdir -p $(HOME)/.local
+	@curl -fsSL "https://nodejs.org/dist/v$(NODE_VERSION)/node-v$(NODE_VERSION)-linux-$(NODE_DIST).tar.xz" -o /tmp/node.tar.xz
+	@tar -xf /tmp/node.tar.xz -C /tmp
+	@rm -f /tmp/node.tar.xz
+	@rm -rf $(NODE_HOME)
+	@mv /tmp/node-v$(NODE_VERSION)-linux-$(NODE_DIST) $(NODE_HOME)
+	@echo 'export PATH=$(NODE_BIN):$$PATH' >> $(HOME)/.profile
+	@echo '$(GREEN)✓ Node installed to $(NODE_HOME) (add to PATH if not already)$(RESET)'
+	@$(NODE_BIN)/node -v
+	@$(NODE_BIN)/npm -v
+
 frontend-install: ## Install frontend deps (npm)
 	@echo '$(GREEN)Installing frontend dependencies...$(RESET)'
-	cd statmate/frontend && npm install
+	@command -v npm >/dev/null 2>&1 || { echo '$(YELLOW)npm not found, installing local Node...$(RESET)'; $(MAKE) node-install; }
+	@cd statmate/frontend && PATH=$(NODE_BIN):$$PATH npm install
 	@echo '$(GREEN)✓ Frontend deps ready$(RESET)'
 
 frontend-dev: ## Run React dev server (Vite on :3000)
-	@cd statmate/frontend && npm run dev -- --host --port 3000
+	@cd statmate/frontend && PATH=$(NODE_BIN):$$PATH npm run dev -- --host --port 3000
 
 frontend-build: ## Build production assets
-	@cd statmate/frontend && npm run build
+	@cd statmate/frontend && PATH=$(NODE_BIN):$$PATH npm run build
 
 frontend-preview: ## Preview production build locally
-	@cd statmate/frontend && npm run preview -- --host --port 3000
+	@cd statmate/frontend && PATH=$(NODE_BIN):$$PATH npm run preview -- --host --port 3000
 
 # =============================================================================
 # Utilities

@@ -13,6 +13,8 @@ from typing import Any
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEV_SECRET_FILE = Path('.dev.secrets.env')
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
@@ -121,7 +123,16 @@ class Settings(BaseSettings):
         default='',
         description='Required: base64url-encoded 32-byte key used to encrypt stored emails',
     )
-    CORS_ORIGINS: list[str] = Field(default=['http://localhost:8501', 'http://localhost:3000'])
+    CORS_ORIGINS: list[str] = Field(
+        default=[
+            'http://localhost:8501',
+            'http://127.0.0.1:8501',
+            'http://localhost:3000',
+            'http://127.0.0.1:3000',
+            'http://0.0.0.0:3000',
+            'http://172.17.0.2:3000',  # devcontainer bridge
+        ]
+    )
     AUTH_REQUIRED: bool = Field(default=True, description='Require authentication for API access')
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60, description='Access token lifetime in minutes')
     TOKEN_ALGORITHM: str = Field(default='HS256', description='JWT signing algorithm')
@@ -156,33 +167,67 @@ class Settings(BaseSettings):
     def validate_secrets(self) -> 'Settings':
         """Fail fast when security-critical secrets are not configured."""
         missing: list[str] = []
+        generated: dict[str, str] = {}
 
         is_dev = self.ENVIRONMENT.lower() == 'development'
         placeholder_secret = 'your-secret-key-change-in-production-use-random-string'
 
+        def _load_dev_secrets() -> dict[str, str]:
+            """Load persisted dev secrets to keep users/accounts after restarts."""
+            if not DEV_SECRET_FILE.exists():
+                return {}
+            data: dict[str, str] = {}
+            for line in DEV_SECRET_FILE.read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                data[key.strip()] = value.strip()
+            return data
+
+        def _persist_dev_secrets(values: dict[str, str]) -> None:
+            """Persist generated dev secrets so they are reused on next startup."""
+            existing = _load_dev_secrets()
+            existing.update(values)
+            DEV_SECRET_FILE.write_text('\n'.join(f'{k}={v}' for k, v in existing.items()) + '\n')
+
+        dev_secrets = _load_dev_secrets()
+
         if not self.SECRET_KEY or self.SECRET_KEY == placeholder_secret:
-            if is_dev:
+            if is_dev and dev_secrets.get('SECRET_KEY'):
+                self.SECRET_KEY = dev_secrets['SECRET_KEY']
+            elif is_dev:
                 self.SECRET_KEY = secrets.token_hex(32)
+                generated['SECRET_KEY'] = self.SECRET_KEY
             else:
                 missing.append('SECRET_KEY')
 
         if not self.PASSWORD_PEPPER:
-            if is_dev:
+            if is_dev and dev_secrets.get('PASSWORD_PEPPER'):
+                self.PASSWORD_PEPPER = dev_secrets['PASSWORD_PEPPER']
+            elif is_dev:
                 self.PASSWORD_PEPPER = secrets.token_hex(32)
+                generated['PASSWORD_PEPPER'] = self.PASSWORD_PEPPER
             else:
                 missing.append('PASSWORD_PEPPER')
 
         if not self.EMAIL_HASH_SECRET:
-            if is_dev:
+            if is_dev and dev_secrets.get('EMAIL_HASH_SECRET'):
+                self.EMAIL_HASH_SECRET = dev_secrets['EMAIL_HASH_SECRET']
+            elif is_dev:
                 self.EMAIL_HASH_SECRET = secrets.token_hex(32)
+                generated['EMAIL_HASH_SECRET'] = self.EMAIL_HASH_SECRET
             else:
                 missing.append('EMAIL_HASH_SECRET')
         elif self.EMAIL_HASH_SECRET == self.SECRET_KEY:
             raise ValueError('EMAIL_HASH_SECRET must differ from SECRET_KEY to avoid key reuse')
 
         if not self.EMAIL_ENCRYPTION_KEY:
-            if is_dev:
+            if is_dev and dev_secrets.get('EMAIL_ENCRYPTION_KEY'):
+                self.EMAIL_ENCRYPTION_KEY = dev_secrets['EMAIL_ENCRYPTION_KEY']
+            elif is_dev:
                 self.EMAIL_ENCRYPTION_KEY = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
+                generated['EMAIL_ENCRYPTION_KEY'] = self.EMAIL_ENCRYPTION_KEY
             else:
                 missing.append('EMAIL_ENCRYPTION_KEY (base64url-encoded 32-byte key)')
         else:
@@ -192,6 +237,9 @@ class Settings(BaseSettings):
                 raise ValueError('EMAIL_ENCRYPTION_KEY must be valid base64url-encoded') from exc
             if len(decoded) != 32:
                 raise ValueError('EMAIL_ENCRYPTION_KEY must decode to exactly 32 bytes')
+
+        if generated and is_dev:
+            _persist_dev_secrets(generated)
 
         if missing:
             raise ValueError(f'The following secrets must be set: {", ".join(missing)}')
