@@ -116,7 +116,7 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = Field(default='', description='Required: JWT signing key')
     PASSWORD_PEPPER: str = Field(default='', description='Required: server-side pepper for passwords')
-    EMAIL_HASH_SECRET: str = Field(default='', description='Optional: overrides SECRET_KEY for email hashing')
+    EMAIL_HASH_SECRET: str = Field(default='', description='Required: keyed HMAC secret for email hashing')
     EMAIL_ENCRYPTION_KEY: str = Field(
         default='',
         description='Required: base64url-encoded 32-byte key used to encrypt stored emails',
@@ -158,8 +158,9 @@ class Settings(BaseSettings):
         missing: list[str] = []
 
         is_dev = self.ENVIRONMENT.lower() == 'development'
+        placeholder_secret = 'your-secret-key-change-in-production-use-random-string'
 
-        if not self.SECRET_KEY:
+        if not self.SECRET_KEY or self.SECRET_KEY == placeholder_secret:
             if is_dev:
                 self.SECRET_KEY = secrets.token_hex(32)
             else:
@@ -171,11 +172,26 @@ class Settings(BaseSettings):
             else:
                 missing.append('PASSWORD_PEPPER')
 
+        if not self.EMAIL_HASH_SECRET:
+            if is_dev:
+                self.EMAIL_HASH_SECRET = secrets.token_hex(32)
+            else:
+                missing.append('EMAIL_HASH_SECRET')
+        elif self.EMAIL_HASH_SECRET == self.SECRET_KEY:
+            raise ValueError('EMAIL_HASH_SECRET must differ from SECRET_KEY to avoid key reuse')
+
         if not self.EMAIL_ENCRYPTION_KEY:
             if is_dev:
                 self.EMAIL_ENCRYPTION_KEY = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
             else:
                 missing.append('EMAIL_ENCRYPTION_KEY (base64url-encoded 32-byte key)')
+        else:
+            try:
+                decoded = base64.urlsafe_b64decode(self.EMAIL_ENCRYPTION_KEY.encode())
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError('EMAIL_ENCRYPTION_KEY must be valid base64url-encoded') from exc
+            if len(decoded) != 32:
+                raise ValueError('EMAIL_ENCRYPTION_KEY must decode to exactly 32 bytes')
 
         if missing:
             raise ValueError(f'The following secrets must be set: {", ".join(missing)}')

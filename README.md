@@ -97,12 +97,12 @@ StatmateAI combines the power of LLM agents with traditional statistical methods
 
 - User accounts live in the API database configured via `DATABASE_URL` (default: SQLite at `database/statmate.db`).  
 - Switching to PostgreSQL or another database is supported by setting `DATABASE_URL` before starting the API/Streamlit services.
-- Security defaults are locked down: authentication is required, passwords are Argon2id-hashed with a server-side pepper, and emails are stored encrypted plus a keyed hash for lookup (no plaintext at rest).
-- Required secrets (fail fast if missing):  
-  - `SECRET_KEY` (JWT signing)  
+- Security defaults are locked down: authentication is required, passwords are Argon2id-hashed with a server-side pepper, and emails are stored encrypted plus a keyed hash for lookup (no plaintext at rest). Stealing the DB alone is insufficient without the secrets below.
+- Required secrets (fail fast if missing or using the sample placeholder):  
+  - `SECRET_KEY` (JWT signing; must not use the sample placeholder)  
   - `PASSWORD_PEPPER` (server-side password pepper)  
+  - `EMAIL_HASH_SECRET` (HMAC key for email hashes; must differ from `SECRET_KEY`)  
   - `EMAIL_ENCRYPTION_KEY` (base64url-encoded 32-byte key for email encryption)  
-  - Optional: `EMAIL_HASH_SECRET` (HMAC key for email hashes; falls back to `SECRET_KEY`)  
   - Recommended: use SQLCipher/volume encryption or a managed database for at-rest protection of the SQLite file.
 
 ---
