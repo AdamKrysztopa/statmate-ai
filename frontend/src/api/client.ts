@@ -13,6 +13,7 @@ export type AnalysisStatus = {
   status: 'pending' | 'running' | 'completed' | 'failed';
   message?: string;
   log_available?: boolean;
+  execution_trace?: TraceStep[];
 };
 export type TraceStep = { step: string; detail?: string; data?: Record<string, unknown>; p_value?: number; timestamp?: string };
 export type PlotInfo = {

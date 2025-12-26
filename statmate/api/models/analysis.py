@@ -52,6 +52,9 @@ class AnalysisStatusResponse(BaseModel):
     progress: float | None = Field(default=None, description='Progress percentage (0-100)', ge=0, le=100)
     message: str | None = Field(default=None, description='Status message')
     log_available: bool | None = Field(default=None, description='Whether a live execution log is available')
+    execution_trace: list[dict[str, Any]] | None = Field(
+        default=None, description='Live step-by-step trace (may be partial while running)'
+    )
 
 
 class AnalysisResultResponse(BaseModel):

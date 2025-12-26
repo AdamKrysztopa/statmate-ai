@@ -168,17 +168,17 @@ node-install: ## Install local Node.js (no sudo) to ~/.local
 frontend-install: ## Install frontend deps (npm)
 	@echo '$(GREEN)Installing frontend dependencies...$(RESET)'
 	@command -v npm >/dev/null 2>&1 || { echo '$(YELLOW)npm not found, installing local Node...$(RESET)'; $(MAKE) node-install; }
-	@cd statmate/frontend && PATH=$(NODE_BIN):$$PATH npm install
+	@cd frontend && PATH=$(NODE_BIN):$$PATH npm install
 	@echo '$(GREEN)✓ Frontend deps ready$(RESET)'
 
 frontend-dev: ## Run React dev server (Vite on :3000)
-	@cd statmate/frontend && PATH=$(NODE_BIN):$$PATH npm run dev -- --host --port 3000
+	@cd frontend && PATH=$(NODE_BIN):$$PATH npm run dev -- --host --port 3000
 
 frontend-build: ## Build production assets
-	@cd statmate/frontend && PATH=$(NODE_BIN):$$PATH npm run build
+	@cd frontend && PATH=$(NODE_BIN):$$PATH npm run build
 
 frontend-preview: ## Preview production build locally
-	@cd statmate/frontend && PATH=$(NODE_BIN):$$PATH npm run preview -- --host --port 3000
+	@cd frontend && PATH=$(NODE_BIN):$$PATH npm run preview -- --host --port 3000
 
 # =============================================================================
 # Utilities

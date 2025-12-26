@@ -51,6 +51,8 @@ function App() {
   const [logContent, setLogContent] = useState<string>('');
   const [loadingLog, setLoadingLog] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerDismissed, setViewerDismissed] = useState(false);
+  const [lastTraceUpdate, setLastTraceUpdate] = useState<string | null>(null);
 
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [modelName, setModelName] = useState('gpt-4o');
@@ -115,6 +117,8 @@ function App() {
     setAnalysisStatus(undefined);
     setAnalysisId('');
     setLogContent('');
+    setViewerOpen(false);
+    setViewerDismissed(false);
     if (!id) return;
     try {
       const p = await api.previewDataset(id);
@@ -160,7 +164,9 @@ function App() {
       setAnalysisStatus({ id, status: 'pending' });
       setAnalysisResults(undefined);
       setLogContent('');
+      setViewerDismissed(false);
       setViewerOpen(true);
+      pollLog(true);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -174,7 +180,6 @@ function App() {
       if (status.status === 'completed') {
         const results = await api.analysisResults(analysisId);
         setAnalysisResults(results);
-        setViewerOpen(true);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -234,15 +239,18 @@ function App() {
       pollLog(true);
     };
     tick();
-    const interval = setInterval(tick, 3000);
+    const interval = setInterval(tick, 2000);
     return () => clearInterval(interval);
   }, [analysisId]);
 
-  const trace: TraceStep[] = useMemo(() => {
-    if (!analysisResults) return [];
-    if (analysisResults.execution_trace?.length) return analysisResults.execution_trace;
-    if (analysisResults.results_detail?.execution_trace?.length) return analysisResults.results_detail.execution_trace;
-    if (analysisResults.results_detail?.messages?.length) {
+  useEffect(() => {
+    setLastTraceUpdate(null);
+  }, [analysisId]);
+
+  const resultTrace: TraceStep[] = useMemo(() => {
+    if (analysisResults?.execution_trace?.length) return analysisResults.execution_trace;
+    if (analysisResults?.results_detail?.execution_trace?.length) return analysisResults.results_detail.execution_trace;
+    if (analysisResults?.results_detail?.messages?.length) {
       return analysisResults.results_detail.messages.map((msg, idx) => ({
         step: `Message ${idx + 1}`,
         detail: msg,
@@ -252,8 +260,7 @@ function App() {
     return [];
   }, [analysisResults]);
 
-  const liveTrace: TraceStep[] = useMemo(() => {
-    if (trace.length) return trace;
+  const logTrace: TraceStep[] = useMemo(() => {
     if (!logContent) return [];
     const lines = logContent.split('\n').filter((line) => line.includes('Trace step:'));
     return lines.map((line, idx) => {
@@ -263,7 +270,33 @@ function App() {
       const detail = detailPart?.trim() || '';
       return { step, detail, data: {} };
     });
-  }, [trace, logContent]);
+  }, [logContent]);
+
+  const statusTrace = analysisStatus?.execution_trace || [];
+
+  const liveTrace: TraceStep[] = useMemo(() => {
+    const merged: TraceStep[] = [];
+    const seen = new Set<string>();
+
+    const addSteps = (steps: TraceStep[]) => {
+      steps.forEach((item, idx) => {
+        const key = `${item.step}-${item.detail}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push({
+          ...item,
+          step: item.step || `Step ${merged.length + 1}`,
+          detail: item.detail || (item.data ? JSON.stringify(item.data) : ''),
+        });
+      });
+    };
+
+    addSteps(statusTrace);
+    addSteps(logTrace);
+    addSteps(resultTrace);
+
+    return merged;
+  }, [statusTrace, logTrace, resultTrace]);
 
   const plots = useMemo(() => {
     if (!analysisResults) return [];
@@ -271,6 +304,22 @@ function App() {
   }, [analysisResults]);
 
   const agentMessages = useMemo(() => analysisResults?.results_detail?.messages || [], [analysisResults]);
+
+  useEffect(() => {
+    if (liveTrace.length) {
+      setLastTraceUpdate(new Date().toLocaleTimeString());
+    }
+  }, [liveTrace]);
+
+  const openViewer = () => {
+    setViewerDismissed(false);
+    setViewerOpen(true);
+  };
+
+  const closeViewer = () => {
+    setViewerDismissed(true);
+    setViewerOpen(false);
+  };
 
   if (!token) {
     return (
@@ -525,7 +574,7 @@ function App() {
             </button>
             <span className="badge">{analysisStatus ? `Status: ${analysisStatus.status}` : 'Waiting to start'}</span>
             {analysisResults && (
-              <button className="button" type="button" onClick={() => setViewerOpen(true)}>
+              <button className="button" type="button" onClick={openViewer}>
                 Open detailed view
               </button>
             )}
@@ -545,7 +594,7 @@ function App() {
             <p>{analysisResults.summary || analysisResults.results_detail?.summary}</p>
           )}
           <div className="pill-row" style={{ marginTop: 8 }}>
-            <button className="button primary" type="button" onClick={() => setViewerOpen(true)}>
+            <button className="button primary" type="button" onClick={openViewer}>
               Open detailed view
             </button>
           </div>
@@ -554,7 +603,7 @@ function App() {
 
       {viewerOpen && (
         <div className="viewer-overlay">
-          <div className="viewer-backdrop" onClick={() => setViewerOpen(false)} />
+          <div className="viewer-backdrop" onClick={closeViewer} />
           <div className="viewer-panel">
             <div className="viewer-header">
               <div>
@@ -570,7 +619,7 @@ function App() {
                 <button className="button" onClick={() => { refreshStatus(); pollLog(); }}>
                   Refresh now
                 </button>
-                <button className="button" onClick={() => setViewerOpen(false)}>Close</button>
+                <button className="button" onClick={closeViewer}>Close</button>
               </div>
             </div>
 
@@ -583,15 +632,23 @@ function App() {
               <div className="section-title" style={{ marginTop: 0 }}>
                 Live agent steps
               </div>
+              <div className="pill-row" style={{ marginBottom: 8 }}>
+                <span className="badge">Live trace</span>
+                {analysisStatus?.status === 'running' && <span className="badge">Status: running</span>}
+                {lastTraceUpdate && <span className="badge">Updated: {lastTraceUpdate}</span>}
+              </div>
               {liveTrace.length > 0 ? (
                 <div className="trace-grid">
                   {liveTrace.map((item, idx) => (
                     <div className="trace-card" key={`${item.step}-${idx}`}>
                       <div className="trace-header">
                         <span className="badge">{item.step || `Step ${idx + 1}`}</span>
-                        {typeof item.p_value === 'number' && (
-                          <span className="tag">p = {item.p_value.toFixed(4)}</span>
-                        )}
+                        <div className="pill-row" style={{ gap: 6 }}>
+                          {item.timestamp && <span className="tag">{new Date(item.timestamp).toLocaleTimeString()}</span>}
+                          {typeof item.p_value === 'number' && (
+                            <span className="tag">p = {item.p_value.toFixed(4)}</span>
+                          )}
+                        </div>
                       </div>
                       {item.detail && <p className="muted">{item.detail}</p>}
                       {item.data && (
@@ -621,6 +678,7 @@ function App() {
                 </button>
                 {loadingLog && <span className="badge">Loading…</span>}
                 {analysisStatus?.log_available && <span className="badge">Log streaming</span>}
+                <span className="badge">Auto refresh every 2s</span>
               </div>
               <pre className="log-viewer">{logContent || 'Collecting log output…'}</pre>
             </div>

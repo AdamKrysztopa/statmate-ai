@@ -90,7 +90,6 @@ frontend/out/
 frontend/build/
 frontend/dist/
 frontend/next-env.d.ts
-statmate/frontend/node_modules/
-statmate/frontend/dist/
-statmate/frontend/.vite/
-statmate/frontend/.eslintcache
+frontend/node_modules/
+frontend/.vite/
+frontend/.eslintcache

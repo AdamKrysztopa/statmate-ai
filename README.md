@@ -530,10 +530,10 @@ make frontend-install  # Install React deps (requires Node 18+)
 pip install -e ".[dev]"
 ```
 
-### React Frontend (statmate/frontend)
+### React Frontend (frontend/)
 
 - Minimal stack: Vite + React + TypeScript + CSS variables (dark/light).
-- Configure API target via `statmate/frontend/.env` (`VITE_API_BASE=http://localhost:8000/api/v1` by default).
+- Configure API target via `frontend/.env` (`VITE_API_BASE=http://localhost:8000/api/v1` by default).
 - Run `make frontend-dev` to start the client on port 3000, pointing at the FastAPI backend.
 - Build static assets with `make frontend-build`; preview with `make frontend-preview`.
 

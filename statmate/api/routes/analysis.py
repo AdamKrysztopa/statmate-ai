@@ -85,6 +85,26 @@ def run_analysis_background(analysis_id: str) -> None:
         db.close()
 
 
+def _parse_trace_from_log(log_content: str) -> list[dict[str, str]]:
+    """Extract lightweight execution trace entries from the log."""
+    trace: list[dict[str, str]] = []
+    for line in log_content.splitlines():
+        if 'Trace step:' not in line:
+            continue
+        try:
+            _, payload = line.split('Trace step:', 1)
+            step_part, detail_part = payload.split('|', 1) if '|' in payload else (payload, '')
+            trace.append(
+                {
+                    'step': step_part.strip() or f'Step {len(trace) + 1}',
+                    'detail': detail_part.strip(),
+                }
+            )
+        except ValueError:
+            continue
+    return trace
+
+
 @router.get('/{analysis_id}', response_model=AnalysisStatusResponse)
 async def get_analysis_status(
     analysis_id: str,
@@ -110,11 +130,18 @@ async def get_analysis_status(
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Analysis not found')
 
+    execution_trace: list[dict[str, str]] | None = None
+    if analysis.log_path:
+        log_content = AnalysisService.get_analysis_log(db, analysis_id, user_id=current_user.id if current_user else None)
+        if log_content:
+            execution_trace = _parse_trace_from_log(log_content)
+
     return AnalysisStatusResponse(
         id=analysis.id,
         status=analysis.status.value,
         message=analysis.summary or analysis.error_message,
         log_available=bool(analysis.log_path),
+        execution_trace=execution_trace,
     )
 
 
