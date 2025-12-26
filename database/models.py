@@ -55,7 +55,10 @@ class User(Base):
     __tablename__ = 'users'
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
+    # Encrypted email for display and notifications
     email = Column(String(255), nullable=False, unique=True, index=True)
+    # Deterministic hash of email for lookups without storing plaintext
+    email_hash = Column(String(64), nullable=False, unique=True, index=True)
     hashed_password = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     is_active = Column(Integer, default=1, nullable=False)

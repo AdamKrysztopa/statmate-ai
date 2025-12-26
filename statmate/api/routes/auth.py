@@ -10,7 +10,15 @@ from sqlalchemy.orm import Session
 from database.models import User
 from database.session import get_db
 from statmate.api.models.user import TokenResponse, UserCreate, UserLogin, UserResponse
-from statmate.api.security import create_access_token, get_password_hash, verify_password
+from statmate.api.security import (
+    create_access_token,
+    decrypt_email,
+    encrypt_email,
+    get_password_hash,
+    hash_email,
+    normalize_email,
+    verify_password,
+)
 from statmate.api.dependencies import get_current_user_optional
 from config.settings import settings
 
@@ -23,7 +31,10 @@ router = APIRouter(prefix='/auth', tags=['auth'])
 def register_user(payload: UserCreate, db: Session = Depends(get_db)) -> UserResponse:
     """Register a new user account."""
     try:
-        existing = db.query(User).filter(User.email == payload.email.lower()).first()
+        normalized_email = normalize_email(payload.email)
+        email_hash = hash_email(normalized_email)
+
+        existing = db.query(User).filter(User.email_hash == email_hash).first()
         if existing:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already registered')
 
@@ -34,11 +45,15 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)) -> UserRes
             detail = str(exc) or 'Invalid password'
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
 
-        user = User(email=payload.email.lower(), hashed_password=hashed)
+        user = User(
+            email=encrypt_email(normalized_email),
+            email_hash=email_hash,
+            hashed_password=hashed,
+        )
         db.add(user)
         db.commit()
         db.refresh(user)
-        return UserResponse.model_validate(user)
+        return UserResponse(id=user.id, email=normalized_email, created_at=user.created_at)
     except HTTPException:
         raise
     except Exception as exc:
@@ -52,7 +67,8 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)) -> UserRes
 @router.post('/login', response_model=TokenResponse)
 def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenResponse:
     """Login and obtain an access token."""
-    user = db.query(User).filter(User.email == payload.email.lower()).first()
+    normalized_email = normalize_email(payload.email)
+    user = db.query(User).filter(User.email_hash == hash_email(normalized_email)).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
     access_token = create_access_token({'sub': user.id}, expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
@@ -62,7 +78,8 @@ def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenResponse:
 @router.post('/token', response_model=TokenResponse)
 def token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)) -> TokenResponse:
     """OAuth2-compatible token endpoint."""
-    user = db.query(User).filter(User.email == form_data.username.lower()).first()
+    normalized_email = normalize_email(form_data.username)
+    user = db.query(User).filter(User.email_hash == hash_email(normalized_email)).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
     access_token = create_access_token({'sub': user.id}, expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
@@ -74,4 +91,4 @@ def read_current_user(current_user: User = Depends(get_current_user_optional)) -
     """Return current user info."""
     if current_user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Not authenticated')
-    return UserResponse.model_validate(current_user)
+    return UserResponse(id=current_user.id, email=decrypt_email(current_user.email), created_at=current_user.created_at)

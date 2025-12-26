@@ -4,11 +4,13 @@ This module uses Pydantic Settings for environment-based configuration.
 Settings are loaded from environment variables or .env file.
 """
 
+import base64
+import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -112,9 +114,15 @@ class Settings(BaseSettings):
     OLLAMA_DEFAULT_MODEL: str = Field(default='deepseek-r1:8b')  # Reasoning model by default
 
     # Security
-    SECRET_KEY: str = Field(default='your-secret-key-change-in-production')
+    SECRET_KEY: str = Field(default='', description='Required: JWT signing key')
+    PASSWORD_PEPPER: str = Field(default='', description='Required: server-side pepper for passwords')
+    EMAIL_HASH_SECRET: str = Field(default='', description='Optional: overrides SECRET_KEY for email hashing')
+    EMAIL_ENCRYPTION_KEY: str = Field(
+        default='',
+        description='Required: base64url-encoded 32-byte key used to encrypt stored emails',
+    )
     CORS_ORIGINS: list[str] = Field(default=['http://localhost:8501', 'http://localhost:3000'])
-    AUTH_REQUIRED: bool = Field(default=False, description='Require authentication for API access')
+    AUTH_REQUIRED: bool = Field(default=True, description='Require authentication for API access')
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60, description='Access token lifetime in minutes')
     TOKEN_ALGORITHM: str = Field(default='HS256', description='JWT signing algorithm')
 
@@ -143,6 +151,35 @@ class Settings(BaseSettings):
         for directory in [self.DATA_DIR, self.UPLOAD_DIR, self.RESULTS_DIR, self.LOGS_DIR]:
             if directory:
                 directory.mkdir(parents=True, exist_ok=True)
+
+    @model_validator(mode='after')
+    def validate_secrets(self) -> 'Settings':
+        """Fail fast when security-critical secrets are not configured."""
+        missing: list[str] = []
+
+        is_dev = self.ENVIRONMENT.lower() == 'development'
+
+        if not self.SECRET_KEY:
+            if is_dev:
+                self.SECRET_KEY = secrets.token_hex(32)
+            else:
+                missing.append('SECRET_KEY')
+
+        if not self.PASSWORD_PEPPER:
+            if is_dev:
+                self.PASSWORD_PEPPER = secrets.token_hex(32)
+            else:
+                missing.append('PASSWORD_PEPPER')
+
+        if not self.EMAIL_ENCRYPTION_KEY:
+            if is_dev:
+                self.EMAIL_ENCRYPTION_KEY = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
+            else:
+                missing.append('EMAIL_ENCRYPTION_KEY (base64url-encoded 32-byte key)')
+
+        if missing:
+            raise ValueError(f'The following secrets must be set: {", ".join(missing)}')
+        return self
 
     @property
     def database_path(self) -> Path | None:
