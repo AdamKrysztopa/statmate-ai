@@ -1,4 +1,4 @@
-.PHONY: help install dev prod api ui db-init db-seed clean test lint format kill list-models
+.PHONY: help install dev prod api ui db-init db-seed clean test lint format kill list-models frontend-install frontend-dev frontend-build frontend-preview
 
 # Colors for terminal output
 GREEN  := \033[0;32m
@@ -140,6 +140,24 @@ format: ## Format code (ruff)
 type-check: ## Run type checker (mypy)
 	@echo '$(GREEN)Running type checker...$(RESET)'
 	uv run mypy statmate
+
+# =============================================================================
+# Frontend (React + Vite)
+# =============================================================================
+
+frontend-install: ## Install frontend deps (npm)
+	@echo '$(GREEN)Installing frontend dependencies...$(RESET)'
+	cd statmate/frontend && npm install
+	@echo '$(GREEN)✓ Frontend deps ready$(RESET)'
+
+frontend-dev: ## Run React dev server (Vite on :3000)
+	@cd statmate/frontend && npm run dev -- --host --port 3000
+
+frontend-build: ## Build production assets
+	@cd statmate/frontend && npm run build
+
+frontend-preview: ## Preview production build locally
+	@cd statmate/frontend && npm run preview -- --host --port 3000
 
 # =============================================================================
 # Utilities

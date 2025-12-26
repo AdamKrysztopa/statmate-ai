@@ -498,6 +498,7 @@ flowchart TD
 make dev              # Run in DEV mode
 make ui               # Run Streamlit UI
 make api              # Run FastAPI backend
+make frontend-dev     # Run React frontend (Vite on :3000)
 
 # Database
 make db-init          # Initialize database
@@ -509,6 +510,8 @@ make test             # Run tests
 make lint             # Check code quality
 make format           # Format code
 make type-check       # Type checking
+make frontend-build   # Build frontend assets
+make frontend-preview # Preview production build
 
 # Utilities
 make clean            # Clean temp files
@@ -521,10 +524,18 @@ make help             # Show all commands
 ```bash
 # Install with dev dependencies
 make install-dev
+make frontend-install  # Install React deps (requires Node 18+)
 
 # Or manually
 pip install -e ".[dev]"
 ```
+
+### React Frontend (statmate/frontend)
+
+- Minimal stack: Vite + React + TypeScript + CSS variables (dark/light).
+- Configure API target via `statmate/frontend/.env` (`VITE_API_BASE=http://localhost:8000/api/v1` by default).
+- Run `make frontend-dev` to start the client on port 3000, pointing at the FastAPI backend.
+- Build static assets with `make frontend-build`; preview with `make frontend-preview`.
 
 ### Contributing
 
