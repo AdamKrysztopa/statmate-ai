@@ -49,6 +49,26 @@ def generate_uuid() -> str:
     return str(uuid.uuid4())
 
 
+class User(Base):
+    """User accounts for authentication and ownership tracking."""
+
+    __tablename__ = 'users'
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    is_active = Column(Integer, default=1, nullable=False)
+
+    datasets = relationship('Dataset', back_populates='owner')
+    analyses = relationship('Analysis', back_populates='owner')
+    scheduled_tasks = relationship('ScheduledTask', back_populates='owner')
+
+    def __repr__(self) -> str:
+        """String representation of User."""
+        return f'<User(id={self.id}, email={self.email})>'
+
+
 class Dataset(Base):
     """Dataset model representing uploaded data files.
 
@@ -78,8 +98,10 @@ class Dataset(Base):
     description = Column(Text, nullable=True)
 
     # Relationships
+    user_id = Column(String(36), ForeignKey('users.id'), nullable=True, index=True)
     analyses = relationship('Analysis', back_populates='dataset', cascade='all, delete-orphan')
     scheduled_tasks = relationship('ScheduledTask', back_populates='dataset', cascade='all, delete-orphan')
+    owner = relationship('User', back_populates='datasets')
 
     def __repr__(self) -> str:
         """String representation of Dataset."""
@@ -97,6 +119,7 @@ class Dataset(Base):
             'column_names': self.column_names,
             'data_types': self.data_types,
             'description': self.description,
+            'user_id': self.user_id,
         }
 
 
@@ -124,6 +147,7 @@ class Analysis(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     dataset_id = Column(String(36), ForeignKey('datasets.id'), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey('users.id'), nullable=True, index=True)
     status = Column(Enum(AnalysisStatus), default=AnalysisStatus.PENDING, nullable=False, index=True)
     selected_columns = Column(JSON, nullable=True)  # ["col1", "col3"]
     model_name = Column(String(100), nullable=True)  # AI model used (e.g., 'gpt-4o', 'deepseek-r1:8b')
@@ -141,6 +165,7 @@ class Analysis(Base):
     dataset = relationship('Dataset', back_populates='analyses')
     scheduled_task_id = Column(String(36), ForeignKey('scheduled_tasks.id'), nullable=True)
     scheduled_task = relationship('ScheduledTask', back_populates='analyses')
+    owner = relationship('User', back_populates='analyses')
 
     def __repr__(self) -> str:
         """String representation of Analysis."""
@@ -164,6 +189,7 @@ class Analysis(Base):
             'summary': self.summary,
             'probabilities': self.probabilities,
             'scheduled_task_id': self.scheduled_task_id,
+            'user_id': self.user_id,
         }
 
 
@@ -194,6 +220,7 @@ class ScheduledTask(Base):
     name = Column(String(255), nullable=False)
     task_type = Column(Enum(TaskType), nullable=False)
     dataset_id = Column(String(36), ForeignKey('datasets.id'), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey('users.id'), nullable=True, index=True)
     selected_columns = Column(JSON, nullable=True)
     configuration = Column(JSON, nullable=True)
     schedule = Column(String(255), nullable=False)  # Cron or ISO datetime
@@ -207,6 +234,7 @@ class ScheduledTask(Base):
     # Relationships
     dataset = relationship('Dataset', back_populates='scheduled_tasks')
     analyses = relationship('Analysis', back_populates='scheduled_task')
+    owner = relationship('User', back_populates='scheduled_tasks')
 
     def __repr__(self) -> str:
         """String representation of ScheduledTask."""
@@ -228,4 +256,5 @@ class ScheduledTask(Base):
             'run_count': self.run_count,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'user_id': self.user_id,
         }

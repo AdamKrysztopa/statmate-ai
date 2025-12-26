@@ -4,6 +4,7 @@ This is the main application entry point that configures and runs the API server
 """
 
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -12,8 +13,9 @@ from fastapi.responses import JSONResponse
 
 from config.settings import settings
 from database.session import init_db
-from statmate.api.routes import analysis, datasets, models, results, tasks
+from statmate.api.routes import analysis, auth, datasets, models, results, tasks
 from statmate.api.scheduler import init_scheduler, shutdown_scheduler
+from statmate.api.security import decode_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +136,36 @@ app.include_router(analysis.router, prefix=settings.API_PREFIX)
 app.include_router(tasks.router, prefix=settings.API_PREFIX)
 app.include_router(results.router, prefix=settings.API_PREFIX)
 app.include_router(models.router, prefix=settings.API_PREFIX)
+app.include_router(auth.router, prefix=settings.API_PREFIX)
+
+
+# Request logging middleware with user context when available
+@app.middleware('http')
+async def log_requests(request, call_next):
+    start_time = time.time()
+    user_id = 'anonymous'
+
+    auth_header = request.headers.get('authorization')
+    if auth_header and auth_header.lower().startswith('bearer '):
+        token = auth_header.split(' ', 1)[1]
+        try:
+            payload = decode_access_token(token)
+            user_id = payload.get('sub', user_id)
+        except Exception:
+            # Do not block request on logging failure
+            pass
+
+    response = await call_next(request)
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        'HTTP %s %s %s user=%s duration=%.1fms',
+        request.method,
+        request.url.path,
+        response.status_code,
+        user_id,
+        duration_ms,
+    )
+    return response
 
 
 # Global exception handler

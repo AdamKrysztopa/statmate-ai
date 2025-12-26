@@ -42,6 +42,7 @@ def call_test_agent(
     test_agent: Agent,
     state: WorkflowState,
     alpha: float | None = None,
+    probability_key: str | None = None,
 ) -> WorkflowState:
     """Call a statistical agent and append its result.
 
@@ -49,6 +50,7 @@ def call_test_agent(
         test_agent: The agent to call.
         state: Current workflow state.
         alpha: Significance level. If None, uses default from config.
+        probability_key: Explicit key under which to store the p-value.
 
     Returns:
         Updated workflow state.
@@ -67,11 +69,33 @@ def call_test_agent(
         )
         result = run_sync_agent(test_agent, user_prompt='', deps=deps)
 
+        # Always compute the underlying statistical test to guarantee tool execution,
+        # even if the LLM skipped the run_test tool.
+        fallback_func = getattr(test_agent, '_statmate_test_function', None)
+        if callable(fallback_func):
+            if isinstance(deps.data, pd.Series):
+                primary = deps.data.to_numpy()
+            else:
+                primary = deps.data
+
+            if isinstance(deps.data_secondary, pd.Series):
+                secondary = deps.data_secondary.to_numpy()
+            else:
+                secondary = deps.data_secondary
+
+            computed = (
+                fallback_func(primary, secondary, **(deps.test_params or {}))
+                if secondary is not None
+                else fallback_func(primary, **(deps.test_params or {}))
+            )
+            result.statistical_test_result = computed
+
         state.add_result(AIMessage(content=str(result)))
 
         p_val = result.statistical_test_result.p_value
         p_float = float(p_val) if isinstance(p_val, float) else float(np.mean(p_val))
-        state.add_probability(test_agent.name, p_float)
+        prob_key = probability_key or test_agent.name
+        state.add_probability(prob_key, p_float)
 
         return state
     except Exception as e:
@@ -210,19 +234,19 @@ def two_independent_node(
         model = create_model(model_name=state.model_name, provider=state.provider)
         settings = create_model_settings(model_name=state.model_name)
         agent1 = shapiro_agent_func(model=model, model_settings=settings)
-        state = call_test_agent(agent1, state)
-        p1 = state.probabilities.pop('shapiro_wilk_agent', 0)
+        state = call_test_agent(agent1, state, probability_key='shapiro_group1')
+        p1 = state.get_probability('shapiro_group1', 0)
 
         # Test group 2
         if secondary_df is not None:
             state.df = secondary_df
             agent2 = shapiro_agent_func(model=model, model_settings=settings)
-            state = call_test_agent(agent2, state)
+            state = call_test_agent(agent2, state, probability_key='shapiro_group2')
         else:
             logger.error('secondary_df is None, cannot test group 2')
             raise ValueError('secondary_df is required for two independent groups test')
 
-        p2 = state.probabilities.pop('shapiro_wilk_agent', 0)
+        p2 = state.get_probability('shapiro_group2', 0)
 
         # Restore original data
         state.df = orig_df
@@ -234,7 +258,7 @@ def two_independent_node(
 
         # Levene's test for equal variances
         levene_agent_inst = levene_agent_func(model=model, model_settings=settings)
-        state = call_test_agent(levene_agent_inst, state)
+        state = call_test_agent(levene_agent_inst, state, probability_key='levene')
 
         return state
     except Exception as e:
@@ -270,10 +294,10 @@ def nonparametric_node(
         settings = create_model_settings(model_name=state.model_name)
 
         welch_agent = welch_agent_func(model=model, model_settings=settings)
-        state = call_test_agent(welch_agent, state)
+        state = call_test_agent(welch_agent, state, probability_key='welch_t_test')
 
         mann_agent = mann_whitney_agent_func(model=model, model_settings=settings)
-        state = call_test_agent(mann_agent, state)
+        state = call_test_agent(mann_agent, state, probability_key='mann_whitney_u')
 
         return state
     except Exception as e:

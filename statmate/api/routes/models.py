@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from config.settings import settings
@@ -12,6 +12,8 @@ from statmate.api.models.model_config import (
     ModelInfoResponse,
 )
 from statmate.workflow.model_factory import get_default_factory, initialize_default_factory
+from statmate.api.dependencies import get_current_user_optional
+from database.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +164,10 @@ async def get_environment() -> EnvironmentResponse:
 
 
 @router.post('/credentials', response_model=CredentialsResponse)
-async def set_credentials(credentials: CredentialsRequest) -> CredentialsResponse:
+async def set_credentials(
+    credentials: CredentialsRequest,
+    current_user: User | None = Depends(get_current_user_optional),
+) -> CredentialsResponse:
     """Set user credentials for PROD mode.
 
     Args:
@@ -180,6 +185,9 @@ async def set_credentials(credentials: CredentialsRequest) -> CredentialsRespons
             status_code=403,
             detail='Credential management only available in production mode',
         )
+
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=401, detail='Authentication required')
 
     try:
         # Update settings with user-provided credentials

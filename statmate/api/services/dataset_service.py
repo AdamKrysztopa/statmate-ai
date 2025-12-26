@@ -22,6 +22,7 @@ class DatasetService:
         file: BinaryIO,
         original_filename: str,
         description: str | None = None,
+        user_id: str | None = None,
     ) -> Dataset:
         """Create a new dataset from uploaded file.
 
@@ -30,6 +31,7 @@ class DatasetService:
             file: Uploaded file object
             original_filename: Original filename
             description: Optional description
+            user_id: Optional owner user ID
 
         Returns:
             Created Dataset model
@@ -69,6 +71,7 @@ class DatasetService:
             column_names=column_names,
             data_types=data_types,
             description=description,
+            user_id=user_id,
         )
 
         db.add(dataset)
@@ -79,17 +82,21 @@ class DatasetService:
         return dataset
 
     @staticmethod
-    def get_dataset(db: Session, dataset_id: str) -> Dataset | None:
+    def get_dataset(db: Session, dataset_id: str, *, user_id: str | None = None) -> Dataset | None:
         """Get a dataset by ID.
 
         Args:
             db: Database session
             dataset_id: Dataset UUID
+            user_id: Optional owner filter
 
         Returns:
             Dataset model or None if not found
         """
-        return db.query(Dataset).filter(Dataset.id == dataset_id).first()
+        query = db.query(Dataset).filter(Dataset.id == dataset_id)
+        if user_id:
+            query = query.filter(Dataset.user_id == user_id)
+        return query.first()
 
     @staticmethod
     def list_datasets(db: Session, skip: int = 0, limit: int = 100) -> list[Dataset]:
@@ -106,17 +113,30 @@ class DatasetService:
         return db.query(Dataset).order_by(Dataset.upload_timestamp.desc()).offset(skip).limit(limit).all()
 
     @staticmethod
-    def delete_dataset(db: Session, dataset_id: str) -> bool:
+    def list_user_datasets(db: Session, user_id: str, skip: int = 0, limit: int = 100) -> list[Dataset]:
+        """List datasets for a specific user."""
+        return (
+            db.query(Dataset)
+            .filter(Dataset.user_id == user_id)
+            .order_by(Dataset.upload_timestamp.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+    @staticmethod
+    def delete_dataset(db: Session, dataset_id: str, *, user_id: str | None = None) -> bool:
         """Delete a dataset and its file.
 
         Args:
             db: Database session
             dataset_id: Dataset UUID
+            user_id: Optional owner filter
 
         Returns:
             True if deleted, False if not found
         """
-        dataset = DatasetService.get_dataset(db, dataset_id)
+        dataset = DatasetService.get_dataset(db, dataset_id, user_id=user_id)
         if not dataset:
             return False
 
@@ -134,18 +154,21 @@ class DatasetService:
         return True
 
     @staticmethod
-    def get_dataset_preview(db: Session, dataset_id: str, num_rows: int = 10) -> dict | None:
+    def get_dataset_preview(
+        db: Session, dataset_id: str, num_rows: int = 10, *, user_id: str | None = None
+    ) -> dict | None:
         """Get a preview of dataset contents.
 
         Args:
             db: Database session
             dataset_id: Dataset UUID
             num_rows: Number of rows to preview
+            user_id: Optional owner filter
 
         Returns:
             Dictionary with preview data or None if not found
         """
-        dataset = DatasetService.get_dataset(db, dataset_id)
+        dataset = DatasetService.get_dataset(db, dataset_id, user_id=user_id)
         if not dataset:
             return None
 
@@ -173,17 +196,18 @@ class DatasetService:
         }
 
     @staticmethod
-    def load_dataset_dataframe(db: Session, dataset_id: str) -> pd.DataFrame | None:
+    def load_dataset_dataframe(db: Session, dataset_id: str, *, user_id: str | None = None) -> pd.DataFrame | None:
         """Load dataset as DataFrame for analysis.
 
         Args:
             db: Database session
             dataset_id: Dataset UUID
+            user_id: Optional owner filter
 
         Returns:
             DataFrame or None if not found
         """
-        dataset = DatasetService.get_dataset(db, dataset_id)
+        dataset = DatasetService.get_dataset(db, dataset_id, user_id=user_id)
         if not dataset:
             return None
 

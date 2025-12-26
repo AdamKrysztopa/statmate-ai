@@ -23,6 +23,7 @@ class DatasetResponse(BaseModel):
     column_names: list[str] | None = Field(description='List of column names')
     data_types: dict[str, str] | None = Field(description='Data types for each column')
     description: str | None = Field(description='User-provided description')
+    user_id: str | None = Field(description='Owner user ID')
 
     class Config:
         """Pydantic config."""

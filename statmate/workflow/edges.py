@@ -100,7 +100,7 @@ def decide_two_independent(
     try:
         p_shapiro1 = state.get_probability('shapiro_group1', 0)
         p_shapiro2 = state.get_probability('shapiro_group2', 0)
-        p_levene = state.get_probability('levene_agent', 0)
+        p_levene = state.get_probability('levene', 0)
 
         # All assumptions met: both groups normal and equal variances
         if p_shapiro1 > alpha and p_shapiro2 > alpha and p_levene > alpha:

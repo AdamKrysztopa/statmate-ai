@@ -30,6 +30,7 @@ class AnalysisService:
         configuration: dict[str, Any] | None = None,
         model_name: str | None = None,
         provider: str | None = None,
+        user_id: str | None = None,
     ) -> Analysis:
         """Create a new analysis record.
 
@@ -44,8 +45,15 @@ class AnalysisService:
         Returns:
             The created Analysis model.
         """
+        # Ownership check when applicable
+        from config.settings import settings
+        ds = DatasetService.get_dataset(db, dataset_id, user_id=user_id if settings.AUTH_REQUIRED else None)
+        if settings.AUTH_REQUIRED and not ds:
+            raise ValueError('Dataset not found or not owned by user')
+
         analysis = Analysis(
             dataset_id=dataset_id,
+            user_id=user_id,
             status=AnalysisStatus.PENDING,
             selected_columns=selected_columns,
             configuration=configuration or {},
@@ -61,7 +69,7 @@ class AnalysisService:
         return analysis
 
     @staticmethod
-    def get_analysis(db: Session, analysis_id: str) -> Analysis | None:
+    def get_analysis(db: Session, analysis_id: str, *, user_id: str | None = None) -> Analysis | None:
         """Get an analysis by its ID.
 
         Args:
@@ -71,10 +79,13 @@ class AnalysisService:
         Returns:
             The Analysis model or None if not found.
         """
-        return db.query(Analysis).filter(Analysis.id == analysis_id).first()
+        query = db.query(Analysis).filter(Analysis.id == analysis_id)
+        if user_id:
+            query = query.filter(Analysis.user_id == user_id)
+        return query.first()
 
     @staticmethod
-    def list_analyses(db: Session, *, skip: int = 0, limit: int = 100) -> list[Analysis]:
+    def list_analyses(db: Session, *, skip: int = 0, limit: int = 100, user_id: str | None = None) -> list[Analysis]:
         """List all analyses with pagination.
 
         Args:
@@ -85,7 +96,10 @@ class AnalysisService:
         Returns:
             A list of Analysis models.
         """
-        return db.query(Analysis).order_by(Analysis.start_time.desc()).offset(skip).limit(limit).all()
+        query = db.query(Analysis)
+        if user_id:
+            query = query.filter(Analysis.user_id == user_id)
+        return query.order_by(Analysis.start_time.desc()).offset(skip).limit(limit).all()
 
     @staticmethod
     def _update_analysis_status(
@@ -110,7 +124,7 @@ class AnalysisService:
         db.commit()
 
     @staticmethod
-    def run_analysis(db: Session, analysis_id: str) -> Analysis:
+    def run_analysis(db: Session, analysis_id: str, *, user_id: str | None = None) -> Analysis:
         """Execute a statistical analysis using the refactored workflow.
 
         Args:
@@ -126,6 +140,8 @@ class AnalysisService:
         analysis = AnalysisService.get_analysis(db, analysis_id)
         if not analysis:
             raise ValueError(f'Analysis not found: {analysis_id}')
+        if user_id and analysis.user_id and analysis.user_id != user_id:
+            raise ValueError('Analysis does not belong to this user')
 
         analysis.status = AnalysisStatus.RUNNING
         analysis.start_time = datetime.utcnow()
@@ -138,7 +154,7 @@ class AnalysisService:
         workflow_logger.addHandler(log_handler)
 
         try:
-            df = DatasetService.load_dataset_dataframe(db, analysis.dataset_id)
+            df = DatasetService.load_dataset_dataframe(db, analysis.dataset_id, user_id=user_id or analysis.user_id)
             if df is None:
                 raise ValueError(f'Dataset not found for analysis: {analysis.dataset_id}')
 
@@ -204,7 +220,7 @@ class AnalysisService:
         return analysis
 
     @staticmethod
-    def get_analysis_results(db: Session, analysis_id: str) -> dict[str, Any] | None:
+    def get_analysis_results(db: Session, analysis_id: str, *, user_id: str | None = None) -> dict[str, Any] | None:
         """Get detailed analysis results.
 
         Args:
@@ -214,7 +230,7 @@ class AnalysisService:
         Returns:
             A dictionary with the results or None if not found.
         """
-        analysis = AnalysisService.get_analysis(db, analysis_id)
+        analysis = AnalysisService.get_analysis(db, analysis_id, user_id=user_id)
         if not analysis or analysis.status != AnalysisStatus.COMPLETED:
             return None
 
@@ -244,7 +260,7 @@ class AnalysisService:
         }
 
     @staticmethod
-    def get_analysis_log(db: Session, analysis_id: str) -> str | None:
+    def get_analysis_log(db: Session, analysis_id: str, *, user_id: str | None = None) -> str | None:
         """Get the analysis execution log.
 
         Args:
@@ -254,7 +270,7 @@ class AnalysisService:
         Returns:
             The log content as a string or None if not found.
         """
-        analysis = AnalysisService.get_analysis(db, analysis_id)
+        analysis = AnalysisService.get_analysis(db, analysis_id, user_id=user_id)
         if not analysis or not analysis.log_path:
             return None
 

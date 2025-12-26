@@ -100,7 +100,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = normality_of_difference_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state)
+            return call_test_agent(agent, state, probability_key='normality_of_difference')
 
         self.graph.add_node(NodeName.NORMALITY_OF_DIFFERENCE, normality_wrapper)
         self.graph.add_conditional_edges(
@@ -118,7 +118,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = ttest_rel_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state)
+            return call_test_agent(agent, state, probability_key='paired_t_test')
 
         self.graph.add_node(NodeName.PAIRED_T, paired_t_wrapper)
 
@@ -127,7 +127,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = wilcoxon_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state)
+            return call_test_agent(agent, state, probability_key='wilcoxon_signed_rank')
 
         self.graph.add_node(NodeName.WILCOXON, wilcoxon_wrapper)
 
@@ -156,7 +156,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = ttest_ind_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state)
+            return call_test_agent(agent, state, probability_key='independent_t_test')
 
         self.graph.add_node(NodeName.INDEP_T, indep_t_wrapper)
 
@@ -177,7 +177,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = chi2_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state)
+            return call_test_agent(agent, state, probability_key='chi_square')
 
         self.graph.add_node(NodeName.CHI2, chi2_wrapper)
 
@@ -186,7 +186,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = fisher_exact_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state)
+            return call_test_agent(agent, state, probability_key='fisher_exact')
 
         self.graph.add_node(NodeName.FISHER, fisher_wrapper)
 

@@ -126,7 +126,7 @@ def build_stat_test_agent(
     if system_prompt is None:
         system_prompt = build_generic_system_prompt(**prompt_kwargs)
 
-    agent = Agent(
+    agent: Agent[StatTestDeps, AgentResult] = Agent(
         model=model,
         model_settings=model_settings,
         deps_type=StatTestDeps,
@@ -207,6 +207,11 @@ def build_stat_test_agent(
             output_str += 'If they are not, please provide the correct datasets.\n'
 
         return f'Missing Values: {missing_values}, Basic Statistics: {basic_stats}'
+
+    # Expose the raw statistical function so callers can enforce execution even if
+    # the LLM response is malformed or skips tool calls.
+    agent._statmate_test_function = test_function  # type: ignore[attr-defined]
+    agent._statmate_test_name = test_name  # type: ignore[attr-defined]
 
     return agent
 

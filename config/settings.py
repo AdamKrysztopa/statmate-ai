@@ -114,6 +114,9 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = Field(default='your-secret-key-change-in-production')
     CORS_ORIGINS: list[str] = Field(default=['http://localhost:8501', 'http://localhost:3000'])
+    AUTH_REQUIRED: bool = Field(default=False, description='Require authentication for API access')
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60, description='Access token lifetime in minutes')
+    TOKEN_ALGORITHM: str = Field(default='HS256', description='JWT signing algorithm')
 
     # Scheduler
     SCHEDULER_TIMEZONE: str = Field(default='UTC')

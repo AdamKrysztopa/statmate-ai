@@ -57,6 +57,10 @@ dependencies = [
     # HTTP Client
     "httpx>=0.25.0",
 
+    # Security
+    "pyjwt>=2.10.0",
+    "passlib[bcrypt]>=1.7.4",
+
     # Utilities
     "python-dotenv>=1.0.0",
     "joblib>=1.4.2",
@@ -93,6 +97,11 @@ ignore-names = ["X*"]
 
 [tool.pyright]
 typeCheckingMode = "standard"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+]
 
 [tool.ruff.format]
 quote-style = "single"

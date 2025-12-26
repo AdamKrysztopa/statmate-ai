@@ -3,12 +3,15 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from config.settings import settings
 from database.session import get_db
 from statmate.api.models.dataset import (
     DatasetPreviewResponse,
     DatasetResponse,
     DatasetUploadResponse,
 )
+from statmate.api.dependencies import get_current_user_optional
+from database.models import User
 from statmate.api.services.dataset_service import DatasetService
 
 router = APIRouter(prefix='/datasets', tags=['datasets'])
@@ -19,6 +22,7 @@ async def upload_dataset(
     file: UploadFile = File(...),
     description: str | None = None,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> DatasetUploadResponse:
     """Upload a new dataset.
 
@@ -41,12 +45,16 @@ async def upload_dataset(
             detail=f'Unsupported file format. Allowed: {", ".join(allowed_extensions)}',
         )
 
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
     try:
         dataset = DatasetService.create_dataset(
             db=db,
             file=file.file,
             original_filename=file.filename,
             description=description,
+            user_id=current_user.id if current_user else None,
         )
 
         return DatasetUploadResponse(
@@ -66,6 +74,7 @@ async def list_datasets(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> list[DatasetResponse]:
     """List all datasets with pagination.
 
@@ -77,7 +86,13 @@ async def list_datasets(
     Returns:
         List of DatasetResponse objects
     """
-    datasets = DatasetService.list_datasets(db, skip=skip, limit=limit)
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    if current_user:
+        datasets = DatasetService.list_user_datasets(db, current_user.id, skip=skip, limit=limit)
+    else:
+        datasets = DatasetService.list_datasets(db, skip=skip, limit=limit)
     return [DatasetResponse.model_validate(d) for d in datasets]
 
 
@@ -85,6 +100,7 @@ async def list_datasets(
 async def get_dataset(
     dataset_id: str,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> DatasetResponse:
     """Get a specific dataset by ID.
 
@@ -98,7 +114,10 @@ async def get_dataset(
     Raises:
         HTTPException: If dataset not found
     """
-    dataset = DatasetService.get_dataset(db, dataset_id)
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    dataset = DatasetService.get_dataset(db, dataset_id, user_id=current_user.id if current_user else None)
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Dataset not found')
 
@@ -110,6 +129,7 @@ async def preview_dataset(
     dataset_id: str,
     num_rows: int = 10,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> DatasetPreviewResponse:
     """Get a preview of dataset contents.
 
@@ -124,7 +144,12 @@ async def preview_dataset(
     Raises:
         HTTPException: If dataset not found
     """
-    preview = DatasetService.get_dataset_preview(db, dataset_id, num_rows=num_rows)
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    preview = DatasetService.get_dataset_preview(
+        db, dataset_id, num_rows=num_rows, user_id=current_user.id if current_user else None
+    )
     if not preview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Dataset not found')
 
@@ -135,6 +160,7 @@ async def preview_dataset(
 async def delete_dataset(
     dataset_id: str,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> None:
     """Delete a dataset and its associated data.
 
@@ -145,6 +171,9 @@ async def delete_dataset(
     Raises:
         HTTPException: If dataset not found
     """
-    deleted = DatasetService.delete_dataset(db, dataset_id)
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    deleted = DatasetService.delete_dataset(db, dataset_id, user_id=current_user.id if current_user else None)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Dataset not found')
