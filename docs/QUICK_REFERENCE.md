@@ -56,7 +56,7 @@ make dev              # DEV mode
 make prod             # PROD mode
 make api              # API only
 make ui               # UI only
-make kill             # Stop all processes
+make kill             # Stop all processes (lists what it kills)
 
 # Maintenance
 make status           # Check configuration
@@ -145,4 +145,3 @@ cp .env.example .env && nano .env && make dev
 ---
 
 **Quick tip:** Run `make help` anytime to see all available commands!
-

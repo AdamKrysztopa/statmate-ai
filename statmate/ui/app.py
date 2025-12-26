@@ -17,7 +17,68 @@ st.set_page_config(
 API_BASE_URL = 'http://localhost:8000/api/v1'
 
 
-# Helper functions
+def _auth_headers() -> dict[str, str]:
+    """Return Authorization header if user is logged in."""
+    token = st.session_state.get('auth_token')
+    if token:
+        return {'Authorization': f'Bearer {token}'}
+    return {}
+
+
+def api_get(path: str, *, params: dict | None = None, timeout: float = 10.0):
+    """GET request with auth headers attached."""
+    response = httpx.get(f'{API_BASE_URL}{path}', headers=_auth_headers(), params=params, timeout=timeout)
+    response.raise_for_status()
+    return response
+
+
+def api_post(path: str, *, json: dict | None = None, files=None, data=None, timeout: float = 10.0):
+    """POST request with auth headers attached."""
+    response = httpx.post(
+        f'{API_BASE_URL}{path}', headers=_auth_headers(), json=json, files=files, data=data, timeout=timeout
+    )
+    response.raise_for_status()
+    return response
+
+
+def set_auth_state(token: str | None, user: dict | None = None) -> None:
+    """Persist auth token and user info in session state."""
+    st.session_state.auth_token = token
+    st.session_state.current_user = user or {}
+    st.session_state.user_email = (user or {}).get('email')
+
+
+def clear_auth_state() -> None:
+    """Clear stored auth details."""
+    st.session_state.auth_token = None
+    st.session_state.current_user = {}
+    st.session_state.user_email = None
+
+
+# Authentication helpers
+def register_user(email: str, password: str):
+    """Create a new user account."""
+    resp = httpx.post(f'{API_BASE_URL}/auth/register', json={'email': email, 'password': password}, timeout=10.0)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def login_user(email: str, password: str) -> str:
+    """Login and return access token."""
+    resp = httpx.post(f'{API_BASE_URL}/auth/login', json={'email': email, 'password': password}, timeout=10.0)
+    resp.raise_for_status()
+    data = resp.json()
+    return data['access_token']
+
+
+def fetch_current_user() -> dict | None:
+    """Fetch current user using stored token."""
+    if not st.session_state.get('auth_token'):
+        return None
+    resp = api_get('/auth/me', timeout=5.0)
+    return resp.json()
+
+
 def upload_dataset(file, description=None):
     """Upload a dataset to the API."""
     files = {'file': (file.name, file, file.type)}
@@ -25,15 +86,13 @@ def upload_dataset(file, description=None):
     if description:
         data['description'] = description
 
-    response = httpx.post(f'{API_BASE_URL}/datasets/upload', files=files, data=data, timeout=30.0)
-    response.raise_for_status()
+    response = api_post('/datasets/upload', files=files, data=data, timeout=30.0)
     return response.json()
 
 
 def get_dataset_preview(dataset_id, num_rows=10):
     """Get dataset preview."""
-    response = httpx.get(f'{API_BASE_URL}/datasets/{dataset_id}/preview?num_rows={num_rows}', timeout=10.0)
-    response.raise_for_status()
+    response = api_get(f'/datasets/{dataset_id}/preview', params={'num_rows': num_rows}, timeout=10.0)
     return response.json()
 
 
@@ -47,29 +106,25 @@ def run_analysis(dataset_id, selected_columns=None, model_name=None, provider=No
     if provider:
         payload['provider'] = provider
 
-    response = httpx.post(f'{API_BASE_URL}/analysis/run', json=payload, timeout=10.0)
-    response.raise_for_status()
+    response = api_post('/analysis/run', json=payload, timeout=10.0)
     return response.json()
 
 
 def get_analysis_status(analysis_id):
     """Get analysis status."""
-    response = httpx.get(f'{API_BASE_URL}/analysis/{analysis_id}', timeout=10.0)
-    response.raise_for_status()
+    response = api_get(f'/analysis/{analysis_id}', timeout=10.0)
     return response.json()
 
 
 def get_analysis_results(analysis_id):
     """Get analysis results."""
-    response = httpx.get(f'{API_BASE_URL}/analysis/{analysis_id}/results', timeout=10.0)
-    response.raise_for_status()
+    response = api_get(f'/analysis/{analysis_id}/results', timeout=10.0)
     return response.json()
 
 
 def list_datasets():
     """List all datasets."""
-    response = httpx.get(f'{API_BASE_URL}/datasets/', timeout=10.0)
-    response.raise_for_status()
+    response = api_get('/datasets/', timeout=10.0)
     return response.json()
 
 
@@ -135,14 +190,85 @@ if st.session_state.get('show_model_page'):
     render_model_info_page(API_BASE_URL)
     st.stop()
 
+# Initialize auth state
+if 'auth_token' not in st.session_state:
+    st.session_state.auth_token = None
+if 'current_user' not in st.session_state:
+    st.session_state.current_user = {}
+if 'user_email' not in st.session_state:
+    st.session_state.user_email = None
+
 # Initialize session state
 if 'current_dataset_id' not in st.session_state:
     st.session_state.current_dataset_id = None
 if 'current_analysis_id' not in st.session_state:
     st.session_state.current_analysis_id = None
 
-# Sidebar: Existing datasets
+# Sidebar: Auth + Existing datasets
 with st.sidebar:
+    st.header('🔐 Account')
+    if st.session_state.auth_token:
+        st.success(f'Logged in as {st.session_state.user_email or "current user"}')
+        if st.button('Log out', use_container_width=True):
+            clear_auth_state()
+            st.session_state.current_dataset_id = None
+            st.session_state.current_analysis_id = None
+            st.experimental_rerun()
+    else:
+        login_tab, register_tab = st.tabs(['Login', 'Create Account'])
+
+        with login_tab:
+            login_email = st.text_input('Email', key='login_email', placeholder='you@example.com')
+            login_password = st.text_input('Password', type='password', key='login_password')
+            if st.button('Sign In', type='primary', use_container_width=True):
+                try:
+                    token = login_user(login_email, login_password)
+                    set_auth_state(token)
+                    user = fetch_current_user()
+                    set_auth_state(token, user)
+                    st.success('Logged in successfully!')
+                    st.experimental_rerun()
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 401:
+                        st.error('Invalid credentials')
+                    else:
+                        st.error(f'Login failed: {e}')
+                except Exception as e:
+                    st.error(f'Login failed: {e}')
+
+        with register_tab:
+            reg_email = st.text_input('Email', key='register_email', placeholder='you@example.com')
+            reg_password = st.text_input('Password', type='password', key='register_password')
+            reg_confirm = st.text_input('Confirm Password', type='password', key='register_confirm')
+            pwd_bytes = len(reg_password.encode('utf-8'))
+            if st.button('Create Account', type='primary', use_container_width=True):
+                if not reg_email or not reg_password:
+                    st.error('Email and password are required')
+                elif reg_password != reg_confirm:
+                    st.error('Passwords do not match')
+                elif pwd_bytes > 72:
+                    st.error('Password too long; maximum 72 bytes due to bcrypt limitations')
+                else:
+                    try:
+                        register_user(reg_email, reg_password)
+                        token = login_user(reg_email, reg_password)
+                        set_auth_state(token)
+                        user = fetch_current_user()
+                        set_auth_state(token, user)
+                        st.success('Account created and logged in!')
+                        st.experimental_rerun()
+                    except httpx.HTTPStatusError as e:
+                        detail = ''
+                        try:
+                            detail = e.response.json().get('detail', '')
+                        except Exception:
+                            raw_text = getattr(e.response, 'text', '')
+                            detail = raw_text if isinstance(raw_text, str) else ''
+                        st.error(f'Sign-up failed: {detail or e}')
+                    except Exception as e:
+                        st.error(f'Sign-up failed: {e}')
+
+    st.divider()
     st.header('📁 Existing Datasets')
 
     # Show current selection
@@ -154,25 +280,37 @@ with st.sidebar:
             st.rerun()
         st.divider()
 
-    try:
-        datasets = list_datasets()
-        if datasets:
-            for ds in datasets[:5]:  # Show last 5
-                is_selected = st.session_state.current_dataset_id == ds['id']
-                button_label = f'{"✓ " if is_selected else ""}{ds["original_filename"]}'
-                button_type = 'primary' if is_selected else 'secondary'
+    if not st.session_state.auth_token:
+        st.info('Log in to view your datasets.')
+    else:
+        try:
+            datasets = list_datasets()
+            if datasets:
+                for ds in datasets[:5]:  # Show last 5
+                    is_selected = st.session_state.current_dataset_id == ds['id']
+                    button_label = f'{"✓ " if is_selected else ""}{ds["original_filename"]}'
+                    button_type = 'primary' if is_selected else 'secondary'
 
-                if st.button(button_label, key=f'ds_{ds["id"]}', use_container_width=True, type=button_type):
-                    st.session_state.current_dataset_id = ds['id']
-                    st.success(f'Loaded: {ds["original_filename"]}')
-                    time.sleep(0.5)
-                    st.rerun()
-        else:
-            st.info('No datasets yet. Upload one below!')
-    except Exception as e:
-        st.error(f'Error loading datasets: {e}')
+                    if st.button(button_label, key=f'ds_{ds["id"]}', use_container_width=True, type=button_type):
+                        st.session_state.current_dataset_id = ds['id']
+                        st.success(f'Loaded: {ds["original_filename"]}')
+                        time.sleep(0.5)
+                        st.rerun()
+            else:
+                st.info('No datasets yet. Upload one below!')
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                st.warning('Please log in to view your datasets.')
+            else:
+                st.error(f'Error loading datasets: {e}')
+        except Exception as e:
+            st.error(f'Error loading datasets: {e}')
 
 # Main content tabs
+if not st.session_state.auth_token:
+    st.info('Please log in or create an account to upload datasets and run analyses.')
+    st.stop()
+
 tab1, tab2, tab3 = st.tabs(['1️⃣ Upload Data', '2️⃣ Run Analysis', '3️⃣ View Results'])
 
 # Tab 1: Upload
@@ -347,11 +485,7 @@ with tab3:
                     if results.get('log_available'):
                         with st.expander('📜 Execution Log'):
                             try:
-                                log_response = httpx.get(
-                                    f'{API_BASE_URL}/analysis/{analysis_id}/log',
-                                    timeout=10.0,
-                                )
-                                log_response.raise_for_status()
+                                log_response = api_get(f'/analysis/{analysis_id}/log', timeout=10.0)
                                 log_data = log_response.json()
                                 st.code(log_data['log_content'], language='text')
                             except Exception as e:

@@ -1,5 +1,6 @@
 """Authentication routes for user registration and login."""
 
+import logging
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,21 +14,47 @@ from statmate.api.security import create_access_token, get_password_hash, verify
 from statmate.api.dependencies import get_current_user_optional
 from config.settings import settings
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix='/auth', tags=['auth'])
 
 
 @router.post('/register', response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register_user(payload: UserCreate, db: Session = Depends(get_db)) -> UserResponse:
     """Register a new user account."""
-    existing = db.query(User).filter(User.email == payload.email.lower()).first()
-    if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already registered')
+    # Bcrypt only hashes the first 72 bytes; reject longer passwords up front so we return 400 instead of 500.
+    if len(payload.password.encode('utf-8')) > 72:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Password too long (bcrypt limit is 72 bytes). Please shorten your password.',
+        )
+    try:
+        existing = db.query(User).filter(User.email == payload.email.lower()).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already registered')
 
-    user = User(email=payload.email.lower(), hashed_password=get_password_hash(payload.password))
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return UserResponse.model_validate(user)
+        try:
+            hashed = get_password_hash(payload.password)
+        except ValueError as exc:
+            # passlib raises ValueError when the password exceeds bcrypt limits
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Password too long (bcrypt limit is 72 bytes). Please shorten your password.',
+            ) from exc
+
+        user = User(email=payload.email.lower(), hashed_password=hashed)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return UserResponse.model_validate(user)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception('Failed to register user %s', payload.email)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f'Failed to register user: {exc}',
+        ) from exc
 
 
 @router.post('/login', response_model=TokenResponse)

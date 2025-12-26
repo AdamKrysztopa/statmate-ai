@@ -241,6 +241,7 @@ make ui     # Terminal 2 - UI
 ```bash
 make kill   # Stops both API and UI
 ```
+> `make kill` now lists any running Statmate API/UI processes and force-stops stragglers, so port 8000 gets freed even if a previous run hung.
 
 ### Development vs Production
 

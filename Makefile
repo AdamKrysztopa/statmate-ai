@@ -147,16 +147,26 @@ type-check: ## Run type checker (mypy)
 
 kill: ## Stop all running StatmateAI processes (API & UI)
 	@echo '$(YELLOW)Stopping StatmateAI processes...$(RESET)'
-	@pkill -f "uvicorn.*main:app" || true
-	@pkill -f "python.*statmate/api/main.py" || true
-	@pkill -f "streamlit run.*statmate/ui/app.py" || true
-	@sleep 1
-	@if pgrep -f "uvicorn.*main:app" > /dev/null || pgrep -f "streamlit run" > /dev/null; then \
+	@PIDS=$$(ps -eo pid=,cmd= -ww | grep -E '[u]vicorn.*main:app|[s]tatmate/api/main.py|[s]treamlit run.*statmate/ui/app.py' | awk '{print $$1}' | paste -sd' ' -); \
+	PIDS_CSV=$$(echo "$$PIDS" | tr ' ' ',' | sed 's/^,//;s/,$$//'); \
+	if [ -n "$$PIDS" ]; then \
+		echo '$(YELLOW)Found processes to stop:$(RESET)'; \
+		ps -p $$PIDS_CSV -o pid,cmd --no-headers; \
+		kill $$PIDS 2>/dev/null || true; \
+		sleep 1; \
+	fi; \
+	REMAIN=$$(ps -eo pid=,cmd= -ww | grep -E '[u]vicorn.*main:app|[s]tatmate/api/main.py|[s]treamlit run.*statmate/ui/app.py' | awk '{print $$1}' | paste -sd' ' -); \
+	REMAIN_CSV=$$(echo "$$REMAIN" | tr ' ' ',' | sed 's/^,//;s/,$$//'); \
+	if [ -n "$$REMAIN" ]; then \
 		echo '$(RED)⚠️  Some processes may still be running. Force killing...$(RESET)'; \
-		pkill -9 -f "uvicorn.*main:app" || true; \
-		pkill -9 -f "streamlit run" || true; \
+		ps -p $$REMAIN_CSV -o pid,cmd --no-headers; \
+		kill -9 $$REMAIN 2>/dev/null || true; \
+	fi; \
+	if [ -z "$$PIDS" ] && [ -z "$$REMAIN" ]; then \
+		echo '$(GREEN)✓ No StatmateAI processes were running.$(RESET)'; \
+	else \
+		echo '$(GREEN)✓ All processes stopped!$(RESET)'; \
 	fi
-	@echo '$(GREEN)✓ All processes stopped!$(RESET)'
 
 clean: ## Clean up temporary files
 	@echo '$(YELLOW)Cleaning up...$(RESET)'
@@ -236,4 +246,3 @@ quickstart: ## First-time setup and run
 	@echo '  1. Edit .env file and add your API keys'
 	@echo '  2. Run: $(GREEN)make dev$(RESET)'
 	@echo ''
-
