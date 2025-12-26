@@ -71,7 +71,8 @@
                 "foxundermoon.shell-format",
                 "github.copilot",
                 "bierner.markdown-mermaid",
-                "shd101wyy.markdown-preview-enhanced"
+                "shd101wyy.markdown-preview-enhanced",
+                "openai.chatgpt"
             ]
         }
     },
