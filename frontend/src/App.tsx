@@ -26,9 +26,11 @@ import {
   DatasetPreview,
   TraceStep,
   TestHierarchy,
+  WorkflowGraph,
   User as UserType,
 } from './api/client';
 import { useTheme } from './hooks/useTheme';
+import { WorkflowGraphView } from './components/WorkflowGraph';
 
 const resolveDefaultApi = () => {
   const envBase = import.meta.env.VITE_API_BASE;
@@ -106,6 +108,7 @@ function App() {
   const [streamSteps, setStreamSteps] = useState<TraceStep[]>([]);
   const [streaming, setStreaming] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const [workflowGraph, setWorkflowGraph] = useState<WorkflowGraph | undefined>();
 
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [modelName, setModelName] = useState('gpt-4o');
@@ -133,6 +136,17 @@ function App() {
   const [overwriteLatest, setOverwriteLatest] = useState(false);
 
   const api = useMemo(() => new ApiClient(apiBase, token), [apiBase, token]);
+
+  const mergeWorkflowGraph = useCallback((incoming?: WorkflowGraph) => {
+    if (!incoming) return;
+    setWorkflowGraph((prev) => {
+      const assets = incoming.assets || prev?.assets;
+      const visited = incoming.visited_nodes?.length ? incoming.visited_nodes : prev?.visited_nodes;
+      const selected = incoming.selected_path?.length ? incoming.selected_path : prev?.selected_path;
+      const base = { ...(prev || {}), ...incoming };
+      return { ...base, assets, visited_nodes: visited || base.visited_nodes, selected_path: selected || base.selected_path };
+    });
+  }, []);
 
   const clearMessages = () => {
     setError('');
@@ -233,12 +247,22 @@ function App() {
     try {
       const status = await api.analysisStatus(analysisItem.id);
       setAnalysisStatus(status);
+      if (status.workflow_graph) {
+        mergeWorkflowGraph(status.workflow_graph);
+      }
       if (status.comment !== undefined) {
         setCommentDraft(status.comment || '');
       }
       if (status.status === 'completed') {
         const resJson = await api.analysisResults(analysisItem.id);
         setAnalysisResults(resJson);
+        const graphPayload =
+          (resJson as any).workflow_graph ||
+          resJson.results_detail?.workflow_graph ||
+          status.workflow_graph;
+        if (graphPayload) {
+          mergeWorkflowGraph(graphPayload as WorkflowGraph);
+        }
         setCommentDraft(resJson.comment || '');
         setStreaming(false);
       }
@@ -246,7 +270,7 @@ function App() {
       setError((e as Error).message);
       setStreaming(false);
     }
-  }, [api]);
+  }, [api, mergeWorkflowGraph]);
 
   const loadAnalyses = useCallback(async (datasetId: string, autoSelect = true) => {
     if (!datasetId) return;
@@ -283,6 +307,7 @@ function App() {
     setAnalysisHistory([]);
     setCommentDraft('');
     setDatasetNotes('');
+    setWorkflowGraph(undefined);
     if (!id) return;
     try {
       const p = await api.previewDataset(id);
@@ -331,6 +356,7 @@ function App() {
       setStreaming(true);
       setAnalysisResults(undefined);
       setAnalysisStatus({ id, status: 'running' });
+      setWorkflowGraph((prev) => (prev ? { ...prev, visited_nodes: [], selected_path: [], active_node: undefined } : prev));
       setCommentDraft('');
       await loadAnalyses(selectedDatasetId, false);
       setActiveTab('analysis');
@@ -372,6 +398,24 @@ function App() {
     } finally {
       setExporting(null);
     }
+  };
+
+  const handleGraphDownload = (format: 'svg' | 'png') => {
+    const assets =
+      workflowGraph?.assets ||
+      analysisResults?.workflow_graph?.assets ||
+      analysisResults?.results_detail?.workflow_graph?.assets;
+    const base =
+      format === 'svg'
+        ? assets?.svg_base64
+        : assets?.png_base64 || assets?.svg_base64;
+    if (!assets || !base) return;
+    const link = document.createElement('a');
+    link.href = `data:image/${format === 'svg' ? 'svg+xml' : 'png'};base64,${base}`;
+    link.download = `workflow-graph.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const loadLog = async () => {
@@ -446,6 +490,13 @@ function App() {
   }, [provider, modelName]);
 
   useEffect(() => {
+    api
+      .workflowGraph()
+      .then((graph) => mergeWorkflowGraph(graph))
+      .catch((err) => console.warn('workflow graph load failed', err));
+  }, [api, mergeWorkflowGraph]);
+
+  useEffect(() => {
     if (token) {
       localStorage.setItem('statmate-token', token);
       api
@@ -503,6 +554,9 @@ function App() {
                 progress: data.progress_pct ?? prev?.progress,
                 decision_steps: mergeUniqueSteps(prev?.decision_steps || [], [data as TraceStep]),
               }));
+              if ((data as any).workflow_graph) {
+                mergeWorkflowGraph((data as any).workflow_graph as WorkflowGraph);
+              }
             }
             if (event === 'log') {
               setLogContent((prev) => `${prev}${data.chunk || ''}`);
@@ -514,10 +568,16 @@ function App() {
               }));
             }
             if (event === 'done') {
+              if ((data as any).workflow_graph) {
+                mergeWorkflowGraph((data as any).workflow_graph as WorkflowGraph);
+              }
               setStreaming(false);
               const resJson = await api.analysisResults(analysisId);
               setAnalysisResults(resJson);
               setAnalysisStatus((prev) => ({ ...(prev || { id: analysisId, status: 'completed' }), status: 'completed' }));
+              if ((resJson as any).workflow_graph) {
+                mergeWorkflowGraph((resJson as any).workflow_graph as WorkflowGraph);
+              }
               if (selectedDatasetId) {
                 await loadAnalyses(selectedDatasetId, false);
               }
@@ -534,7 +594,15 @@ function App() {
 
     connectStream();
     return () => controller.abort();
-  }, [analysisId, api, streaming, analysisStatus, selectedDatasetId, loadAnalyses]);
+  }, [analysisId, api, streaming, analysisStatus, selectedDatasetId, loadAnalyses, mergeWorkflowGraph]);
+
+  useEffect(() => {
+    if (!analysisId) return;
+    api
+      .workflowGraph(analysisId)
+      .then((graph) => mergeWorkflowGraph(graph))
+      .catch((err) => console.warn('workflow graph fetch failed', err));
+  }, [analysisId, api, mergeWorkflowGraph]);
 
   useEffect(() => {
     if (!analysisId) return undefined;
@@ -542,6 +610,9 @@ function App() {
       try {
         const status = await api.analysisStatus(analysisId);
         setAnalysisStatus(status);
+        if ((status as any).workflow_graph) {
+          mergeWorkflowGraph((status as any).workflow_graph as WorkflowGraph);
+        }
         if (status.comment !== undefined) {
           setCommentDraft(status.comment || '');
         }
@@ -567,6 +638,11 @@ function App() {
         if (status.status === 'completed' && !analysisResults) {
           const resJson = await api.analysisResults(analysisId);
           setAnalysisResults(resJson);
+          const graphPayload =
+            (resJson as any).workflow_graph || resJson.results_detail?.workflow_graph || status.workflow_graph;
+          if (graphPayload) {
+            mergeWorkflowGraph(graphPayload as WorkflowGraph);
+          }
           setStreaming(false);
         }
       } catch (e) {
@@ -574,7 +650,7 @@ function App() {
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [analysisId, api, analysisResults]);
+  }, [analysisId, api, analysisResults, mergeWorkflowGraph]);
 
   // Derived data
   const trace = useMemo(() => {
@@ -631,6 +707,14 @@ function App() {
   useEffect(() => {
     setCommentDraft(analysisResults?.comment || '');
   }, [analysisResults?.id]);
+
+  useEffect(() => {
+    const graphPayload =
+      (analysisResults as any)?.workflow_graph || analysisResults?.results_detail?.workflow_graph;
+    if (graphPayload) {
+      mergeWorkflowGraph(graphPayload as WorkflowGraph);
+    }
+  }, [analysisResults, mergeWorkflowGraph]);
 
   useEffect(() => {
     const currentId = analysisResults?.id || analysisId;
@@ -1441,7 +1525,18 @@ function App() {
                     </div>
 
                     <div className="space-y-4">
-                    <div className={`rounded-2xl border p-4 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                      <WorkflowGraphView
+                        graph={
+                          workflowGraph ||
+                          analysisResults?.workflow_graph ||
+                          analysisResults?.results_detail?.workflow_graph ||
+                          analysisStatus?.workflow_graph
+                        }
+                        theme={theme}
+                        streaming={streaming}
+                        onDownload={handleGraphDownload}
+                      />
+                      <div className={`rounded-2xl border p-4 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
                       <div className="flex items-center justify-between">
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Version history</p>
                         <div className="flex items-center gap-2 text-xs">

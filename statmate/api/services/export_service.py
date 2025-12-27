@@ -54,6 +54,8 @@ class ExportService:
         decision_steps = (
             analysis.get('decision_steps') or analysis.get('results_detail', {}).get('decision_steps') or []
         )
+        workflow_graph = analysis.get('workflow_graph') or analysis.get('results_detail', {}).get('workflow_graph') or {}
+        graph_assets = workflow_graph.get('assets') or {}
 
         table_rows = ''.join(
             f'<tr><td>{cls._html_safe(name)}</td>'
@@ -116,6 +118,8 @@ class ExportService:
               .plot img {{ width: 100%; height: auto; display: block; page-break-inside: avoid; break-inside: avoid; }}
               .plot-title {{ font-weight: 700; padding: 8px; background: #f8fafc; }}
               .plot-meta {{ padding: 8px; color: #475569; }}
+              .graph-card {{ border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; margin: 8px 0 16px; background: #f8fafc; }}
+              .graph-card img {{ width: 100%; max-height: 480px; object-fit: contain; }}
             </style>
           </head>
           <body>
@@ -123,6 +127,10 @@ class ExportService:
             <p class="muted">Generated at {generated_at}</p>
             <h2>Summary</h2>
             <p>{summary or 'No summary available.'}</p>
+            <h2>Workflow graph</h2>
+            <div class="graph-card">
+              {"<img alt='" + cls._html_safe(graph_assets.get('alt') or 'Workflow graph') + "' src='data:image/svg+xml;base64," + graph_assets.get('svg_base64', '') + "' />" if graph_assets.get('svg_base64') else "<div class='muted'>No workflow graph available.</div>"}
+            </div>
             <h2>Statistical tests</h2>
             <table>
               <thead><tr><th>Test</th><th>p-value</th><th>Callout</th></tr></thead>
@@ -187,6 +195,19 @@ class ExportService:
         body += '\\subsection*{Summary}\n'
         body += f'{summary or "No summary available."}\n'
 
+        graph_assets = (
+            (analysis.get('workflow_graph') or {}).get('assets')
+            or analysis.get('results_detail', {}).get('workflow_graph', {}).get('assets')
+            or {}
+        )
+        if graph_assets:
+            body += '\\subsection*{Workflow graph}\n'
+            body += '\\begin{figure}[H]\n\\centering\n'
+            body += '\\fbox{\\parbox{0.9\\linewidth}{\\centering Workflow graph preview is embedded in HTML/PDF exports.}}\\\\\n'
+            if graph_assets.get('alt'):
+                body += f'\\textit{{{cls._latex_escape(graph_assets.get("alt"))}}}\n'
+            body += '\\end{figure}\n'
+
         if probabilities:
             body += '\\subsection*{Statistical tests}\n'
             body += '\\begin{longtable}{p{0.35\\linewidth}p{0.25\\linewidth}p{0.25\\linewidth}}\n'
@@ -237,6 +258,30 @@ class ExportService:
         summary = analysis.get('summary') or analysis.get('results_detail', {}).get('summary')
         doc.add_heading('Summary', level=1)
         doc.add_paragraph(summary or 'No summary available.')
+
+        graph_assets = (
+            (analysis.get('workflow_graph') or {}).get('assets')
+            or analysis.get('results_detail', {}).get('workflow_graph', {}).get('assets')
+            or {}
+        )
+        if graph_assets:
+            doc.add_heading('Workflow graph', level=1)
+            png_data = graph_assets.get('png_base64')
+            svg_data = graph_assets.get('svg_base64')
+            image_bytes = None
+            if png_data:
+                image_bytes = base64.b64decode(png_data)
+            elif svg_data:
+                try:
+                    import cairosvg  # type: ignore
+
+                    image_bytes = cairosvg.svg2png(bytestring=base64.b64decode(svg_data))
+                except Exception:
+                    image_bytes = None
+            if image_bytes:
+                doc.add_picture(io.BytesIO(image_bytes), width=Inches(5.5))
+            else:
+                doc.add_paragraph('Graph preview unavailable.')
 
         probabilities = analysis.get('probabilities') or {}
         if probabilities:
@@ -341,6 +386,7 @@ class ExportService:
         decision_steps = analysis.get('decision_steps') or detail.get('decision_steps') or []
         assumption_log = analysis.get('assumption_log') or detail.get('assumption_log') or []
         test_hierarchy = analysis.get('test_hierarchy') or detail.get('test_hierarchy')
+        workflow_graph = analysis.get('workflow_graph') or detail.get('workflow_graph') or {}
 
         snippets = []
         for name, p_val in (analysis.get('probabilities') or {}).items():
@@ -355,6 +401,13 @@ class ExportService:
             zf.writestr('assumption_log.json', json.dumps(assumption_log, indent=2, default=str))
             if test_hierarchy:
                 zf.writestr('test_hierarchy.json', json.dumps(test_hierarchy, indent=2, default=str))
+            graph_assets = (workflow_graph or {}).get('assets') or {}
+            if graph_assets.get('svg_base64'):
+                zf.writestr('workflow_graph.svg', base64.b64decode(graph_assets['svg_base64']))
+            elif graph_assets.get('svg'):
+                zf.writestr('workflow_graph.svg', graph_assets['svg'])
+            if graph_assets.get('png_base64'):
+                zf.writestr('workflow_graph.png', base64.b64decode(graph_assets['png_base64']))
             if log_content:
                 zf.writestr('execution.log', log_content)
             if dataset is not None:

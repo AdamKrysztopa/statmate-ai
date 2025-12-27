@@ -155,6 +155,8 @@ async def get_analysis_status(
         if progress_pct is None:
             progress_pct = min(100.0, len(analysis.decision_steps) / AnalysisService.WORKFLOW_STEP_TARGET * 100)
 
+    workflow_graph = AnalysisService.workflow_graph_for_analysis(analysis)
+
     return AnalysisStatusResponse(
         id=analysis.id,
         status=analysis.status.value,
@@ -168,6 +170,7 @@ async def get_analysis_status(
         decision_steps=analysis.decision_steps,
         intermediate_log=analysis.intermediate_log,
         assumption_log=analysis.assumption_log,
+        workflow_graph=workflow_graph,
     )
 
 
@@ -209,6 +212,9 @@ async def stream_analysis_events(
                     payload.setdefault('progress_pct', round(min(1.0, step_index / total) * 100, 2))
                     payload.setdefault('analysis_id', fresh.id)
                     payload.setdefault('version', fresh.version)
+                    payload['workflow_graph'] = AnalysisService.build_workflow_graph_state(
+                        steps[: last_step_idx + 1], None
+                    )
                     yield f'event: step\ndata: {json.dumps(payload, default=str)}\n\n'
                     last_step_idx += 1
 
@@ -234,6 +240,9 @@ async def stream_analysis_events(
                         'status': status_value,
                         'version': fresh.version,
                         'progress_pct': 100.0,
+                        'workflow_graph': AnalysisService.build_workflow_graph_state(
+                            fresh.decision_steps or [], None
+                        ),
                     }
                     yield f'event: done\ndata: {json.dumps(done_payload)}\n\n'
                     break
@@ -259,6 +268,26 @@ async def stream_analysis_events(
             session.close()
 
     return StreamingResponse(event_generator(), media_type='text/event-stream')
+
+
+@router.get('/workflow-graph')
+async def get_workflow_graph(
+    analysis_id: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> dict:
+    """Return the canonical workflow graph and optional per-analysis progress."""
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    if not analysis_id:
+        return AnalysisService.build_workflow_graph_state([], None)
+
+    analysis = AnalysisService.get_analysis(db, analysis_id, user_id=current_user.id if current_user else None)
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Analysis not found')
+
+    return AnalysisService.workflow_graph_for_analysis(analysis)
 
 
 @router.get('/{analysis_id}/results', response_model=AnalysisResultResponse)

@@ -25,6 +25,14 @@
 - [x] Safety | Scoped credentials and quotas: Extend `statmate/api/services/credential_service.py` to store optional per-provider usage limits/quotas per user; before invoking a provider, check remaining quota and short-circuit with a clear error streamed to clients.
 - [x] Safety | Data masking: Add a lightweight PII detector/masker service that runs before LLM calls (column names/summaries) to redact obvious identifiers; integrate into `StatMateWorkflow` input sanitization and note masked columns in the `assumption_log`.
 
+## P0 – Workflow Graph Visualization (new for V1.0.0)
+- [x] Canonical graph definition: Derive a single source of truth for the workflow graph from `WorkflowGraphBuilder`/`NodeName` (include Reviewer/Nonparametric paths) and update `workflow_graph.md` to match; expose nodes/edges as machine-readable metadata (id, label, type, transitions).
+- [x] Backend | Graph + state mapping: Add an API payload (`GET /analysis/workflow-graph` and embed in `/analysis/{id}` + SSE `step` events) that returns the graph plus `visited_nodes`, `active_node`, and `selected_path` derived from `decision_steps`/`test_hierarchy`; normalize step labels to node ids so streaming can highlight the current node.
+- [x] Backend | Exportable graphic: Build a helper to render the graph with a highlighted path (SVG/PNG via graphviz/mermaid) and attach base64 + alt text into analysis results; embed the image in HTML/PDF/DOCX/LaTeX exports and drop the SVG/PNG into the repro bundle.
+- [x] Frontend | Live graph in analysis tab: Create a React graph component (Mermaid/ReactFlow/D3) fed by the graph API; animate the `active_node` during streaming, show `visited_nodes` progress, and lock the `selected_path` once completed; keep styling consistent with dark/light themes and allow download of the SVG/PNG.
+- [x] Frontend | Streamlit/fallback view: Add the same graph (static SVG) to the Streamlit UI or a lightweight fallback so non-React users see the decision path.
+- [x] QA + docs: Add unit tests for node-id mapping and graph rendering helper, verify SSE carries `active_node`, and update docs/screenshots to show the new graph; document any new deps (graphviz/mermaid) in setup/CI.
+
 ## P1 – Security & Reliability for V1.0.0
 - [ ] Authn/Authz | Backend/UI: Gate all routes/pages with auth; enforce dataset/analysis ownership checks; implement registration + email verification; store tokens securely; add logout; align Streamlit/React with protected APIs.
 - [ ] Error Handling | Backend: Normalize LLM/workflow errors and timeouts into user-friendly responses; validate uploads (type/size) with clear feedback; add retry/backoff around stream consumers to avoid rate-limit storms.
