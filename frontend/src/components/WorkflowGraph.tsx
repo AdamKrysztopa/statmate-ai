@@ -41,13 +41,13 @@ const layoutNodes = (nodes: WorkflowGraph['nodes']): Record<string, Point> => {
   });
 
   const positions: Record<string, Point> = {};
-  const xSpacing = 180;
-  const ySpacing = 90;
+  const xSpacing = 240;
+  const ySpacing = 110;
   Object.entries(grouped).forEach(([lvl, list]) => {
     const level = Number(lvl);
     const sorted = [...list].sort((a, b) => a.label.localeCompare(b.label));
     sorted.forEach((node, idx) => {
-      positions[node.id] = { x: 60 + level * xSpacing, y: 60 + idx * ySpacing };
+      positions[node.id] = { x: 80 + level * xSpacing, y: 90 + idx * ySpacing };
     });
   });
   return positions;
@@ -57,7 +57,7 @@ const colorForNode = (id: string, active?: string | null, visited?: Set<string>)
   const inPath = visited?.has(id);
   if (active && id === active) return { fill: '#f59e0b', stroke: '#f59e0b' };
   if (inPath) return { fill: '#0ea5e9', stroke: '#0ea5e9' };
-  return { fill: '#0f172a', stroke: '#94a3b8' };
+  return { fill: '#0b1c34', stroke: '#334155' };
 };
 
 export function WorkflowGraphView({ graph, theme, streaming, onDownload }: Props) {
@@ -87,47 +87,54 @@ export function WorkflowGraphView({ graph, theme, streaming, onDownload }: Props
   }
 
   const activeLabel = nodes.find((n) => n.id === graph?.active_node)?.label;
+  const visitedCount = visited.size || 0;
 
   return (
     <div
-      className={`rounded-2xl border p-4 shadow-lg ${
-        theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'
+      className={`relative rounded-3xl border p-5 shadow-2xl ${
+        theme === 'dark' ? 'border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950' : 'border-slate-200 bg-white'
       }`}
     >
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Workflow graph</p>
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-            <GitBranch size={16} className="text-cyan-400" />
-            {activeLabel ? `Active: ${activeLabel}` : 'Decision path'}
-            {streaming && <Zap size={14} className="text-amber-400 animate-pulse" />}
+          <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Workflow graph</p>
+          <div className="flex items-center gap-3 text-lg font-bold text-slate-100">
+            <GitBranch size={18} className="text-cyan-400" />
+            <span>{activeLabel ? `Active: ${activeLabel}` : 'Decision path'}</span>
+            {streaming && <Zap size={16} className="text-amber-400 animate-pulse" />}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] uppercase text-slate-300">
-            {visited.size} / {nodes.length} visited
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="rounded-full bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-200">
+            {visitedCount} / {nodes.length} visited
+          </div>
           {graph?.assets?.svg_base64 && onDownload && (
             <>
               <button
-                className="rounded-full border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:border-cyan-500"
+                className="rounded-full border border-slate-700/70 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-cyan-500"
                 onClick={() => onDownload('svg')}
               >
-                <Download size={12} className="inline" /> SVG
+                <Download size={14} className="inline" /> SVG
               </button>
               <button
-                className="rounded-full border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:border-cyan-500"
+                className="rounded-full border border-slate-700/70 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-cyan-500"
                 onClick={() => onDownload('png')}
               >
-                <Download size={12} className="inline" /> PNG
+                <Download size={14} className="inline" /> PNG
               </button>
             </>
           )}
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-xl border border-slate-800/60 bg-gradient-to-br from-slate-950 to-slate-900">
-        <svg viewBox={`0 0 ${maxX + 140} ${maxY + 120}`} className="w-full">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-800/60 bg-slate-950">
+        <svg viewBox={`0 0 ${maxX + 320} ${maxY + 260}`} className="w-full">
+          <defs>
+            <linearGradient id="edgeGlow" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.2" />
+            </linearGradient>
+          </defs>
           {edges.map((edge) => {
             const src = positions[edge.source];
             const tgt = positions[edge.target];
@@ -136,14 +143,14 @@ export function WorkflowGraphView({ graph, theme, streaming, onDownload }: Props
             return (
               <line
                 key={`${edge.source}-${edge.target}`}
-                x1={src.x + 60}
+                x1={src.x + 80}
                 y1={src.y}
-                x2={tgt.x - 20}
+                x2={tgt.x - 40}
                 y2={tgt.y}
-                stroke={inPath ? '#0ea5e9' : '#475569'}
-                strokeWidth={2}
-                strokeDasharray={edge.kind === 'conditional' ? '6 4' : '0'}
-                opacity={0.9}
+                stroke={inPath ? 'url(#edgeGlow)' : '#475569'}
+                strokeWidth={inPath ? 3 : 1.6}
+                strokeDasharray={edge.kind === 'conditional' ? '7 5' : '0'}
+                opacity={0.95}
               />
             );
           })}
@@ -154,24 +161,25 @@ export function WorkflowGraphView({ graph, theme, streaming, onDownload }: Props
             return (
               <g key={node.id} transform={`translate(${pos.x},${pos.y})`}>
                 <rect
-                  x={-20}
-                  y={-22}
-                  width={130}
-                  height={44}
-                  rx={12}
+                  x={-28}
+                  y={-30}
+                  width={160}
+                  height={64}
+                  rx={16}
                   fill={fill}
                   stroke={stroke}
-                  strokeWidth={2}
+                  strokeWidth={2.4}
                   className={graph?.active_node === node.id && streaming ? 'animate-pulse' : ''}
-                  opacity={0.95}
+                  opacity={0.97}
                 />
                 <text
-                  x={45}
+                  x={52}
                   y={0}
                   dominantBaseline="middle"
                   textAnchor="middle"
                   fill="#e2e8f0"
-                  fontSize="11"
+                  fontSize="12"
+                  fontWeight={600}
                   fontFamily="Inter, Arial, sans-serif"
                 >
                   {node.label}
@@ -182,17 +190,15 @@ export function WorkflowGraphView({ graph, theme, streaming, onDownload }: Props
         </svg>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-400">
+      <div className="mt-4 flex flex-wrap gap-3 text-xs">
         {(graph?.selected_path || graph?.visited_nodes || []).map((nodeId) => {
           const nodeLabel = nodes.find((n) => n.id === nodeId)?.label || nodeId;
           const isActive = graph?.active_node === nodeId;
           return (
             <span
               key={nodeId}
-              className={`rounded-full px-3 py-1 ${
-                isActive
-                  ? 'bg-amber-500/20 text-amber-200'
-                  : 'bg-cyan-500/10 text-cyan-200'
+              className={`rounded-full px-4 py-2 font-semibold ${
+                isActive ? 'bg-amber-500/20 text-amber-200' : 'bg-cyan-500/15 text-cyan-100'
               }`}
             >
               {nodeLabel}

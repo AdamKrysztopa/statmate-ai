@@ -73,6 +73,34 @@ const mergeUniqueSteps = (existing: TraceStep[], next: TraceStep[]) => {
   return merged;
 };
 
+const normalizeNodeKey = (value?: string) =>
+  (value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+const deriveGraphProgressFromSteps = (steps: TraceStep[], graph?: WorkflowGraph) => {
+  if (!graph?.nodes?.length || !steps.length) return null;
+  const knownIds = new Set(graph.nodes.map((n) => n.id));
+  const labelToId = new Map<string, string>();
+  graph.nodes.forEach((node) => {
+    labelToId.set(normalizeNodeKey(node.label), node.id);
+    labelToId.set(normalizeNodeKey(node.id), node.id);
+  });
+
+  const visited: string[] = [];
+  steps.forEach((step) => {
+    const candidates = [step.node_id, step.node, step.step].map(normalizeNodeKey).filter(Boolean);
+    const match = candidates
+      .map((key) => labelToId.get(key) || (knownIds.has(key) ? key : undefined))
+      .find(Boolean);
+    if (!match) return;
+    if (!visited.length) visited.push('start');
+    if (!visited.includes(match)) visited.push(match);
+  });
+
+  if (!visited.length) return null;
+  const active = visited[visited.length - 1] || null;
+  return { visited_nodes: visited, selected_path: visited, active_node: active };
+};
+
 function App() {
   // Theming + layout
   const [theme, toggleTheme] = useTheme();
@@ -574,7 +602,11 @@ function App() {
               setStreaming(false);
               const resJson = await api.analysisResults(analysisId);
               setAnalysisResults(resJson);
-              setAnalysisStatus((prev) => ({ ...(prev || { id: analysisId, status: 'completed' }), status: 'completed' }));
+              setAnalysisStatus((prev) => ({
+                ...(prev || { id: analysisId, status: 'completed' }),
+                status: 'completed',
+                progress: (data as any).progress_pct ?? prev?.progress ?? 100,
+              }));
               if ((resJson as any).workflow_graph) {
                 mergeWorkflowGraph((resJson as any).workflow_graph as WorkflowGraph);
               }
@@ -691,9 +723,10 @@ function App() {
   );
   const progressPct = useMemo(() => {
     const lastStep = trace.length ? trace[trace.length - 1] : undefined;
+    if (analysisStatus?.status === 'completed' || analysisResults?.status === 'completed') return 100;
     if (typeof analysisStatus?.progress === 'number') return analysisStatus.progress;
     return lastStep?.progress_pct;
-  }, [analysisStatus?.progress, trace]);
+  }, [analysisResults?.status, analysisStatus?.status, analysisStatus?.progress, trace]);
 
   const providerOptions = useMemo(() => {
     if (availableModels.length) {
@@ -715,6 +748,19 @@ function App() {
       mergeWorkflowGraph(graphPayload as WorkflowGraph);
     }
   }, [analysisResults, mergeWorkflowGraph]);
+
+  useEffect(() => {
+    if (!workflowGraph || !trace.length) return;
+    const derived = deriveGraphProgressFromSteps(trace, workflowGraph);
+    if (!derived) return;
+    setWorkflowGraph((prev) => {
+      if (!prev) return prev;
+      const prevLen = prev.visited_nodes?.length || 0;
+      const nextLen = derived.visited_nodes?.length || 0;
+      const advanced = nextLen > prevLen || prev.active_node !== derived.active_node;
+      return advanced ? { ...prev, ...derived } : prev;
+    });
+  }, [trace, workflowGraph?.nodes]);
 
   useEffect(() => {
     const currentId = analysisResults?.id || analysisId;
@@ -1448,6 +1494,19 @@ function App() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+                    <div className="xl:col-span-3">
+                      <WorkflowGraphView
+                        graph={
+                          workflowGraph ||
+                          analysisResults?.workflow_graph ||
+                          analysisResults?.results_detail?.workflow_graph ||
+                          analysisStatus?.workflow_graph
+                        }
+                        theme={theme}
+                        streaming={streaming}
+                        onDownload={handleGraphDownload}
+                      />
+                    </div>
                     <div className={`xl:col-span-2 rounded-2xl border p-6 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
                       <div className="mb-3 flex items-center justify-between gap-3">
                         <div>
@@ -1525,17 +1584,6 @@ function App() {
                     </div>
 
                     <div className="space-y-4">
-                      <WorkflowGraphView
-                        graph={
-                          workflowGraph ||
-                          analysisResults?.workflow_graph ||
-                          analysisResults?.results_detail?.workflow_graph ||
-                          analysisStatus?.workflow_graph
-                        }
-                        theme={theme}
-                        streaming={streaming}
-                        onDownload={handleGraphDownload}
-                      />
                       <div className={`rounded-2xl border p-4 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
                       <div className="flex items-center justify-between">
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Version history</p>

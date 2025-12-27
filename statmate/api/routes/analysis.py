@@ -154,6 +154,8 @@ async def get_analysis_status(
         progress_pct = last_step.get('progress_pct') if isinstance(last_step, dict) else None
         if progress_pct is None:
             progress_pct = min(100.0, len(analysis.decision_steps) / AnalysisService.WORKFLOW_STEP_TARGET * 100)
+    if analysis.status == AnalysisStatus.COMPLETED:
+        progress_pct = 100.0
 
     workflow_graph = AnalysisService.workflow_graph_for_analysis(analysis)
 
