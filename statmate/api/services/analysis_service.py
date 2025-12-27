@@ -12,9 +12,12 @@ from sqlalchemy.orm import Session
 
 from config.settings import settings
 from database.models import Analysis, AnalysisStatus
+from statmate.api.services.credential_service import CredentialService
 from statmate.api.services.dataset_service import DatasetService
 from statmate.api.services.storage_service import StorageService
 from statmate.api.services.visualization_service import VisualizationService
+from statmate.core.config import Config
+from statmate.core.model_config import ModelProvider, ModelProviderConfig
 from statmate.workflow.statmate_flow_refactored import StatMateWorkflow
 
 logger = logging.getLogger(__name__)
@@ -46,6 +49,7 @@ class AnalysisService:
         model_name: str | None = None,
         provider: str | None = None,
         user_id: str | None = None,
+        overwrite: bool = False,
     ) -> Analysis:
         """Create a new analysis record.
 
@@ -67,6 +71,16 @@ class AnalysisService:
         if settings.AUTH_REQUIRED and not ds:
             raise ValueError('Dataset not found or not owned by user')
 
+        query = db.query(Analysis).filter(Analysis.dataset_id == dataset_id)
+        if user_id:
+            query = query.filter(Analysis.user_id == user_id)
+        latest = query.order_by(Analysis.version.desc(), Analysis.start_time.desc().nullslast()).first()
+        next_version = (latest.version if latest and latest.version else 0) + 1
+
+        if overwrite and latest:
+            latest.superseded_at = datetime.utcnow()
+            db.commit()
+
         analysis = Analysis(
             dataset_id=dataset_id,
             user_id=user_id,
@@ -75,6 +89,7 @@ class AnalysisService:
             configuration=configuration or {},
             model_name=model_name,
             provider=provider,
+            version=next_version,
         )
 
         db.add(analysis)
@@ -101,7 +116,9 @@ class AnalysisService:
         return query.first()
 
     @staticmethod
-    def list_analyses(db: Session, *, skip: int = 0, limit: int = 100, user_id: str | None = None) -> list[Analysis]:
+    def list_analyses(
+        db: Session, *, skip: int = 0, limit: int = 100, user_id: str | None = None, dataset_id: str | None = None
+    ) -> list[Analysis]:
         """List all analyses with pagination.
 
         Args:
@@ -115,7 +132,9 @@ class AnalysisService:
         query = db.query(Analysis)
         if user_id:
             query = query.filter(Analysis.user_id == user_id)
-        return query.order_by(Analysis.start_time.desc()).offset(skip).limit(limit).all()
+        if dataset_id:
+            query = query.filter(Analysis.dataset_id == dataset_id)
+        return query.order_by(Analysis.version.desc(), Analysis.start_time.desc()).offset(skip).limit(limit).all()
 
     @staticmethod
     def _update_analysis_status(
@@ -140,6 +159,40 @@ class AnalysisService:
         db.commit()
 
     @staticmethod
+    def _build_model_config_for_analysis(db: Session, analysis: Analysis) -> Config:
+        """Create a Config with provider credentials scoped to the analysis owner."""
+        multi_model_config = settings.create_multi_model_config()
+
+        if analysis.provider:
+            try:
+                multi_model_config.default_provider = ModelProvider(analysis.provider)
+            except ValueError:
+                pass
+        if analysis.model_name:
+            multi_model_config.default_model_name = analysis.model_name
+
+        if analysis.user_id:
+            stored_keys = CredentialService.load_credentials(db, analysis.user_id)
+            for provider_key, api_key in stored_keys.items():
+                mapped_key = provider_key
+                if provider_key == 'gemini':
+                    mapped_key = 'google'
+                try:
+                    provider_enum = ModelProvider(mapped_key)
+                except ValueError:
+                    continue
+                existing = multi_model_config.providers.get(provider_enum)
+                if existing:
+                    existing.api_key = api_key
+                    existing.enabled = True
+                else:
+                    multi_model_config.providers[provider_enum] = ModelProviderConfig(
+                        provider=provider_enum, api_key=api_key, enabled=True
+                    )
+
+        return Config(model=multi_model_config)
+
+    @staticmethod
     def run_analysis(db: Session, analysis_id: str, *, user_id: str | None = None) -> Analysis:
         """Execute a statistical analysis using the refactored workflow.
 
@@ -158,12 +211,15 @@ class AnalysisService:
             raise ValueError(f'Analysis not found: {analysis_id}')
         if user_id and analysis.user_id and analysis.user_id != user_id:
             raise ValueError('Analysis does not belong to this user')
+        if analysis.configuration is None:
+            analysis.configuration = {}
 
         analysis.status = AnalysisStatus.RUNNING
         analysis.start_time = datetime.utcnow()
         analysis.decision_steps = []
         analysis.intermediate_log = ''
         db.commit()
+        workflow_config = AnalysisService._build_model_config_for_analysis(db, analysis)
 
         log_stream = StringIO()
         log_handler = logging.StreamHandler(log_stream)
@@ -248,7 +304,9 @@ class AnalysisService:
             fallback_attempted = False
 
             def _run_workflow(model_override: str | None = None) -> Any:
-                workflow = StatMateWorkflow()
+                if model_override and workflow_config.model:
+                    workflow_config.model.default_model_name = model_override
+                workflow = StatMateWorkflow(config=workflow_config)
                 return workflow.run(
                     data=df,
                     target_columns=analysis.selected_columns,
@@ -312,6 +370,8 @@ class AnalysisService:
                 'analysis_id': analysis_id,
                 'dataset_id': analysis.dataset_id,
                 'selected_columns': analysis.selected_columns,
+                'version': analysis.version,
+                'comment': analysis.comment,
                 'full_output': full_output,
                 'messages': [msg.content for msg in messages],
                 'probabilities': probabilities,
@@ -391,6 +451,7 @@ class AnalysisService:
             'end_time': analysis.end_time,
             'duration_seconds': duration,
             'summary': analysis.summary,
+            'comment': analysis.comment,
             'probabilities': analysis.probabilities,
             'results_detail': results_data,
             'execution_trace': results_data.get('execution_trace'),
@@ -399,6 +460,8 @@ class AnalysisService:
             'plots': results_data.get('plots'),
             'effect_sizes': results_data.get('effect_sizes'),
             'log_available': bool(analysis.log_path),
+            'version': analysis.version,
+            'superseded_at': analysis.superseded_at,
         }
 
     @staticmethod
@@ -417,3 +480,27 @@ class AnalysisService:
             return None
 
         return StorageService.read_log(analysis_id)
+
+    @staticmethod
+    def delete_analysis(db: Session, analysis_id: str, *, user_id: str | None = None) -> bool:
+        """Delete an analysis record and its artifacts."""
+        analysis = AnalysisService.get_analysis(db, analysis_id, user_id=user_id)
+        if not analysis:
+            return False
+
+        StorageService.delete_results(analysis_id)
+        StorageService.delete_log(analysis_id)
+        db.delete(analysis)
+        db.commit()
+        return True
+
+    @staticmethod
+    def update_comment(db: Session, analysis_id: str, *, comment: str | None, user_id: str | None = None) -> Analysis | None:
+        """Update the comment for an analysis."""
+        analysis = AnalysisService.get_analysis(db, analysis_id, user_id=user_id)
+        if not analysis:
+            return None
+        analysis.comment = comment or ''
+        db.commit()
+        db.refresh(analysis)
+        return analysis

@@ -158,10 +158,13 @@ class Analysis(Base):
     configuration = Column(JSON, nullable=True)  # Analysis parameters
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
+    version = Column(Integer, default=1, nullable=False, index=True)
+    superseded_at = Column(DateTime, nullable=True)
     result_path = Column(String(500), nullable=True)
     log_path = Column(String(500), nullable=True)
     error_message = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
+    comment = Column(Text, nullable=True)
     probabilities = Column(JSON, nullable=True)  # {"test_name": p_value, ...}
     decision_steps = Column(JSON, nullable=True)  # [{step, detail, data, p_value, timestamp}]
     intermediate_log = Column(Text, nullable=True)  # Rolling log content while streaming
@@ -188,10 +191,13 @@ class Analysis(Base):
             'configuration': self.configuration,
             'start_time': self.start_time.isoformat() if self.start_time else None,
             'end_time': self.end_time.isoformat() if self.end_time else None,
+            'version': self.version,
+            'superseded_at': self.superseded_at.isoformat() if self.superseded_at else None,
             'result_path': self.result_path,
             'log_path': self.log_path,
             'error_message': self.error_message,
             'summary': self.summary,
+            'comment': self.comment,
             'probabilities': self.probabilities,
             'decision_steps': self.decision_steps,
             'intermediate_log': self.intermediate_log,

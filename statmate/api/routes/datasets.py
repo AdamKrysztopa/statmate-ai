@@ -4,14 +4,15 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from config.settings import settings
+from database.models import User
 from database.session import get_db
+from statmate.api.dependencies import get_current_user_optional
 from statmate.api.models.dataset import (
+    ColumnRenameRequest,
     DatasetPreviewResponse,
     DatasetResponse,
     DatasetUploadResponse,
 )
-from statmate.api.dependencies import get_current_user_optional
-from database.models import User
 from statmate.api.services.dataset_service import DatasetService
 
 router = APIRouter(prefix='/datasets', tags=['datasets'])
@@ -176,3 +177,37 @@ async def delete_dataset(
     deleted = DatasetService.delete_dataset(db, dataset_id, user_id=current_user.id if current_user else None)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Dataset not found')
+
+
+@router.patch('/{dataset_id}/columns', response_model=DatasetPreviewResponse)
+async def rename_columns(
+    dataset_id: str,
+    payload: ColumnRenameRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> DatasetPreviewResponse:
+    """Rename dataset columns and return refreshed preview metadata."""
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    renames_raw = payload.renames
+    renames: dict[str, str] = {}
+    if isinstance(renames_raw, list):
+        renames = {item.from_name: item.to_name for item in renames_raw}
+    else:
+        renames = dict(renames_raw)
+
+    try:
+        preview = DatasetService.rename_columns(
+            db,
+            dataset_id,
+            renames,
+            user_id=current_user.id if current_user else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    if not preview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Dataset not found')
+
+    return DatasetPreviewResponse(**preview)

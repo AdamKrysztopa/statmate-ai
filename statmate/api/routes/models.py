@@ -44,6 +44,12 @@ class CredentialsResponse(BaseModel):
     configured_providers: list[str]
 
 
+class CredentialsListResponse(BaseModel):
+    """Providers configured for the current user."""
+
+    configured_providers: list[str]
+
+
 class EnvironmentResponse(BaseModel):
     """Current environment mode."""
 
@@ -198,6 +204,9 @@ async def set_credentials(
             incoming['google'] = credentials.google_api_key
         if credentials.groq_api_key:
             incoming['groq'] = credentials.groq_api_key
+        # Allow gemini alias for google key
+        if hasattr(credentials, 'gemini_api_key') and credentials.gemini_api_key:
+            incoming['google'] = credentials.gemini_api_key
 
         configured_providers = CredentialService.upsert_credentials(db=db, user_id=current_user.id, credentials=incoming)
 
@@ -238,3 +247,18 @@ async def set_credentials(
     except Exception as e:
         logger.error(f'Error setting credentials: {e}', exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get('/credentials', response_model=CredentialsListResponse)
+async def get_credentials(
+    current_user: User | None = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+) -> CredentialsListResponse:
+    """Return configured providers for the current user."""
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=401, detail='Authentication required')
+    if not current_user:
+        raise HTTPException(status_code=401, detail='Authentication required')
+
+    stored = CredentialService.load_credentials(db=db, user_id=current_user.id)
+    return CredentialsListResponse(configured_providers=sorted(stored.keys()))

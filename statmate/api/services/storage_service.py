@@ -104,6 +104,22 @@ class StorageService:
             logger.info(f'Deleted file: {file_path}')
 
     @staticmethod
+    def delete_results(analysis_id: str) -> None:
+        """Delete stored results for an analysis."""
+        results_dir = settings.get_results_path(analysis_id)
+        if results_dir.exists():
+            shutil.rmtree(results_dir, ignore_errors=True)
+            logger.info('Deleted results directory: %s', results_dir)
+
+    @staticmethod
+    def delete_log(analysis_id: str) -> None:
+        """Delete stored log file for an analysis."""
+        log_file = settings.get_log_path(analysis_id)
+        if log_file.exists():
+            log_file.unlink()
+            logger.info('Deleted log file: %s', log_file)
+
+    @staticmethod
     def save_results(analysis_id: str, results_data: dict) -> Path:
         """Save analysis results to JSON file.
 

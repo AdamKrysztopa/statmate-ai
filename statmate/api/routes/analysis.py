@@ -9,9 +9,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from config.settings import settings
+from database.models import AnalysisStatus, User
 from database.session import get_db
 from statmate.api.dependencies import get_current_user_optional
 from statmate.api.models.analysis import (
+    AnalysisCommentUpdate,
     AnalysisCreate,
     AnalysisResponse,
     AnalysisResultResponse,
@@ -19,7 +21,6 @@ from statmate.api.models.analysis import (
 )
 from statmate.api.services.analysis_service import AnalysisService
 from statmate.api.services.export_service import ExportService
-from database.models import AnalysisStatus, User
 
 router = APIRouter(prefix='/analysis', tags=['analysis'])
 
@@ -59,6 +60,7 @@ async def run_analysis(
             model_name=request.model_name,
             provider=request.provider,
             user_id=current_user.id if current_user else None,
+            overwrite=request.overwrite,
         )
 
         # Run analysis in background
@@ -138,7 +140,9 @@ async def get_analysis_status(
 
     execution_trace: list[dict[str, str]] | None = None
     if analysis.log_path:
-        log_content = AnalysisService.get_analysis_log(db, analysis_id, user_id=current_user.id if current_user else None)
+        log_content = AnalysisService.get_analysis_log(
+            db, analysis_id, user_id=current_user.id if current_user else None
+        )
         if log_content:
             execution_trace = _parse_trace_from_log(log_content)
 
@@ -147,6 +151,9 @@ async def get_analysis_status(
         status=analysis.status.value,
         message=analysis.summary or analysis.error_message,
         log_available=bool(analysis.log_path),
+        version=analysis.version,
+        superseded_at=analysis.superseded_at,
+        comment=analysis.comment,
         execution_trace=execution_trace,
         decision_steps=analysis.decision_steps,
         intermediate_log=analysis.intermediate_log,
@@ -178,18 +185,21 @@ async def stream_analysis_events(
             while last_step_idx < len(steps):
                 payload = dict(steps[last_step_idx])
                 payload.setdefault('analysis_id', analysis.id)
-                yield f"event: step\ndata: {json.dumps(payload, default=str)}\n\n"
+                payload.setdefault('version', analysis.version)
+                yield f'event: step\ndata: {json.dumps(payload, default=str)}\n\n'
                 last_step_idx += 1
 
             log_text = analysis.intermediate_log or ''
             if len(log_text) > last_log_len:
                 chunk = log_text[last_log_len:]
-                yield f"event: log\ndata: {json.dumps({'analysis_id': analysis.id, 'chunk': chunk})}\n\n"
+                log_payload = {'analysis_id': analysis.id, 'chunk': chunk, 'version': analysis.version}
+                yield f'event: log\ndata: {json.dumps(log_payload)}\n\n'
                 last_log_len = len(log_text)
 
             status_value = analysis.status.value if hasattr(analysis.status, 'value') else str(analysis.status)
             if analysis.status in (AnalysisStatus.COMPLETED, AnalysisStatus.FAILED, AnalysisStatus.CANCELLED):
-                yield f"event: done\ndata: {json.dumps({'analysis_id': analysis.id, 'status': status_value})}\n\n"
+                done_payload = {'analysis_id': analysis.id, 'status': status_value, 'version': analysis.version}
+                yield f'event: done\ndata: {json.dumps(done_payload)}\n\n'
                 break
 
             await asyncio.sleep(1.0)
@@ -199,7 +209,8 @@ async def stream_analysis_events(
         log_text = analysis.intermediate_log or ''
         if len(log_text) > last_log_len:
             chunk = log_text[last_log_len:]
-            yield f"event: log\ndata: {json.dumps({'analysis_id': analysis.id, 'chunk': chunk})}\n\n"
+            log_payload = {'analysis_id': analysis.id, 'chunk': chunk}
+            yield f'event: log\ndata: {json.dumps(log_payload)}\n\n'
 
     return StreamingResponse(event_generator(), media_type='text/event-stream')
 
@@ -308,6 +319,7 @@ async def export_analysis_report(
 async def list_analyses(
     skip: int = 0,
     limit: int = 100,
+    dataset_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ) -> list[AnalysisResponse]:
@@ -316,6 +328,7 @@ async def list_analyses(
     Args:
         skip: Number of records to skip
         limit: Maximum number of records to return
+        dataset_id: Optional dataset filter
         db: Database session
 
     Returns:
@@ -325,6 +338,45 @@ async def list_analyses(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
 
     analyses = AnalysisService.list_analyses(
-        db, skip=skip, limit=limit, user_id=current_user.id if current_user else None
+        db,
+        skip=skip,
+        limit=limit,
+        user_id=current_user.id if current_user else None,
+        dataset_id=dataset_id,
     )
     return [AnalysisResponse.model_validate(a) for a in analyses]
+
+
+@router.delete('/{analysis_id}', status_code=status.HTTP_204_NO_CONTENT)
+async def delete_analysis(
+    analysis_id: str,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> None:
+    """Delete an analysis version and its stored artifacts."""
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    deleted = AnalysisService.delete_analysis(db, analysis_id, user_id=current_user.id if current_user else None)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Analysis not found')
+    # Files are removed inside the service via StorageService
+
+
+@router.patch('/{analysis_id}/comment', response_model=AnalysisResponse)
+async def update_analysis_comment(
+    analysis_id: str,
+    payload: AnalysisCommentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> AnalysisResponse:
+    """Upsert a user comment on an analysis."""
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    updated = AnalysisService.update_comment(
+        db, analysis_id, comment=payload.comment, user_id=current_user.id if current_user else None
+    )
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Analysis not found')
+    return AnalysisResponse.model_validate(updated)

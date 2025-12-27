@@ -18,6 +18,10 @@ class AnalysisCreate(BaseModel):
     )
     provider: str | None = Field(default=None, description='Model provider (optional, auto-detected from model_name)')
     configuration: dict[str, Any] | None = Field(default=None, description='Optional analysis configuration parameters')
+    overwrite: bool = Field(
+        default=False,
+        description='If true, mark the latest analysis for this dataset/user as superseded and create a new version',
+    )
 
 
 class AnalysisResponse(BaseModel):
@@ -32,8 +36,11 @@ class AnalysisResponse(BaseModel):
     configuration: dict[str, Any] | None = Field(description='Analysis configuration')
     start_time: datetime | None = Field(description='When analysis started')
     end_time: datetime | None = Field(description='When analysis completed')
+    version: int = Field(description='Monotonic version number scoped to dataset/user')
+    superseded_at: datetime | None = Field(description='When this run was superseded by a newer overwrite')
     user_id: str | None = Field(description='Owner user ID')
     summary: str | None = Field(description='Brief summary of results')
+    comment: str | None = Field(description='User-supplied comment')
     error_message: str | None = Field(description='Error details if failed')
     probabilities: dict[str, float] | None = Field(description='Test p-values')
     decision_steps: list[dict[str, Any]] | None = Field(
@@ -58,6 +65,9 @@ class AnalysisStatusResponse(BaseModel):
     progress: float | None = Field(default=None, description='Progress percentage (0-100)', ge=0, le=100)
     message: str | None = Field(default=None, description='Status message')
     log_available: bool | None = Field(default=None, description='Whether a live execution log is available')
+    version: int | None = Field(default=None, description='Version number for this analysis')
+    superseded_at: datetime | None = Field(default=None, description='When this run was superseded, if applicable')
+    comment: str | None = Field(default=None, description='User-supplied comment')
     decision_steps: list[dict[str, Any]] | None = Field(
         default=None, description='Ordered list of streamed node/agent decisions'
     )
@@ -83,6 +93,7 @@ class AnalysisResultResponse(BaseModel):
     end_time: datetime | None = Field(description='Analysis end time')
     duration_seconds: float | None = Field(description='Analysis duration in seconds')
     summary: str | None = Field(description='Analysis summary')
+    comment: str | None = Field(description='User-supplied comment')
     probabilities: dict[str, float] | None = Field(description='Statistical test p-values')
     results_detail: dict[str, Any] | None = Field(description='Detailed results and statistical tree')
     execution_trace: list[dict[str, Any]] | None = Field(
@@ -99,8 +110,16 @@ class AnalysisResultResponse(BaseModel):
         default=None, description="Computed effect sizes (e.g., Cohen's d) when a binary grouping exists"
     )
     log_available: bool = Field(description='Whether execution log is available')
+    version: int = Field(description='Monotonic version number scoped to dataset/user')
+    superseded_at: datetime | None = Field(description='When this run was superseded by an overwrite')
 
     class Config:
         """Pydantic config."""
 
         from_attributes = True
+
+
+class AnalysisCommentUpdate(BaseModel):
+    """Request body for updating an analysis comment."""
+
+    comment: str | None = Field(default=None, description='New comment text')

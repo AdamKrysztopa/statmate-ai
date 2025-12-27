@@ -7,7 +7,8 @@ from typing import BinaryIO
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from database.models import Dataset
+from config.settings import settings
+from database.models import Analysis, AnalysisStatus, Dataset, ScheduledTask
 from statmate.api.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
@@ -266,3 +267,75 @@ class DatasetService:
             file_path = settings.get_upload_path(dataset.filename)
 
         return StorageService.read_dataset(file_path)
+
+    @staticmethod
+    def rename_columns(
+        db: Session, dataset_id: str, renames: dict[str, str], *, user_id: str | None = None, preview_rows: int = 10
+    ) -> dict | None:
+        """Rename columns for a dataset and propagate to pending tasks/analyses."""
+        dataset = DatasetService.get_dataset(db, dataset_id, user_id=user_id)
+        if not dataset:
+            return None
+
+        if not renames:
+            raise ValueError('No column renames provided')
+
+        existing_cols = dataset.column_names or []
+        missing = [col for col in renames.keys() if col not in existing_cols]
+        if missing:
+            raise ValueError(f'Columns not found: {", ".join(missing)}')
+
+        new_names = [renames.get(col, col) for col in existing_cols]
+        if len(set(new_names)) != len(new_names):
+            raise ValueError('Duplicate target column names detected')
+
+        if any((name is None) or (str(name).strip() == '') for name in new_names):
+            raise ValueError('Column names cannot be empty')
+
+        # Read dataset
+        file_path = Path(dataset.filename)
+        if not file_path.is_absolute():
+            file_path = settings.get_upload_path(dataset.filename)
+
+        df = StorageService.read_dataset(file_path)
+        df = df.rename(columns=renames)
+
+        dataset.column_names = df.columns.tolist()
+        dataset.data_types = {col: str(dtype) for col, dtype in df.dtypes.items()}
+
+        # Persist dataset
+        StorageService.save_dataset(df, dataset.filename)
+
+        # Update scheduled tasks
+        tasks = db.query(ScheduledTask).filter(ScheduledTask.dataset_id == dataset_id).all()
+        for task in tasks:
+            if task.selected_columns:
+                task.selected_columns = [renames.get(col, col) for col in task.selected_columns]
+
+        # Update pending/running analyses
+        analyses = (
+            db.query(Analysis)
+            .filter(
+                Analysis.dataset_id == dataset_id,
+                Analysis.status.in_([AnalysisStatus.PENDING, AnalysisStatus.RUNNING]),
+            )
+            .all()
+        )
+        for analysis in analyses:
+            if analysis.selected_columns:
+                analysis.selected_columns = [renames.get(col, col) for col in analysis.selected_columns]
+
+        db.commit()
+
+        preview_df = df.head(preview_rows)
+        preview_data = preview_df.to_dict(orient='records')
+
+        return {
+            'dataset_id': dataset.id,
+            'original_filename': dataset.original_filename,
+            'row_count': dataset.row_count,
+            'column_names': dataset.column_names,
+            'data_types': dataset.data_types,
+            'preview_data': preview_data,
+            'preview_rows': len(preview_data),
+        }

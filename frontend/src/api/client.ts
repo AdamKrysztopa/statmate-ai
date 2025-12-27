@@ -7,12 +7,17 @@ export type DatasetPreview = {
   row_count: number;
   column_names: string[];
   preview_data: Record<string, unknown>[];
+  data_types?: Record<string, string>;
+  preview_rows?: number;
 };
 export type AnalysisStatus = {
   id: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   message?: string;
   log_available?: boolean;
+  version?: number;
+  superseded_at?: string | null;
+  comment?: string | null;
   decision_steps?: TraceStep[];
   intermediate_log?: string;
   execution_trace?: TraceStep[];
@@ -42,6 +47,8 @@ export type ResultsDetail = {
   execution_trace?: TraceStep[];
   plots?: PlotInfo[];
   timestamp?: string;
+  comment?: string | null;
+  version?: number;
 };
 export type AnalysisResult = {
   id: string;
@@ -49,6 +56,7 @@ export type AnalysisResult = {
   dataset_id?: string;
   dataset_name?: string;
   summary?: string;
+  comment?: string | null;
   probabilities?: Record<string, number>;
   effect_sizes?: Record<string, number>;
   results_detail?: ResultsDetail;
@@ -59,8 +67,41 @@ export type AnalysisResult = {
   log_available?: boolean;
   model_name?: string;
   provider?: string;
+  version?: number;
+  superseded_at?: string | null;
+  start_time?: string;
+  end_time?: string;
 };
 export type AnalysisLog = { analysis_id: string; log_content: string; log_lines: string };
+export type AnalysisListItem = {
+  id: string;
+  dataset_id: string;
+  status: AnalysisStatus['status'];
+  selected_columns?: string[];
+  model_name?: string;
+  provider?: string;
+  start_time?: string;
+  end_time?: string;
+  version: number;
+  superseded_at?: string | null;
+  comment?: string | null;
+  summary?: string | null;
+};
+
+export type AvailableModel = {
+  name: string;
+  provider: string;
+  display_name: string;
+  description?: string;
+  capabilities?: string[];
+  supports_tools?: boolean;
+};
+
+export type AvailableModelsResponse = {
+  models: AvailableModel[];
+  default_model: string;
+  default_provider: string;
+};
 
 export class ApiClient {
   baseUrl: string;
@@ -142,7 +183,13 @@ export class ApiClient {
     return res.json();
   }
 
-  async runAnalysis(args: { dataset_id: string; selected_columns?: string[]; model_name?: string; provider?: string }): Promise<{ id: string }> {
+  async runAnalysis(args: {
+    dataset_id: string;
+    selected_columns?: string[];
+    model_name?: string;
+    provider?: string;
+    overwrite?: boolean;
+  }): Promise<{ id: string; version?: number }> {
     const res = await fetch(`${this.baseUrl}/analysis/run`, {
       method: 'POST',
       headers: this.headers(),
@@ -181,13 +228,69 @@ export class ApiClient {
     return fetch(`${this.baseUrl}/analysis/${id}/stream`, { headers, signal });
   }
 
-  async analyses(params: { dataset_id?: string; skip?: number; limit?: number } = {}): Promise<AnalysisResult[]> {
+  async analyses(params: { dataset_id?: string; skip?: number; limit?: number } = {}): Promise<AnalysisListItem[]> {
     const query = new URLSearchParams();
     if (params.dataset_id) query.set('dataset_id', params.dataset_id);
     if (typeof params.skip === 'number') query.set('skip', String(params.skip));
     if (typeof params.limit === 'number') query.set('limit', String(params.limit));
     const qs = query.toString();
     const res = await fetch(`${this.baseUrl}/analysis/${qs ? `?${qs}` : ''}`, { headers: this.headers(false) });
+    if (!res.ok) throw await this.error(res);
+    return res.json();
+  }
+
+  async deleteAnalysis(id: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/analysis/${id}`, { method: 'DELETE', headers: this.headers(false) });
+    if (!res.ok) throw await this.error(res);
+  }
+
+  async updateAnalysisComment(id: string, comment: string): Promise<AnalysisListItem> {
+    const res = await fetch(`${this.baseUrl}/analysis/${id}/comment`, {
+      method: 'PATCH',
+      headers: this.headers(),
+      body: JSON.stringify({ comment }),
+    });
+    if (!res.ok) throw await this.error(res);
+    return res.json();
+  }
+
+  async renameColumns(datasetId: string, renames: Record<string, string>): Promise<DatasetPreview> {
+    const res = await fetch(`${this.baseUrl}/datasets/${datasetId}/columns`, {
+      method: 'PATCH',
+      headers: this.headers(),
+      body: JSON.stringify({ renames }),
+    });
+    if (!res.ok) throw await this.error(res);
+    return res.json();
+  }
+
+  async availableModels(): Promise<AvailableModelsResponse> {
+    const res = await fetch(`${this.baseUrl}/models/available`, { headers: this.headers(false) });
+    if (!res.ok) throw await this.error(res);
+    return res.json();
+  }
+
+  async configuredCredentials(): Promise<{ configured_providers: string[] }> {
+    const res = await fetch(`${this.baseUrl}/models/credentials`, { headers: this.headers(false) });
+    if (!res.ok) throw await this.error(res);
+    return res.json();
+  }
+
+  async setCredentials(payload: {
+    openai_api_key?: string;
+    anthropic_api_key?: string;
+    google_api_key?: string;
+    groq_api_key?: string;
+    gemini_api_key?: string;
+    ollama_enabled?: string;
+    ollama_base_url?: string;
+    ollama_default_model?: string;
+  }): Promise<{ configured_providers: string[] }> {
+    const res = await fetch(`${this.baseUrl}/models/credentials`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify(payload),
+    });
     if (!res.ok) throw await this.error(res);
     return res.json();
   }

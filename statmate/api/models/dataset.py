@@ -54,3 +54,16 @@ class DatasetPreviewResponse(BaseModel):
         """Pydantic config."""
 
         from_attributes = True
+
+
+class ColumnRename(BaseModel):
+    """Single column rename entry."""
+
+    from_name: str = Field(description='Existing column name')
+    to_name: str = Field(description='New column name')
+
+
+class ColumnRenameRequest(BaseModel):
+    """Request payload for renaming dataset columns."""
+
+    renames: dict[str, str] | list[ColumnRename]

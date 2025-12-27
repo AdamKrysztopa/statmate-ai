@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import {
   Activity,
   BarChart3,
@@ -20,6 +20,8 @@ import {
   ApiClient,
   AnalysisResult,
   AnalysisStatus,
+  AnalysisListItem,
+  AvailableModel,
   Dataset,
   DatasetPreview,
   TraceStep,
@@ -97,6 +99,7 @@ function App() {
   const [analysisId, setAnalysisId] = useState('');
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | undefined>();
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult | undefined>();
+  const [analysisHistory, setAnalysisHistory] = useState<AnalysisListItem[]>([]);
   const [logContent, setLogContent] = useState('');
   const [streamSteps, setStreamSteps] = useState<TraceStep[]>([]);
   const [streaming, setStreaming] = useState(false);
@@ -106,6 +109,21 @@ function App() {
   const [modelName, setModelName] = useState('gpt-4o');
   const [provider, setProvider] = useState('openai');
   const [exporting, setExporting] = useState<'pdf' | 'docx' | 'csv' | null>(null);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [renameDrafts, setRenameDrafts] = useState<Record<string, string>>({});
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
+  const [credentialInputs, setCredentialInputs] = useState({
+    openai: '',
+    anthropic: '',
+    groq: '',
+    gemini: '',
+    google: '',
+    ollama_base_url: '',
+    ollama_default_model: '',
+  });
+  const [showKeys, setShowKeys] = useState(false);
+  const [overwriteLatest, setOverwriteLatest] = useState(false);
 
   const api = useMemo(() => new ApiClient(apiBase, token), [apiBase, token]);
 
@@ -157,17 +175,93 @@ function App() {
     }
   };
 
+  const loadModelMeta = async () => {
+    try {
+      const res = await api.availableModels();
+      setAvailableModels(res.models || []);
+      if (res.default_model) setModelName((prev) => prev || res.default_model);
+      if (res.default_provider) setProvider((prev) => prev || res.default_provider);
+    } catch (e) {
+      // silent; model listing may be unavailable without credentials
+      console.warn(e);
+    }
+  };
+
+  const loadCredentialMeta = async () => {
+    try {
+      const res = await api.configuredCredentials();
+      setConfiguredProviders(res.configured_providers || []);
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  const openAnalysis = useCallback(async (analysisItem: AnalysisListItem) => {
+    setAnalysisResults(undefined);
+    setAnalysisStatus(undefined);
+    setStreamSteps([]);
+    setLogContent('');
+    setAnalysisId(analysisItem.id);
+    setStreaming(analysisItem.status === 'running' || analysisItem.status === 'pending');
+    try {
+      const status = await api.analysisStatus(analysisItem.id);
+      setAnalysisStatus(status);
+      if (status.comment !== undefined) {
+        setCommentDraft(status.comment || '');
+      }
+      if (status.status === 'completed') {
+        const resJson = await api.analysisResults(analysisItem.id);
+        setAnalysisResults(resJson);
+        setCommentDraft(resJson.comment || '');
+        setStreaming(false);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+      setStreaming(false);
+    }
+  }, [api]);
+
+  const loadAnalyses = useCallback(async (datasetId: string, autoSelect = true) => {
+    if (!datasetId) return;
+    try {
+      const list = await api.analyses({ dataset_id: datasetId });
+      const sorted = [...list].sort((a, b) => (b.version || 0) - (a.version || 0));
+      setAnalysisHistory(sorted);
+      if (autoSelect && sorted.length) {
+        const latestCompleted = sorted.find((item) => item.status === 'completed') || sorted[0];
+        await openAnalysis(latestCompleted);
+      } else {
+        setAnalysisId('');
+        setAnalysisStatus(undefined);
+        setAnalysisResults(undefined);
+        setCommentDraft('');
+      }
+    } catch (e) {
+      // Ignore not-found/empty responses when no analyses exist yet
+      const msg = (e as Error).message || '';
+      if (!msg.toLowerCase().includes('not found')) {
+        setError(msg);
+      } else {
+        setAnalysisHistory([]);
+      }
+    }
+  }, [api, openAnalysis]);
+
   const selectDataset = async (id: string) => {
     setSelectedDatasetId(id);
     setAnalysisResults(undefined);
     setAnalysisStatus(undefined);
     setAnalysisId('');
     setLogContent('');
+    setAnalysisHistory([]);
+    setCommentDraft('');
     if (!id) return;
     try {
       const p = await api.previewDataset(id);
       setPreview(p);
       setSelectedColumns([]);
+      setRenameDrafts({});
+      await loadAnalyses(id);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -190,15 +284,17 @@ function App() {
     }
   };
 
-  const handleRunAnalysis = async () => {
+  const handleRunAnalysis = async (forceOverwrite?: boolean) => {
     if (!selectedDatasetId) return;
     clearMessages();
     try {
+      const overwriteFlag = typeof forceOverwrite === 'boolean' ? forceOverwrite : overwriteLatest;
       const { id } = await api.runAnalysis({
         dataset_id: selectedDatasetId,
         selected_columns: selectedColumns.length ? selectedColumns : undefined,
         model_name: modelName,
         provider,
+        overwrite: overwriteFlag,
       });
       streamAbortRef.current?.abort();
       setAnalysisId(id);
@@ -206,7 +302,23 @@ function App() {
       setStreaming(true);
       setAnalysisResults(undefined);
       setAnalysisStatus({ id, status: 'running' });
+      setCommentDraft('');
+      await loadAnalyses(selectedDatasetId, false);
       setActiveTab('analysis');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const handleDeleteAnalysis = async (id: string) => {
+    try {
+      await api.deleteAnalysis(id);
+      await loadAnalyses(selectedDatasetId, false);
+      if (analysisId === id) {
+        setAnalysisId('');
+        setAnalysisResults(undefined);
+        setAnalysisStatus(undefined);
+      }
     } catch (e) {
       setError((e as Error).message);
     }
@@ -243,11 +355,60 @@ function App() {
     }
   };
 
+  const applyRenames = async () => {
+    if (!selectedDatasetId) return;
+    const mapping = Object.fromEntries(
+      Object.entries(renameDrafts).filter(([col, next]) => next && next !== col)
+    );
+    if (!Object.keys(mapping).length) return;
+    try {
+      const updated = await api.renameColumns(selectedDatasetId, mapping);
+      setPreview(updated);
+      setSelectedColumns((cols) =>
+        cols
+          .map((col) => mapping[col] || col)
+          .filter((col) => updated.column_names.includes(col))
+      );
+      setRenameDrafts({});
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const saveCredentials = async () => {
+    try {
+      const res = await api.setCredentials({
+        openai_api_key: credentialInputs.openai,
+        anthropic_api_key: credentialInputs.anthropic,
+        google_api_key: credentialInputs.google || credentialInputs.gemini,
+        groq_api_key: credentialInputs.groq,
+        ollama_enabled: credentialInputs.ollama_base_url ? 'true' : undefined,
+        ollama_base_url: credentialInputs.ollama_base_url || undefined,
+        ollama_default_model: credentialInputs.ollama_default_model || undefined,
+      });
+      setConfiguredProviders(res.configured_providers || []);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   // Effects
   useEffect(() => {
     const storedToken = localStorage.getItem('statmate-token');
     if (storedToken) setToken(storedToken);
   }, []);
+
+  useEffect(() => {
+    const storedProvider = localStorage.getItem('statmate-provider');
+    const storedModel = localStorage.getItem('statmate-model');
+    if (storedProvider) setProvider(storedProvider);
+    if (storedModel) setModelName(storedModel);
+  }, []);
+
+  useEffect(() => {
+    if (provider) localStorage.setItem('statmate-provider', provider);
+    if (modelName) localStorage.setItem('statmate-model', modelName);
+  }, [provider, modelName]);
 
   useEffect(() => {
     if (token) {
@@ -259,6 +420,8 @@ function App() {
         .catch(() => setToken(undefined));
       loadDatasets();
       connect();
+      loadModelMeta();
+      loadCredentialMeta();
     } else {
       localStorage.removeItem('statmate-token');
       setUser(undefined);
@@ -269,7 +432,8 @@ function App() {
   }, [token]);
 
   useEffect(() => {
-    if (!analysisId) return undefined;
+    const shouldStream = streaming || analysisStatus?.status === 'running' || analysisStatus?.status === 'pending';
+    if (!analysisId || !shouldStream) return undefined;
     const controller = new AbortController();
     streamAbortRef.current = controller;
 
@@ -307,6 +471,9 @@ function App() {
               const resJson = await api.analysisResults(analysisId);
               setAnalysisResults(resJson);
               setAnalysisStatus((prev) => ({ ...(prev || { id: analysisId, status: 'completed' }), status: 'completed' }));
+              if (selectedDatasetId) {
+                await loadAnalyses(selectedDatasetId, false);
+              }
             }
           }
         }
@@ -320,7 +487,7 @@ function App() {
 
     connectStream();
     return () => controller.abort();
-  }, [analysisId, api]);
+  }, [analysisId, api, streaming, analysisStatus, selectedDatasetId, loadAnalyses]);
 
   useEffect(() => {
     if (!analysisId) return undefined;
@@ -328,6 +495,22 @@ function App() {
       try {
         const status = await api.analysisStatus(analysisId);
         setAnalysisStatus(status);
+        if (status.comment !== undefined) {
+          setCommentDraft(status.comment || '');
+        }
+        setAnalysisHistory((prev) =>
+          prev.map((item) =>
+            item.id === analysisId
+              ? {
+                  ...item,
+                  status: status.status,
+                  version: status.version || item.version,
+                  superseded_at: status.superseded_at || item.superseded_at,
+                  comment: status.comment ?? item.comment,
+                }
+              : item
+          )
+        );
         if (status.decision_steps?.length) {
           setStreamSteps((prev) => mergeUniqueSteps(prev, status.decision_steps || []));
         }
@@ -370,7 +553,32 @@ function App() {
   const summaryText =
     analysisResults?.summary || analysisResults?.results_detail?.summary || (streaming ? 'Generating summary…' : 'Waiting for results');
 
+  const providerOptions = useMemo(() => {
+    if (availableModels.length) {
+      return Array.from(new Set(availableModels.map((m) => m.provider)));
+    }
+    return ['openai', 'anthropic', 'google', 'groq', 'ollama'];
+  }, [availableModels]);
+
   const connectionLabel = health || (error && !token ? error : 'API status unknown');
+
+  useEffect(() => {
+    setCommentDraft(analysisResults?.comment || '');
+  }, [analysisResults?.id]);
+
+  useEffect(() => {
+    const currentId = analysisResults?.id || analysisId;
+    if (!currentId) return undefined;
+    const handler = setTimeout(async () => {
+      try {
+        await api.updateAnalysisComment(currentId, commentDraft);
+        setAnalysisHistory((prev) => prev.map((item) => (item.id === currentId ? { ...item, comment: commentDraft } : item)));
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    }, 700);
+    return () => clearTimeout(handler);
+  }, [analysisResults?.id, analysisId, commentDraft, api]);
 
   // Render: Auth
   if (!token) {
@@ -746,11 +954,11 @@ function App() {
                             onChange={(e) => setProvider(e.target.value)}
                             className="bg-transparent text-sm outline-none"
                           >
-                            <option value="openai">OpenAI</option>
-                            <option value="anthropic">Anthropic</option>
-                            <option value="google">Gemini</option>
-                            <option value="groq">Groq</option>
-                            <option value="ollama">Ollama</option>
+                            {providerOptions.map((p) => (
+                              <option key={p} value={p}>
+                                {p.charAt(0).toUpperCase() + p.slice(1)}
+                              </option>
+                            ))}
                           </select>
                         </div>
                         <div className="flex items-center gap-2 rounded-full border border-slate-800/50 px-3 py-1 text-xs text-slate-400">
@@ -761,12 +969,20 @@ function App() {
                             placeholder="Model name"
                           />
                         </div>
-                        <button
-                          onClick={handleRunAnalysis}
-                          className="flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-600 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20"
-                        >
-                          <Zap size={16} /> Run analysis
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleRunAnalysis(false)}
+                            className="flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-600 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20"
+                          >
+                            <Zap size={16} /> Run new version
+                          </button>
+                          <button
+                            onClick={() => handleRunAnalysis(true)}
+                            className="rounded-full border border-amber-400/60 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-500/10"
+                          >
+                            Overwrite latest
+                          </button>
+                        </div>
                       </div>
                     </div>
                     <div className="px-6 py-4">
@@ -799,6 +1015,35 @@ function App() {
                           );
                         })}
                       </div>
+                      <div className="mb-4 rounded-xl border border-slate-800/60 bg-slate-900/40 p-3">
+                        <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.18em] text-slate-500">
+                          <span>Rename columns</span>
+                          <button
+                            onClick={applyRenames}
+                            className="rounded-full border border-cyan-500/60 px-2 py-1 text-[11px] font-semibold text-cyan-300"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {preview.column_names.map((name) => (
+                            <div key={name} className="flex items-center gap-2 rounded-lg border border-slate-800/60 bg-slate-900/50 px-2 py-1">
+                              <span className="text-[11px] text-slate-400">{name}</span>
+                              <span className="text-slate-600">→</span>
+                              <input
+                                value={renameDrafts[name] ?? name}
+                                onChange={(e) =>
+                                  setRenameDrafts((prev) => ({
+                                    ...prev,
+                                    [name]: e.target.value,
+                                  }))
+                                }
+                                className="w-full rounded-md bg-slate-950/80 px-2 py-1 text-sm text-slate-100 outline-none"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
                           <thead className="bg-slate-900/60">
@@ -826,6 +1071,97 @@ function App() {
                     </div>
                   </div>
                 )}
+
+                <div className={`rounded-2xl border p-6 shadow-lg ${theme === 'dark' ? 'border-slate-800/80 bg-slate-900/80' : 'border-slate-200 bg-white'}`}>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-lg font-semibold">Provider credentials</h3>
+                      <p className="text-sm text-slate-400">Store API keys for your preferred provider. Keys stay per-user.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowKeys((v) => !v)}
+                        className="rounded-full border border-slate-700 px-3 py-1 text-xs font-semibold text-slate-200"
+                      >
+                        {showKeys ? 'Hide keys' : 'Show keys'}
+                      </button>
+                      <span className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300">
+                        {configuredProviders.length ? `${configuredProviders.length} configured` : 'None configured'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <label className="text-sm text-slate-300">
+                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">OpenAI</span>
+                      <input
+                        value={credentialInputs.openai}
+                        onChange={(e) => setCredentialInputs((prev) => ({ ...prev, openai: e.target.value }))}
+                        type={showKeys ? 'text' : 'password'}
+                        className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm outline-none"
+                        placeholder="OPENAI_API_KEY"
+                      />
+                    </label>
+                    <label className="text-sm text-slate-300">
+                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Anthropic</span>
+                      <input
+                        value={credentialInputs.anthropic}
+                        onChange={(e) => setCredentialInputs((prev) => ({ ...prev, anthropic: e.target.value }))}
+                        type={showKeys ? 'text' : 'password'}
+                        className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm outline-none"
+                        placeholder="ANTHROPIC_API_KEY"
+                      />
+                    </label>
+                    <label className="text-sm text-slate-300">
+                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Gemini/Google</span>
+                      <input
+                        value={credentialInputs.gemini}
+                        onChange={(e) => setCredentialInputs((prev) => ({ ...prev, gemini: e.target.value, google: e.target.value }))}
+                        type={showKeys ? 'text' : 'password'}
+                        className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm outline-none"
+                        placeholder="GEMINI_API_KEY"
+                      />
+                    </label>
+                    <label className="text-sm text-slate-300">
+                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Groq</span>
+                      <input
+                        value={credentialInputs.groq}
+                        onChange={(e) => setCredentialInputs((prev) => ({ ...prev, groq: e.target.value }))}
+                        type={showKeys ? 'text' : 'password'}
+                        className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm outline-none"
+                        placeholder="GROQ_API_KEY"
+                      />
+                    </label>
+                    <label className="text-sm text-slate-300">
+                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Ollama base URL</span>
+                      <input
+                        value={credentialInputs.ollama_base_url}
+                        onChange={(e) => setCredentialInputs((prev) => ({ ...prev, ollama_base_url: e.target.value }))}
+                        className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm outline-none"
+                        placeholder="http://localhost:11434/v1"
+                      />
+                    </label>
+                    <label className="text-sm text-slate-300">
+                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Ollama default model</span>
+                      <input
+                        value={credentialInputs.ollama_default_model}
+                        onChange={(e) => setCredentialInputs((prev) => ({ ...prev, ollama_default_model: e.target.value }))}
+                        className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm outline-none"
+                        placeholder="deepseek-r1:8b"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="text-xs text-slate-400">
+                      Configured: {configuredProviders.length ? configuredProviders.join(', ') : 'None'}
+                    </div>
+                    <button
+                      onClick={saveCredentials}
+                      className="rounded-full bg-gradient-to-r from-cyan-400 to-blue-600 px-4 py-2 text-sm font-semibold text-slate-950"
+                    >
+                      Save keys
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -892,9 +1228,102 @@ function App() {
                       <div className={`prose max-w-none text-base leading-relaxed ${theme === 'dark' ? 'prose-invert text-slate-200' : 'text-slate-800'}`}>
                         {summaryText}
                       </div>
+                      <div className="mt-4">
+                        <div className="mb-1 flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-500">
+                          <span>Comment</span>
+                          {analysisResults?.version && (
+                            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">v{analysisResults.version}</span>
+                          )}
+                        </div>
+                        <textarea
+                          value={commentDraft}
+                          onChange={(e) => setCommentDraft(e.target.value)}
+                          placeholder="Add context or reviewer notes..."
+                          className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                            theme === 'dark' ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500' : 'border-slate-200 bg-white focus:border-cyan-500'
+                          }`}
+                          rows={3}
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-4">
+                    <div className={`rounded-2xl border p-4 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Version history</p>
+                        <div className="flex items-center gap-2 text-xs">
+                          <label className="flex items-center gap-1 text-slate-400">
+                              <input type="checkbox" checked={overwriteLatest} onChange={(e) => setOverwriteLatest(e.target.checked)} />
+                              Overwrite latest
+                            </label>
+                            <button onClick={() => loadAnalyses(selectedDatasetId, false)} className="rounded-full border px-2 py-1 text-[11px] font-semibold text-cyan-300">
+                              Refresh
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mt-3 space-y-2 max-h-64 overflow-y-auto pr-1">
+                          {analysisHistory.length ? (
+                            analysisHistory.map((item) => (
+                              <div
+                                key={item.id}
+                                className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${
+                                  item.id === analysisId ? 'border-cyan-500 bg-cyan-500/10' : theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'
+                                }`}
+                              >
+                                <div className="flex-1">
+                                  <div className="flex items-center justify-between text-xs text-slate-400">
+                                    <span className="font-semibold text-slate-200">v{item.version}</span>
+                                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] uppercase text-slate-300">
+                                      {item.status}
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => openAnalysis(item)}
+                                    className="text-left text-sm font-semibold text-slate-100 hover:text-cyan-300"
+                                  >
+                                    {item.summary || 'Open run'}
+                                  </button>
+                                  <div className="mt-1 text-[11px] text-slate-400">{item.comment || 'No comment yet.'}</div>
+                                  {item.superseded_at && <div className="text-[10px] uppercase text-amber-400">Superseded</div>}
+                                </div>
+                                <button
+                                  onClick={() => handleDeleteAnalysis(item.id)}
+                                  className="rounded-full border border-red-500/50 px-2 py-1 text-[10px] uppercase text-red-300"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-slate-800/70 bg-slate-900/50 p-3 text-xs text-slate-400">
+                              No runs yet. Kick off an analysis to see versions here.
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-3 text-[11px] text-slate-500">
+                          Use <span className="font-semibold text-cyan-300">Run analysis</span> to start a new version, or enable overwrite to supersede the latest run.
+                        </div>
+                      </div>
+
+                      {analysisId && (
+                        <div className={`rounded-2xl border p-4 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Analysis notes</p>
+                            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">Autosaves</span>
+                          </div>
+                          <textarea
+                            value={commentDraft}
+                            onChange={(e) => setCommentDraft(e.target.value)}
+                            placeholder="Add interpretation, caveats, or next steps..."
+                            className={`min-h-[120px] w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                              theme === 'dark'
+                                ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500'
+                                : 'border-slate-200 bg-white focus:border-cyan-500'
+                            }`}
+                          />
+                        </div>
+                      )}
+
                       <div className={`rounded-2xl border p-4 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Metadata</p>
                         <div className="mt-3 space-y-2 text-sm">
@@ -909,6 +1338,13 @@ function App() {
                           <div className="flex justify-between">
                             <span className="text-slate-400">Dataset</span>
                             <span className="truncate text-slate-200">{preview?.original_filename || analysisResults?.dataset_name || '—'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Version</span>
+                            <span className="text-slate-200">
+                              {analysisResults?.version || analysisStatus?.version || '—'}
+                              {analysisStatus?.superseded_at ? ' (superseded)' : ''}
+                            </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-400">Status</span>
