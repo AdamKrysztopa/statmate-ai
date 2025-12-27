@@ -251,7 +251,7 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         validated_design = validate_statistical_design(
             inp_df,
             dependent_var=results.data.analysis_columns or list(inp_df.columns),
-            group_var=results.data.group_column,
+            group_var=results.data.group_column or design.grouping_variable,
             subject_id=design.subject_id_column,
         )
         state.statistical_design = validated_design

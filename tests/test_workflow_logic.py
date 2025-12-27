@@ -227,3 +227,57 @@ def test_format_data_by_recommendation_prefers_validator_paired_design():
     s1, s2 = format_data_by_recommendation(df, rec, design)
     assert list(s1) == [1, 2, 3]
     assert list(s2) == [2, 3, 4]
+
+
+def test_validate_statistical_design_does_not_force_paired_when_deps_include_ids_and_group():
+    df = pd.DataFrame(
+        {
+            'patient_id': range(6),
+            'treatment method': ['A', 'A', 'A', 'B', 'B', 'B'],
+            'result': [1.1, 2.2, 3.3, 2.1, 2.9, 3.5],
+        }
+    )
+    design = validate_statistical_design(
+        df,
+        dependent_var=list(df.columns),  # fallback path when agent omits analysis_columns
+        group_var='treatment method',
+        subject_id='patient_id',
+    )
+    assert design.design_type == 'independent'
+    assert design.is_paired is False
+
+
+def test_validate_statistical_design_handles_long_format_with_id_and_value_only():
+    df = pd.DataFrame(
+        {
+            'patient_id': range(1, 6),
+            'treatment method': ['A', 'A', 'A', 'B', 'B'],
+            'result': [100.0, 90.0, 110.0, 105.0, 95.0],
+        }
+    )
+    design = validate_statistical_design(
+        df,
+        dependent_var=list(df.columns),
+        group_var=None,
+        subject_id='patient_id',
+    )
+    assert design.design_type == 'independent'
+    assert design.grouping_variable in (None, 'treatment method')
+
+
+def test_validate_statistical_design_respects_hint_group_var_when_columns_are_pivoted():
+    wide_df = pd.DataFrame(
+        {
+            'result_A': [1.0, 2.0, 3.0],
+            'result_B': [1.5, 2.5, 3.5],
+        }
+    )
+    design = validate_statistical_design(
+        wide_df,
+        dependent_var=list(wide_df.columns),
+        group_var='treatment method',
+        subject_id='patient_id',
+    )
+
+    assert design.design_type == 'independent'
+    assert design.grouping_variable == 'treatment method'

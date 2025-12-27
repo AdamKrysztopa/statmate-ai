@@ -407,15 +407,40 @@ def validate_statistical_design(
     if group_var and group_var in frame.columns:
         groups = [str(g) for g in frame[group_var].dropna().unique().tolist()]
 
-    # 1. Wide-format paired: multiple measurement columns imply row-wise pairing regardless of grouping.
-    if dep_values and len(dep_values) >= 2:
+    potential_group = None
+    if not group_var:
+        candidates = _candidate_group_columns(frame)
+        if candidates:
+            potential_group = candidates[0]
+
+    numeric_dep_values = [
+        col
+        for col in dep_values
+        if col in frame.columns
+        and pd.api.types.is_numeric_dtype(frame[col])
+        and col != group_var
+        and col != subject_id
+    ]
+
+    def _is_id_like(col: str) -> bool:
+        low = str(col).lower()
+        nunique = frame[col].nunique(dropna=True)
+        if nunique >= max(len(frame) * 0.9, 5):
+            return True
+        id_tokens = ('id', 'subject', 'participant', 'patient', 'user')
+        return any(tok in low for tok in id_tokens)
+
+    measurement_cols = [col for col in numeric_dep_values if not _is_id_like(col)]
+
+    # 1. Wide-format paired: multiple numeric measurement columns without grouping imply row-wise pairing.
+    if group_var is None and len(measurement_cols) >= 2 and potential_group is None:
         return StatisticalDesign(
             design_type='paired',
             is_paired=True,
             grouping_variable=group_var if group_var in frame.columns else None,
             subject_id_column=subject_id,
-            dependent_variable=', '.join(dep_values),
-            rationale='Multiple measurement columns per row (wide-format) detected. Skipping group-overlap checks.',
+            dependent_variable=', '.join(measurement_cols),
+            rationale='Multiple numeric measurement columns per row (wide-format) detected. Skipping group-overlap checks.',
             suggested_groups=[],
             keyword_cues=keyword_cues,
         )
@@ -423,7 +448,12 @@ def validate_statistical_design(
     # 2. Temporal/paired keyword cues: single dep var provided but paired-like columns exist.
     paired_keywords = ('pre', 'post', 'baseline', 'followup', 'week')
     if not group_var:
-        temporal_like = [col for col in frame.columns if any(tok in str(col).lower() for tok in paired_keywords)]
+        temporal_like = [
+            col
+            for col in frame.columns
+            if any(tok in str(col).lower() for tok in paired_keywords)
+            and pd.api.types.is_numeric_dtype(frame[col])
+        ]
         if len(temporal_like) >= 2:
             return StatisticalDesign(
                 design_type='paired',
@@ -441,7 +471,7 @@ def validate_statistical_design(
         return StatisticalDesign(
             design_type='independent',
             is_paired=False,
-            grouping_variable=None,
+            grouping_variable=potential_group,
             subject_id_column=subject_id,
             dependent_variable=dep_label,
             rationale='No grouping variable provided; assuming single group or independent exploration.',
