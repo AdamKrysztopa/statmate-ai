@@ -241,7 +241,7 @@ function App() {
       if (autoSelect && sorted.length) {
         const latestCompleted = sorted.find((item) => item.status === 'completed') || sorted[0];
         await openAnalysis(latestCompleted);
-      } else {
+      } else if (!sorted.length) {
         setAnalysisId('');
         setAnalysisStatus(undefined);
         setAnalysisResults(undefined);
