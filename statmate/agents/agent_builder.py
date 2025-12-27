@@ -41,8 +41,8 @@ Assumptions & Diagnostics:
 
 Data Exploration:
   - Summarize distribution metrics (mean, median, variance, skewness).
-  - Analye the imput data, check if data are categorical or continuous, and propose the best test.
-  - Verify if only data are provided, or if secondary data is provided - sugest the best analysis.
+  - Analyze the input data, check if data are categorical or continuous, and propose the best test.
+  - Verify if only data are provided, or if secondary data is provided - suggest the best analysis.
   - Detect outliers and missing values; document handling decisions.
 
 Precision & Effect Size:
@@ -51,7 +51,7 @@ Precision & Effect Size:
 Screening & Recommendations:
   - Recommend visual diagnostics (histogram, boxplot, Q-Q plot).
   - Flag additional tests or data transformations if needed.
-  - In the case of low number of samples, suggest using more data or different test whchich is more robust.
+  - In the case of low number of samples, suggest using more data or different test which is more robust.
 
 Output:
   - Return JSON containing:
@@ -126,7 +126,7 @@ def build_stat_test_agent(
     if system_prompt is None:
         system_prompt = build_generic_system_prompt(**prompt_kwargs)
 
-    agent = Agent(
+    agent: Agent[StatTestDeps, AgentResult] = Agent(
         model=model,
         model_settings=model_settings,
         deps_type=StatTestDeps,
@@ -207,6 +207,11 @@ def build_stat_test_agent(
             output_str += 'If they are not, please provide the correct datasets.\n'
 
         return f'Missing Values: {missing_values}, Basic Statistics: {basic_stats}'
+
+    # Expose the raw statistical function so callers can enforce execution even if
+    # the LLM response is malformed or skips tool calls.
+    agent._statmate_test_function = test_function  # type: ignore[attr-defined]
+    agent._statmate_test_name = test_name  # type: ignore[attr-defined]
 
     return agent
 

@@ -1,14 +1,30 @@
 """Comparison module for statistical tests."""
 
+from typing import Any, cast
+
 import numpy as np
 import scipy.stats
+from scipy.stats._result_classes import TtestResult
 
+from statmate.core.config import default_config
+from statmate.core.validation import validate_paired_data
 from statmate.statistical_core.base import StatTestResult
 
 
 # 2. Paired t-test (Dependent Samples)
-def ttest_rel_test(data1: np.ndarray, data2: np.ndarray, alpha: float = 0.05) -> StatTestResult:
+def ttest_rel_test(data1: np.ndarray, data2: np.ndarray, alpha: float | None = None) -> StatTestResult:
     """Performs a paired t-test on two related samples.
+
+    Args:
+        data1: First paired sample.
+        data2: Second paired sample.
+        alpha: Significance level. If None, uses config default.
+
+    Returns:
+        StatTestResult containing test outcomes.
+
+    Raises:
+        DataValidationError: If data validation fails.
 
     Null hypothesis:
         The mean difference between paired samples is zero.
@@ -16,7 +32,17 @@ def ttest_rel_test(data1: np.ndarray, data2: np.ndarray, alpha: float = 0.05) ->
     Alternative hypothesis:
         The mean difference between paired samples is not zero.
     """
-    statistic, p_value = scipy.stats.ttest_rel(data1, data2, nan_policy='propagate')
+    if alpha is None:
+        alpha = default_config.statistical.default_alpha
+
+    # Validate input
+    validate_paired_data(data1, data2, alpha)
+
+    result = scipy.stats.ttest_rel(data1, data2, nan_policy='propagate')
+    result_typed = cast(TtestResult, result)
+    statistic = float(result_typed.statistic)
+    p_value = float(result_typed.pvalue)
+
     if p_value < alpha:
         result_text = f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}).'
     else:
@@ -34,8 +60,19 @@ def ttest_rel_test(data1: np.ndarray, data2: np.ndarray, alpha: float = 0.05) ->
 
 
 # 3. Wilcoxon Signed-Rank Test (Paired, Non-parametric)
-def wilcoxon_test(data1: np.ndarray, data2: np.ndarray, alpha: float = 0.05) -> StatTestResult:
+def wilcoxon_test(data1: np.ndarray, data2: np.ndarray, alpha: float | None = None) -> StatTestResult:
     """Performs the Wilcoxon signed-rank test for paired samples.
+
+    Args:
+        data1: First paired sample.
+        data2: Second paired sample.
+        alpha: Significance level. If None, uses config default.
+
+    Returns:
+        StatTestResult containing test outcomes.
+
+    Raises:
+        DataValidationError: If data validation fails.
 
     Null hypothesis:
         The distribution of the differences between paired samples is symmetric about zero.
@@ -43,9 +80,17 @@ def wilcoxon_test(data1: np.ndarray, data2: np.ndarray, alpha: float = 0.05) -> 
     Alternative hypothesis:
         The distribution of the differences is not symmetric about zero.
     """
-    results = scipy.stats.wilcoxon(data1, data2, zero_method='wilcox', correction=False)
-    statistic = results.statistic  # type: ignore # not true
-    p_value = results.pvalue  # type: ignore # not true
+    if alpha is None:
+        alpha = default_config.statistical.default_alpha
+
+    # Validate input
+    validate_paired_data(data1, data2, alpha)
+
+    result = scipy.stats.wilcoxon(data1, data2, zero_method='wilcox', correction=False)
+    result_typed = cast(Any, result)  # WilcoxonResult not available in all scipy versions
+    statistic = float(result_typed.statistic)
+    p_value = float(result_typed.pvalue)
+
     if p_value < alpha:
         result_text = f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}).'
     else:

@@ -1,4 +1,4 @@
-"""Cathegorical Comparison Agents.
+"""Categorical Comparison Agents.
 
 Namely, Chi-Squared Test and Fisher's Exact Test.
 """
@@ -6,10 +6,12 @@ Namely, Chi-Squared Test and Fisher's Exact Test.
 from collections.abc import Callable
 
 import numpy as np
+import pandas as pd
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
 
 from statmate.agents import AgentResult, StatTestDeps, build_stat_test_agent, run_sync_agent
+from statmate.core.config import default_config
 from statmate.statistical_core import (
     StatTestResult,
     chi2_test,
@@ -23,14 +25,24 @@ def chi2_agent(
     test_name: str = 'Chi-Squared Test',
     test_function: Callable[..., StatTestResult] = chi2_test,
 ) -> Agent[StatTestDeps, AgentResult]:
-    """Builds a Chi-Squared test agent."""
+    """Builds a Chi-Squared test agent.
+
+    Args:
+        model: The AI model to use.
+        model_settings: Optional model settings.
+        test_name: Name of the statistical test.
+        test_function: Function that performs the test.
+
+    Returns:
+        Configured Agent instance.
+    """
     return build_stat_test_agent(
         model=model,
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
@@ -40,22 +52,30 @@ def fisher_exact_agent(
     test_name: str = 'Fisher Exact Test',
     test_function: Callable[..., StatTestResult] = fisher_exact_test,
 ) -> Agent[StatTestDeps, AgentResult]:
-    """Builds a Fisher Exact test agent."""
+    """Builds a Fisher Exact test agent.
+
+    Args:
+        model: The AI model to use.
+        model_settings: Optional model settings.
+        test_name: Name of the statistical test.
+        test_function: Function that performs the test.
+
+    Returns:
+        Configured Agent instance.
+    """
     return build_stat_test_agent(
         model=model,
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
 if __name__ == '__main__':
     # Example usage
-    import pandas as pd
-
-    model = OpenAIModel('gpt-4o')
+    model = OpenAIModel(default_config.model.model_name)
     model_settings = ModelSettings(
         temperature=0.1,
         max_tokens=1500,
@@ -66,15 +86,13 @@ if __name__ == '__main__':
     chi2_agent_ = chi2_agent(model=model, model_settings=model_settings)
     fisher_exact_agent_ = fisher_exact_agent(model=model)
 
-    # Example data
-    # Categorical groups
+    # Example data - Categorical groups
     age_groups = ['<18', '18-24', '25-34', '35-44', '45-54', '55-64', '65-74', '75-84', '85-94', '95+']
     beverages = ['Coffee', 'Tea', 'Juice']
 
     np.random.seed(42)
 
     # DEPENDENT DATA: age groups prefer different beverages
-    # Define "likelihood profiles" per age group
     preference_profiles = {
         '<18': [0.2, 0.4, 0.4],
         '18-24': [0.4, 0.4, 0.2],
@@ -92,14 +110,15 @@ if __name__ == '__main__':
     dependent_data = np.array([np.random.multinomial(100, preference_profiles[age_group]) for age_group in age_groups])
 
     # INDEPENDENT DATA: all age groups have the same distribution
-    base_prob = [1 / len(beverages)] * len(beverages)
     independent_data = np.tile([33, 33, 34], (len(age_groups), 1))
+
     # Create DataFrames
     dep_df = pd.DataFrame(dependent_data, index=age_groups, columns=beverages)
     dep_df.index.name = 'Age Group'
 
     ind_df = pd.DataFrame(independent_data, index=age_groups, columns=beverages)
     ind_df.index.name = 'Age Group'
+
     # Run the agents
     dep_data_deps = StatTestDeps(
         data=dep_df,

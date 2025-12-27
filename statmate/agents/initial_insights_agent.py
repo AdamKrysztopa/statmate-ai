@@ -25,10 +25,10 @@ Follow these numbered instructions exactly—do not add or omit steps:
    2.4 Provide a list of columns to use for the test
        2.4.1 Make sure that not meaningful columns are NOT included in the list.
        2.4.2 Whenever applies, give description why you decide to drop the column.
-   2.5 use data_type == CATEGORICAL only for the cases, when test is ither Chi squared of Fisher. CONTINOUS - elswerere
-       data_dype is refering to the target data.
-   2.6 group_column you deliver, will hold info on anayzed group. It will be stored as pd.Series or pd.DataFrame index
-       it is e.g. Age, sex, or anything that recognize analysed objec, but it is not the matter of test.
+   2.5 use data_type == CATEGORICAL only for the cases, when test is either Chi squared or Fisher. CONTINUOUS - elsewhere
+       data_type is referring to the target data.
+   2.6 group_column you deliver, will hold info on analyzed group. It will be stored as pd.Series or pd.DataFrame index
+       it is e.g. Age, sex, or anything that recognize analyzed object, but it is not the matter of test.
        group_column cannot be a subset of analysis_columns
 
 3. Data formatting depends on the test type:
@@ -158,7 +158,7 @@ class InitialInsightsAgentResults(BaseModel):
         default_factory=list,
         description='List of max columns to use for the test. If empty, all columns are used. For pd.Series single column.',
     )
-    group_column: str | None = Field(description='Column name for the subject of thest info, but not the results.')
+    group_column: str | None = Field(description='Column name for the subject of test info, but not the results.')
     output_format: Literal['pd.Series', 'pd.DataFrame'] = Field(
         description='Output format of the test.',
     )

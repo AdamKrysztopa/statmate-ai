@@ -233,7 +233,7 @@ def cramer_von_mises_test(data: np.ndarray, alpha: float = 0.05) -> StatTestResu
     res = cramervonmises(data, cdf='norm')
     stat, p = res.statistic, res.pvalue
     decision = p < alpha
-    text = f'Reject H0 (p={p:.4f}<aplha={alpha})' if decision else f'Fail to reject H0 (p={p:.4f}≥alpha={alpha})'
+    text = f'Reject H0 (p={p:.4f}<alpha={alpha})' if decision else f'Fail to reject H0 (p={p:.4f}≥alpha={alpha})'
     return StatTestResult(
         test_name='Cramér-von Mises Test',
         statistics=stat,

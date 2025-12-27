@@ -1,27 +1,32 @@
 {
-    "name": "statmate-ai",
+    "name": "statmate-ai-unified",
     "build": {
         "dockerfile": "Dockerfile",
+        "context": "..",
         "args": {
             "VARIANT": "3.11.12",
-            "GIT_USER_NAME": "${localEnv:GIT_USER_NAME}",
-            "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}",
+            // Pass the API key during the build (if needed by build scripts)
             "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
-
         }
     },
     "runArgs": [
         "--rm",
         "--name=statmate-ai_devcontainer"
     ],
+    "mounts": [
+        // Mount the project-specific SSH key.
+        // The path is read from the host's PROJECT_SSH_KEY_PATH variable.
+        "source=${localEnv:PROJECT_SSH_KEY_PATH},target=/home/vscode/.ssh/project_key,type=bind,consistency=cached",
+        "source=${localEnv:PROJECT_SSH_KEY_PATH}.pub,target=/home/vscode/.ssh/project_key.pub,type=bind,consistency=cached"
+    ],
     "remoteUser": "vscode",
     "containerEnv": {
-        "MY_ENV_VAR": "${localEnv:MY_ENV_VAR}",
-        "HOME": "/home/vscode",
-        "GIT_USER_NAME": "${localEnv:GIT_USER_NAME}",
-        "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}",
-        "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
-
+        // Pass host variables into the container for the post-create script
+        "DEV_ENV_TYPE": "${localEnv:DEV_ENV_TYPE}",
+        "PROJECT_GIT_USER_NAME": "${localEnv:PROJECT_GIT_USER_NAME}",
+        "PROJECT_GIT_USER_EMAIL": "${localEnv:PROJECT_GIT_USER_EMAIL}",
+        "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+        "HOME": "/home/vscode"
     },
     "customizations": {
         "vscode": {
@@ -38,31 +43,25 @@
                 "python.languageServer": "Pylance",
                 "python.analysis.extraPaths": ["${workspaceFolder}/.venv/lib/python3.11/site-packages"],
                 "[yaml]": {
-                    "editor.defaultFormatter": "redhat.vscode-yaml",
-                    "editor.formatOnSave": true
+                    "editor.defaultFormatter": "redhat.vscode-yaml"
                 },
                 "[markdown]": {
-                    "editor.defaultFormatter": "yzhang.markdown-all-in-one",
-                    "editor.formatOnSave": true
+                    "editor.defaultFormatter": "yzhang.markdown-all-in-one"
                 },
                 "[json]": {
-                    "editor.defaultFormatter": "esbenp.prettier-vscode",
-                    "editor.formatOnSave": true
+                    "editor.defaultFormatter": "esbenp.prettier-vscode"
                 },
                 "[toml]": {
                     "editor.defaultFormatter": "tamasfe.even-better-toml"
                 },
                 "[shellscript][ignore][hosts]": {
-                    "editor.defaultFormatter": "foxundermoon.shell-format",
-                    "editor.formatOnSave": true
-                },
-                "eslint.format.enable": true
+                    "editor.defaultFormatter": "foxundermoon.shell-format"
+                }
             },
             "extensions": [
                 "ms-python.python",
                 "emeraldwalk.runonsave",
                 "ms-python.vscode-pylance",
-                "dbaeumer.vscode-eslint",
                 "charliermarsh.ruff",
                 "tamasfe.even-better-toml",
                 "ms-toolsai.jupyter",
@@ -70,10 +69,16 @@
                 "yzhang.markdown-all-in-one",
                 "esbenp.prettier-vscode",
                 "foxundermoon.shell-format",
-                "github.copilot"
+                "github.copilot",
+                "openai.chatgpt",
+                "bierner.markdown-mermaid",
+                "shd101wyy.markdown-preview-enhanced",
+                "openai.chatgpt"
             ]
         }
     },
-    "postCreateCommand": "bash .devcontainer/setup_git.sh && uv sync && git config --global core.editor \"code --wait --new-window\"",
+    // This single script now handles all setup logic
+    "postCreateCommand": "bash .devcontainer/post-create.sh",
     "shutdownAction": "stopContainer"
 }
+

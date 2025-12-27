@@ -1,0 +1,11 @@
+patient_id,arm,baseline_score,week4_score
+P-001,Placebo,32,31
+P-002,Placebo,29,27
+P-003,Placebo,35,34
+P-004,Placebo,28,28
+P-005,Placebo,30,29
+P-006,Treatment,33,26
+P-007,Treatment,31,25
+P-008,Treatment,34,27
+P-009,Treatment,29,24
+P-010,Treatment,36,28

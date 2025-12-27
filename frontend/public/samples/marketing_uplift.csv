@@ -1,0 +1,11 @@
+user_id,segment,spend,orders
+U001,Control,120.50,2
+U002,Control,95.10,1
+U003,Control,110.00,2
+U004,Control,89.25,1
+U005,Control,130.75,3
+U006,Variant,150.30,3
+U007,Variant,162.40,4
+U008,Variant,140.00,3
+U009,Variant,170.10,5
+U010,Variant,158.20,4

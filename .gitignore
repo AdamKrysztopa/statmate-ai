@@ -40,3 +40,56 @@ coverage.xml
 
 # uv cache
 .uv/
+
+# Environment variables (NEVER commit API keys!)
+.env
+.env.local
+.env.*.local
+.env.devcontainer
+.dev.secrets.env
+
+# Database (local development)
+database/statmate.db
+database/statmate.db-*
+
+# Data directories (user uploads and results)
+# Ignore all files but keep directory structure with .gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
+# Include sample/demo datasets for testing
+!data/uploads/sample_categorical_20250103_150000.parquet
+!data/uploads/sample_continuous_paired_20250101_120000.parquet
+data/results/*
+!data/results/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
+
+tmp_*
+
+# Node.js / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.vercel/
+
+# TypeScript
+*.tsbuildinfo.json
+
+# Frontend build artifacts
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/dist/
+frontend/next-env.d.ts
+frontend/node_modules/
+frontend/.vite/
+frontend/.eslintcache

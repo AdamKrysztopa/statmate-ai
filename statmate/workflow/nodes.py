@@ -1,0 +1,480 @@
+"""Workflow node functions.
+
+This module contains all the node functions for the statistical test workflow,
+extracted from the monolithic statmate_flow.py for better organization.
+"""
+
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+from langchain_core.messages import AIMessage
+from pydantic_ai import Agent
+
+from statmate.agents import (
+    shapiro_wilk_agent,
+)
+from statmate.agents.agent_builder import StatTestDeps, run_sync_agent
+from statmate.agents.auxiliary_agents import AssessDesignDeps, get_assess_design_study_agent
+from statmate.agents.initial_insights_agent import (
+    INITIAL_INSIGHTS_PROMPT,
+    TOOL_FUNCS,
+    InitialInsightsAgentDeps,
+    build_initial_insights_agent,
+    format_data_by_recommendation,
+    validate_tool_args,
+)
+from statmate.agents.reviewer_agent import ReviewerDeps, get_reviewer_agent
+from statmate.agents.summarizer_agent import SummariserDeps, get_summariser_agent
+from statmate.core import NodeExecutionError, get_logger
+from statmate.core.config import default_config
+from statmate.core.model_provider import execute_with_backoff
+from statmate.core.validation import validate_assumptions
+from statmate.workflow.model_factory import create_model, create_model_settings
+from statmate.workflow.state import WorkflowState
+
+logger = get_logger(__name__)
+
+
+# Append strict tool_arguments requirement to prompt
+ENHANCED_INITIAL_INSIGHTS_PROMPT = (
+    INITIAL_INSIGHTS_PROMPT
+    + "\nData Validation:\n  - Always include a non-null 'tool_arguments' dict (empty if no transform)."
+)
+
+
+def call_test_agent(
+    test_agent: Agent,
+    state: WorkflowState,
+    alpha: float | None = None,
+    probability_key: str | None = None,
+    assumption_test_type: str | None = None,
+    assumption_secondary: pd.Series | pd.DataFrame | np.ndarray | None = None,
+    assess_assumptions: bool = True,
+) -> WorkflowState:
+    """Call a statistical agent and append its result.
+
+    Args:
+        test_agent: The agent to call.
+        state: Current workflow state.
+        alpha: Significance level. If None, uses default from config.
+        probability_key: Explicit key under which to store the p-value.
+        assumption_test_type: Override for labeling assumption diagnostics.
+        assumption_secondary: Explicit secondary data for assumption checks.
+        assess_assumptions: When False, skip assumption diagnostics.
+
+    Returns:
+        Updated workflow state.
+
+    Raises:
+        NodeExecutionError: If the agent execution fails.
+    """
+    if alpha is None:
+        alpha = default_config.statistical.default_alpha
+
+    try:
+        deps = StatTestDeps(
+            data=state.df,
+            data_secondary=state.secondary_df,
+            test_params={'alpha': alpha},
+        )
+
+        assumption_entry: dict[str, object] | None = None
+        if assess_assumptions:
+            secondary = assumption_secondary if assumption_secondary is not None else state.secondary_df
+            diag = validate_assumptions(
+                state.df,
+                test_type=assumption_test_type or getattr(test_agent, '_statmate_test_name', test_agent.name),
+                secondary_data=secondary,
+            )
+            assumption_entry = {**diag, 'node': test_agent.name, 'timestamp': datetime.utcnow().isoformat()}
+            state.add_assumption_entry(assumption_entry)
+
+        result = execute_with_backoff(
+            lambda: run_sync_agent(test_agent, user_prompt='', deps=deps),
+            on_retry=lambda attempt, delay, exc: state.add_step(
+                step='Rate limit backoff',
+                detail=f'Retrying {test_agent.name} in {delay:.1f}s (attempt {attempt})',
+                data={'error': str(exc)},
+            ),
+        )
+
+        # Always compute the underlying statistical test to guarantee tool execution,
+        # even if the LLM skipped the run_test tool.
+        fallback_func = getattr(test_agent, '_statmate_test_function', None)
+        if callable(fallback_func):
+            if isinstance(deps.data, pd.Series):
+                primary = deps.data.to_numpy()
+            else:
+                primary = deps.data
+
+            if isinstance(deps.data_secondary, pd.Series):
+                secondary = deps.data_secondary.to_numpy()
+            else:
+                secondary = deps.data_secondary
+
+            computed = (
+                fallback_func(primary, secondary, **(deps.test_params or {}))
+                if secondary is not None
+                else fallback_func(primary, **(deps.test_params or {}))
+            )
+            result.statistical_test_result = computed
+
+        state.add_result(AIMessage(content=str(result)))
+
+        p_val = result.statistical_test_result.p_value
+        p_float = float(p_val) if isinstance(p_val, float) else float(np.mean(p_val))
+        prob_key = probability_key or test_agent.name
+        state.add_probability(prob_key, p_float)
+
+        # Record structured step for UI/clients
+        test_label = getattr(test_agent, '_statmate_test_name', None) or test_agent.name
+        stats_value = result.statistical_test_result.statistics
+        if isinstance(stats_value, np.ndarray):
+            stats_value = stats_value.tolist()
+        state.add_step(
+            step=test_label,
+            detail=result.result,
+            data={
+                'test_name': test_label,
+                'statistics': float(stats_value)
+                if isinstance(stats_value, (float, int, np.floating))
+                else stats_value,
+                'null_hypothesis': result.statistical_test_result.null_hypothesis,
+                'alternative': result.statistical_test_result.alternative,
+                'effect_size_type': result.statistical_test_result.effect_size_type,
+                'confidence_interval': result.statistical_test_result.confidence_interval,
+                'comments': result.comments,
+                'assumptions': assumption_entry,
+            },
+            p_value=p_float,
+        )
+
+        return state
+    except Exception as e:
+        logger.error(f'Error in call_test_agent {test_agent.name}: {e}')
+        raise NodeExecutionError(node_name=f'call_test_agent({test_agent.name})', original_error=e) from e
+
+
+def call_initialization_agent(state: WorkflowState) -> WorkflowState:
+    """Run the initialization agent to analyze data and suggest tests.
+
+    Args:
+        state: Current workflow state.
+
+    Returns:
+        Updated workflow state.
+
+    Raises:
+        NodeExecutionError: If the initialization fails.
+    """
+    try:
+        # Use model from state if specified
+        model = create_model(model_name=state.model_name, provider=state.provider)
+        settings = create_model_settings(model_name=state.model_name)
+        agent = build_initial_insights_agent(
+            model=model,
+            system_prompt=ENHANCED_INITIAL_INSIGHTS_PROMPT,
+            model_settings=settings,
+        )
+
+        results = execute_with_backoff(
+            lambda: agent.run_sync(
+                user_prompt='Analyze the data and suggest the appropriate test.',
+                deps=InitialInsightsAgentDeps(
+                    user_input='Perform a statistical test.',
+                    input_data=state.df,
+                    columns_decision=None,
+                ),
+            ),
+            on_retry=lambda attempt, delay, exc: state.add_step(
+                step='Rate limit backoff',
+                detail=f'Retrying initialization in {delay:.1f}s (attempt {attempt})',
+                data={'error': str(exc)},
+            ),
+        )
+
+        # Update sample count
+        state.number_of_samples = int(results.data.data_size)
+
+        # Ensure tool_arguments exists
+        tool_args = results.data.tool_arguments or {}
+
+        # Apply transformation if any
+        if results.data.data_transformation != 'None':
+            validated = validate_tool_args(results.data.data_transformation, tool_args)
+            state.df = TOOL_FUNCS[results.data.data_transformation](state.df, **validated)
+
+        inp_df = state.df if isinstance(state.df, pd.DataFrame) else pd.DataFrame(state.df)
+
+        # Format for downstream tests
+        formatted = format_data_by_recommendation(inp_df, results.data)
+        if isinstance(formatted, tuple):
+            state.df, state.secondary_df = formatted
+        else:
+            state.df = formatted
+
+        # Set metadata
+        state.data_type = results.data.data_type
+        cols = results.data.analysis_columns
+        state.target_columns = cols if set(cols).issubset(set(inp_df.columns)) else list(inp_df.columns)
+        state.add_result(AIMessage(content=str(results.data)))
+        state.add_step(
+            step='Initialization',
+            detail=results.data.data_analysis_result,
+            data={
+                'route_to_test': [getattr(r, 'value', str(r)) for r in results.data.route_to_test],
+                'data_type': results.data.data_type,
+                'analysis_columns': results.data.analysis_columns,
+                'group_column': results.data.group_column,
+                'data_transformation': results.data.data_transformation,
+                'tool_arguments': results.data.tool_arguments,
+            },
+        )
+
+        logger.info(f'Data type set: {state.data_type}')
+        return state
+    except Exception as e:
+        logger.error(f'Error in call_initialization_agent: {e}')
+        raise NodeExecutionError(node_name='call_initialization_agent', original_error=e) from e
+
+
+def assess_study_design_node(state: WorkflowState) -> WorkflowState:
+    """Assess whether the study design is paired or independent.
+
+    Args:
+        state: Current workflow state.
+
+    Returns:
+        Updated workflow state.
+
+    Raises:
+        NodeExecutionError: If the assessment fails.
+    """
+    try:
+        # Use model from state if specified
+        model = create_model(model_name=state.model_name, provider=state.provider)
+        settings = create_model_settings(model_name=state.model_name)
+        agent = get_assess_design_study_agent(model=model, model_settings=settings)
+
+        logger.info('assess_study_design_node\nmodel is fed with those data:')
+        logger.info(state.results)
+
+        res = execute_with_backoff(
+            lambda: agent.run_sync(deps=AssessDesignDeps(msg=state.results)),
+            on_retry=lambda attempt, delay, exc: state.add_step(
+                step='Rate limit backoff',
+                detail=f'Retrying study design check in {delay:.1f}s (attempt {attempt})',
+                data={'error': str(exc)},
+            ),
+        )
+        state.paired = res.data.paired
+
+        msg = '~~~Paired comparison~~~' if res.data.paired else '~~~Two independent groups~~~'
+        logger.info(msg)
+        state.add_step(
+            step='Assess Study Design',
+            detail='Paired comparison' if res.data.paired else 'Two independent groups',
+            data={'paired': res.data.paired},
+        )
+
+        return state
+    except Exception as e:
+        logger.error(f'Error in assess_study_design_node: {e}')
+        raise NodeExecutionError(node_name='assess_study_design_node', original_error=e) from e
+
+
+def two_independent_node(
+    state: WorkflowState,
+    shapiro_agent_func=shapiro_wilk_agent,
+    levene_agent_func=None,
+) -> WorkflowState:
+    """Run normality and variance tests for two independent groups.
+
+    This node runs Shapiro-Wilk test on each group and Levene's test
+    for equality of variances.
+
+    Args:
+        state: Current workflow state.
+        shapiro_agent_func: Function to create Shapiro-Wilk agent.
+        levene_agent_func: Function to create Levene agent. If None, imports from agents.
+
+    Returns:
+        Updated workflow state.
+
+    Raises:
+        NodeExecutionError: If the node execution fails.
+    """
+    if levene_agent_func is None:
+        from statmate.agents import levene_agent as levene_agent_func
+
+    try:
+        # Save original data
+        secondary_df = state.secondary_df
+        orig_df = state.df
+
+        # Test group 1
+        state.secondary_df = None
+        model = create_model(model_name=state.model_name, provider=state.provider)
+        settings = create_model_settings(model_name=state.model_name)
+        agent1 = shapiro_agent_func(model=model, model_settings=settings)
+        state = call_test_agent(agent1, state, probability_key='shapiro_group1')
+        p1 = state.get_probability('shapiro_group1', 0)
+
+        # Test group 2
+        if secondary_df is not None:
+            state.df = secondary_df
+            agent2 = shapiro_agent_func(model=model, model_settings=settings)
+            state = call_test_agent(agent2, state, probability_key='shapiro_group2')
+        else:
+            logger.error('secondary_df is None, cannot test group 2')
+            raise ValueError('secondary_df is required for two independent groups test')
+
+        p2 = state.get_probability('shapiro_group2', 0)
+
+        # Restore original data
+        state.df = orig_df
+        state.secondary_df = secondary_df
+
+        # Store distinct keys
+        state.add_probability('shapiro_group1', p1)
+        state.add_probability('shapiro_group2', p2)
+
+        # Levene's test for equal variances
+        levene_agent_inst = levene_agent_func(model=model, model_settings=settings)
+        state = call_test_agent(levene_agent_inst, state, probability_key='levene')
+
+        return state
+    except Exception as e:
+        logger.error(f'Error in two_independent_node: {e}')
+        raise NodeExecutionError(node_name='two_independent_node', original_error=e) from e
+
+
+def nonparametric_node(
+    state: WorkflowState,
+    welch_agent_func=None,
+    mann_whitney_agent_func=None,
+) -> WorkflowState:
+    """Run nonparametric tests (Welch's t-test and Mann-Whitney U).
+
+    Args:
+        state: Current workflow state.
+        welch_agent_func: Function to create Welch's t-test agent.
+        mann_whitney_agent_func: Function to create Mann-Whitney U agent.
+
+    Returns:
+        Updated workflow state.
+
+    Raises:
+        NodeExecutionError: If the node execution fails.
+    """
+    if welch_agent_func is None:
+        from statmate.agents import welch_t_agent as welch_agent_func
+    if mann_whitney_agent_func is None:
+        from statmate.agents import mannwhitneyu_agent as mann_whitney_agent_func
+
+    try:
+        model = create_model(model_name=state.model_name, provider=state.provider)
+        settings = create_model_settings(model_name=state.model_name)
+
+        welch_agent = welch_agent_func(model=model, model_settings=settings)
+        state = call_test_agent(welch_agent, state, probability_key='welch_t_test')
+
+        mann_agent = mann_whitney_agent_func(model=model, model_settings=settings)
+        state = call_test_agent(mann_agent, state, probability_key='mann_whitney_u')
+
+        return state
+    except Exception as e:
+        logger.error(f'Error in nonparametric_node: {e}')
+        raise NodeExecutionError(node_name='nonparametric_node', original_error=e) from e
+
+
+def summariser_node(state: WorkflowState) -> WorkflowState:
+    """Generate a summary of all performed tests.
+
+    Args:
+        state: Current workflow state.
+
+    Returns:
+        Updated workflow state with summary.
+
+    Raises:
+        NodeExecutionError: If summary generation fails.
+    """
+    try:
+        model = create_model(model_name=state.model_name, provider=state.provider)
+        settings = create_model_settings(model_name=state.model_name)
+
+        deps = SummariserDeps(
+            results=state.results,
+            performed_tests=list(state.probabilities.keys()),
+        )
+
+        agent = get_summariser_agent(model, settings)
+        res = execute_with_backoff(
+            lambda: agent.run_sync(deps=deps),
+            on_retry=lambda attempt, delay, exc: state.add_step(
+                step='Rate limit backoff',
+                detail=f'Retrying summary in {delay:.1f}s (attempt {attempt})',
+                data={'error': str(exc)},
+            ),
+        )
+
+        state.add_result(AIMessage(content=str(res.data)))
+        logger.info(f'Summariser output: {res.data}')
+        state.add_step(
+            step='Summary',
+            detail=res.data.summary if hasattr(res, 'data') and hasattr(res.data, 'summary') else str(res.data),
+            data={'performed_tests': deps.performed_tests},
+        )
+
+        return state
+    except Exception as e:
+        logger.error(f'Error in summariser_node: {e}')
+        raise NodeExecutionError(node_name='summariser_node', original_error=e) from e
+
+
+def reviewer_node(state: WorkflowState) -> WorkflowState:
+    """Review the generated summary against raw outputs to catch hallucinations."""
+    try:
+        model = create_model(model_name=state.model_name, provider=state.provider)
+        settings = create_model_settings(model_name=state.model_name)
+
+        summary_text = ''
+        if state.results:
+            summary_text = str(state.results[-1].content)
+
+        agent = get_reviewer_agent(model, settings)
+        deps = ReviewerDeps(summary=summary_text, results=state.results, probabilities=state.probabilities)
+        res = execute_with_backoff(
+            lambda: agent.run_sync(deps=deps),
+            on_retry=lambda attempt, delay, exc: state.add_step(
+                step='Rate limit backoff',
+                detail=f'Retrying reviewer in {delay:.1f}s (attempt {attempt})',
+                data={'error': str(exc)},
+            ),
+        )
+
+        state.reviewer_report = res.data.model_dump()
+        adjusted_summary = res.data.adjusted_summary or summary_text
+
+        # Track reviewer decision for downstream clients
+        state.add_result(AIMessage(content=str(res.data)))
+        state.add_step(
+            step='Reviewer',
+            detail='Approved summary' if res.data.approved else 'Adjusted summary to match evidence',
+            data={
+                'approved': res.data.approved,
+                'risk_score': res.data.risk_score,
+                'flags': res.data.hallucination_flags,
+                'adjusted_summary': adjusted_summary,
+            },
+        )
+
+        # Preserve vetted summary for API consumers
+        state.test_hierarchy = state.test_hierarchy or {}
+        state.test_hierarchy['reviewer'] = state.reviewer_report
+        return state
+    except Exception as e:
+        logger.error(f'Error in reviewer_node: {e}')
+        raise NodeExecutionError(node_name='reviewer_node', original_error=e) from e

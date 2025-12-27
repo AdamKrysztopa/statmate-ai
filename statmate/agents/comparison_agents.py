@@ -34,8 +34,8 @@ def wilcoxon_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
@@ -51,8 +51,8 @@ def ttest_rel_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
@@ -68,8 +68,8 @@ def ttest_ind_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
@@ -85,8 +85,8 @@ def mannwhitneyu_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
@@ -102,8 +102,8 @@ def welch_t_agent(
         model_settings=model_settings,
         test_name=test_name,
         test_function=test_function,
-        potential_suggertions='Please suggest the best way to perform the test, '
-        'if results are not clear, propose different tests.',
+        potential_suggestions='Please suggest the best way to perform the test. '
+        'If results are not clear, propose different tests.',
     )
 
 
