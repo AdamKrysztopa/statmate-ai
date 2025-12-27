@@ -443,8 +443,28 @@ class AnalysisService:
             probabilities = _state_value(result_state, 'probabilities', {})
             execution_trace = _state_value(result_state, 'execution_trace', [])
             reviewer_report = _state_value(result_state, 'reviewer_report', None)
-            if not analysis.decision_steps and execution_trace:
-                analysis.decision_steps = execution_trace
+
+            def _normalize_steps(steps: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+                """Ensure step metadata (ordering/progress) is populated."""
+                normalized: list[dict[str, Any]] = []
+                total = AnalysisService.WORKFLOW_STEP_TARGET
+                for idx, raw in enumerate(steps or [], start=1):
+                    if not isinstance(raw, dict):
+                        continue
+                    entry = dict(raw)
+                    entry.setdefault('step_index', idx)
+                    entry.setdefault('total_steps', total)
+                    progress = min(1.0, entry['step_index'] / total)
+                    entry.setdefault('progress_pct', round(progress * 100, 2))
+                    normalized.append(entry)
+                return normalized
+
+            # Prefer the final execution_trace from workflow state to guarantee all steps are present.
+            if execution_trace:
+                analysis.decision_steps = _normalize_steps(execution_trace)
+            elif analysis.decision_steps:
+                analysis.decision_steps = _normalize_steps(analysis.decision_steps)
+
             assumption_log = _state_value(result_state, 'assumption_log', []) or analysis.assumption_log or []
             analysis.assumption_log = assumption_log
             test_hierarchy_state = _state_value(result_state, 'test_hierarchy', None)

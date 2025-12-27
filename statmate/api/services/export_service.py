@@ -51,17 +51,19 @@ class ExportService:
         probabilities = analysis.get('probabilities') or {}
         effect_sizes = analysis.get('effect_sizes') or analysis.get('results_detail', {}).get('effect_sizes') or {}
         plots = analysis.get('plots') or analysis.get('results_detail', {}).get('plots') or []
-        decision_steps = analysis.get('decision_steps') or []
+        decision_steps = (
+            analysis.get('decision_steps') or analysis.get('results_detail', {}).get('decision_steps') or []
+        )
 
         table_rows = ''.join(
-            f"<tr><td>{cls._html_safe(name)}</td>"
-            f"<td>{probabilities[name]:.4f}</td>"
-            f"<td>{'Significant' if probabilities[name] < 0.05 else 'Not significant'}</td></tr>"
+            f'<tr><td>{cls._html_safe(name)}</td>'
+            f'<td>{probabilities[name]:.4f}</td>'
+            f'<td>{"Significant" if probabilities[name] < 0.05 else "Not significant"}</td></tr>'
             for name in probabilities
         )
 
         effect_rows = ''.join(
-            f"<tr><td>{cls._html_safe(name)}</td><td>{value:.3f}</td></tr>" for name, value in effect_sizes.items()
+            f'<tr><td>{cls._html_safe(name)}</td><td>{value:.3f}</td></tr>' for name, value in effect_sizes.items()
         )
 
         plot_blocks = ''.join(
@@ -76,7 +78,20 @@ class ExportService:
         )
 
         steps = ''.join(
-            f"<li><strong>{cls._html_safe(step.get('step'))}</strong> — {cls._html_safe(step.get('detail'))}</li>"
+            f'<li><strong>{cls._html_safe(step.get("step"))}</strong> — {cls._html_safe(step.get("detail"))}</li>'
+            for step in decision_steps
+        )
+
+        step_table_rows = ''.join(
+            f'<tr>'
+            f'<td>{cls._html_safe(step.get("step"))}</td>'
+            f'<td>{cls._html_safe(step.get("detail"))}</td>'
+            f'<td>{cls._html_safe(step.get("timestamp"))}</td>'
+            '<td>' + ''
+            if step.get('p_value') is None
+            else f'{step.get("p_value"):.4g}' + '</td>'
+            f'<td>{cls._html_safe(str(step.get("progress_pct"))) if step.get("progress_pct") is not None else ""}</td>'
+            f'</tr>'
             for step in decision_steps
         )
 
@@ -128,6 +143,13 @@ class ExportService:
             </div>
             <h2>Decision path</h2>
             <ol>{steps or '<li>No steps captured.</li>'}</ol>
+            <h2>Execution steps</h2>
+            <table>
+              <thead><tr><th>Step</th><th>Detail</th><th>Timestamp</th><th>p-value</th><th>Progress %</th></tr></thead>
+              <tbody>
+                {step_table_rows or '<tr><td colspan="5">No steps captured.</td></tr>'}
+              </tbody>
+            </table>
           </body>
         </html>
         """
@@ -160,42 +182,42 @@ class ExportService:
 \begin{document}
 \section*{StatMate Analysis Report}
 """
-        body += f"\\textbf{{Dataset:}} {dataset_name}\\\\\n"
-        body += f"\\textbf{{Generated:}} {generated_at}\\\\\n"
-        body += "\\subsection*{Summary}\n"
-        body += f"{summary or 'No summary available.'}\n"
+        body += f'\\textbf{{Dataset:}} {dataset_name}\\\\\n'
+        body += f'\\textbf{{Generated:}} {generated_at}\\\\\n'
+        body += '\\subsection*{Summary}\n'
+        body += f'{summary or "No summary available."}\n'
 
         if probabilities:
-            body += "\\subsection*{Statistical tests}\n"
-            body += "\\begin{longtable}{p{0.35\\linewidth}p{0.25\\linewidth}p{0.25\\linewidth}}\n"
-            body += "\\toprule\nTest & p-value & Callout \\\\\n\\midrule\n"
+            body += '\\subsection*{Statistical tests}\n'
+            body += '\\begin{longtable}{p{0.35\\linewidth}p{0.25\\linewidth}p{0.25\\linewidth}}\n'
+            body += '\\toprule\nTest & p-value & Callout \\\\\n\\midrule\n'
             for name, p_val in probabilities.items():
                 escaped_name = cls._latex_escape(name)
                 callout = 'Significant' if p_val < 0.05 else 'Not significant'
-                body += f"{escaped_name} & {p_val:.4f} & {callout} \\\\\n"
-            body += "\\bottomrule\n\\end{longtable}\n"
+                body += f'{escaped_name} & {p_val:.4f} & {callout} \\\\\n'
+            body += '\\bottomrule\n\\end{longtable}\n'
 
         if effect_sizes:
-            body += "\\subsection*{Effect sizes}\n"
-            body += "\\begin{longtable}{p{0.5\\linewidth}p{0.4\\linewidth}}\n"
-            body += "\\toprule\nMetric & Value \\\\\n\\midrule\n"
+            body += '\\subsection*{Effect sizes}\n'
+            body += '\\begin{longtable}{p{0.5\\linewidth}p{0.4\\linewidth}}\n'
+            body += '\\toprule\nMetric & Value \\\\\n\\midrule\n'
             for name, val in effect_sizes.items():
                 escaped_name = cls._latex_escape(name)
-                body += f"{escaped_name} & {val:.3f} \\\\\n"
-            body += "\\bottomrule\n\\end{longtable}\n"
+                body += f'{escaped_name} & {val:.3f} \\\\\n'
+            body += '\\bottomrule\n\\end{longtable}\n'
 
         if plots:
-            body += "\\subsection*{Plots}\n"
+            body += '\\subsection*{Plots}\n'
             for plot in plots:
                 title = cls._latex_escape(plot.get('title') or 'Plot')
                 description = cls._latex_escape(plot.get('description') or '')
-                body += "\\begin{figure}[H]\n\\centering\n"
-                body += f"\\fbox{{\\parbox{{0.9\\linewidth}}{{\\centering {title}\\\\[4pt]Images are included in the PDF/DOCX exports.}}}}\n"
+                body += '\\begin{figure}[H]\n\\centering\n'
+                body += f'\\fbox{{\\parbox{{0.9\\linewidth}}{{\\centering {title}\\\\[4pt]Images are included in the PDF/DOCX exports.}}}}\n'
                 if description:
-                    body += f"\\caption*{{{description}}}\n"
-                body += "\\end{figure}\n"
+                    body += f'\\caption*{{{description}}}\n'
+                body += '\\end{figure}\n'
 
-        body += "\\end{document}"
+        body += '\\end{document}'
         return body.encode('utf-8')
 
     @staticmethod
@@ -209,8 +231,8 @@ class ExportService:
 
         doc = Document()
         doc.add_heading('StatMate Analysis Report', 0)
-        doc.add_paragraph(f"Dataset: {analysis.get('dataset_name') or analysis.get('dataset_id')}")
-        doc.add_paragraph(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+        doc.add_paragraph(f'Dataset: {analysis.get("dataset_name") or analysis.get("dataset_id")}')
+        doc.add_paragraph(f'Generated: {datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")}')
 
         summary = analysis.get('summary') or analysis.get('results_detail', {}).get('summary')
         doc.add_heading('Summary', level=1)
@@ -259,6 +281,28 @@ class ExportService:
                 if description:
                     doc.add_paragraph(description)
 
+        decision_steps = (
+            analysis.get('decision_steps') or analysis.get('results_detail', {}).get('decision_steps') or []
+        )
+        doc.add_heading('Execution steps', level=1)
+        if decision_steps:
+            table = doc.add_table(rows=1, cols=5)
+            hdr = table.rows[0].cells
+            hdr[0].text = 'Step'
+            hdr[1].text = 'Detail'
+            hdr[2].text = 'Timestamp'
+            hdr[3].text = 'p-value'
+            hdr[4].text = 'Progress %'
+            for step in decision_steps:
+                row = table.add_row().cells
+                row[0].text = str(step.get('step') or '')
+                row[1].text = str(step.get('detail') or '')
+                row[2].text = str(step.get('timestamp') or '')
+                row[3].text = '' if step.get('p_value') is None else f'{step.get("p_value"):.4g}'
+                row[4].text = str(step.get('progress_pct') or '')
+        else:
+            doc.add_paragraph('No steps captured.')
+
         stream = io.BytesIO()
         doc.save(stream)
         stream.seek(0)
@@ -279,7 +323,9 @@ class ExportService:
             callout = ''
             if p_val is not None:
                 callout = 'Significant' if p_val < 0.05 else 'Not significant'
-            writer.writerow([name, p_val if p_val is not None else '', effect_val if effect_val is not None else '', callout])
+            writer.writerow(
+                [name, p_val if p_val is not None else '', effect_val if effect_val is not None else '', callout]
+            )
         return output.getvalue().encode('utf-8')
 
     @classmethod
@@ -299,8 +345,8 @@ class ExportService:
         snippets = []
         for name, p_val in (analysis.get('probabilities') or {}).items():
             snippets.append(
-                f"# {name}\n# Observed p-value: {p_val:.4f}\n# Replace <data> with your arrays\n# Example using scipy:\n"
-                f"from scipy import stats\n# result = stats.ttest_ind(<group_a>, <group_b>, equal_var=False)\n"
+                f'# {name}\n# Observed p-value: {p_val:.4f}\n# Replace <data> with your arrays\n# Example using scipy:\n'
+                f'from scipy import stats\n# result = stats.ttest_ind(<group_a>, <group_b>, equal_var=False)\n'
             )
 
         with zipfile.ZipFile(buffer, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
