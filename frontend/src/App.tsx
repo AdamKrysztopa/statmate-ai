@@ -87,6 +87,7 @@ function App() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState('');
   const [preview, setPreview] = useState<DatasetPreview | undefined>();
+  const [datasetNotes, setDatasetNotes] = useState('');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -191,6 +192,16 @@ function App() {
     try {
       const res = await api.configuredCredentials();
       setConfiguredProviders(res.configured_providers || []);
+      if (res.stored_credentials) {
+        setCredentialInputs((prev) => ({
+          ...prev,
+          openai: res.stored_credentials.openai || prev.openai,
+          anthropic: res.stored_credentials.anthropic || prev.anthropic,
+          groq: res.stored_credentials.groq || prev.groq,
+          google: res.stored_credentials.google || res.stored_credentials.gemini || prev.google,
+          gemini: res.stored_credentials.gemini || res.stored_credentials.google || prev.gemini,
+        }));
+      }
     } catch (e) {
       console.warn(e);
     }
@@ -255,10 +266,12 @@ function App() {
     setLogContent('');
     setAnalysisHistory([]);
     setCommentDraft('');
+    setDatasetNotes('');
     if (!id) return;
     try {
       const p = await api.previewDataset(id);
       setPreview(p);
+      setDatasetNotes(p.description || '');
       setSelectedColumns([]);
       setRenameDrafts({});
       await loadAnalyses(id);
@@ -381,6 +394,7 @@ function App() {
         openai_api_key: credentialInputs.openai,
         anthropic_api_key: credentialInputs.anthropic,
         google_api_key: credentialInputs.google || credentialInputs.gemini,
+        gemini_api_key: credentialInputs.gemini || credentialInputs.google,
         groq_api_key: credentialInputs.groq,
         ollama_enabled: credentialInputs.ollama_base_url ? 'true' : undefined,
         ollama_base_url: credentialInputs.ollama_base_url || undefined,
@@ -427,6 +441,7 @@ function App() {
       setUser(undefined);
       setDatasets([]);
       setPreview(undefined);
+      setDatasetNotes('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -579,6 +594,24 @@ function App() {
     }, 700);
     return () => clearTimeout(handler);
   }, [analysisResults?.id, analysisId, commentDraft, api]);
+
+  useEffect(() => {
+    if (!selectedDatasetId || !preview || preview.dataset_id !== selectedDatasetId) return undefined;
+    const currentPreviewDescription = preview.description || '';
+    if (datasetNotes === currentPreviewDescription) return undefined;
+    const handler = setTimeout(async () => {
+      try {
+        await api.updateDatasetDescription(selectedDatasetId, datasetNotes || null);
+        setPreview((prev) =>
+          prev && prev.dataset_id === selectedDatasetId ? { ...prev, description: datasetNotes } : prev
+        );
+        setDatasets((prev) => prev.map((d) => (d.id === selectedDatasetId ? { ...d, description: datasetNotes } : d)));
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    }, 700);
+    return () => clearTimeout(handler);
+  }, [selectedDatasetId, preview?.dataset_id, datasetNotes, api]);
 
   // Render: Auth
   if (!token) {
@@ -990,6 +1023,23 @@ function App() {
                         <span className="rounded-full bg-slate-800/60 px-3 py-1">{preview.row_count} rows</span>
                         <span className="rounded-full bg-slate-800/60 px-3 py-1">{preview.column_names.length} columns</span>
                         <span className="rounded-full bg-slate-800/60 px-3 py-1">Select columns below</span>
+                      </div>
+                      <div className="mb-4">
+                        <div className="mb-1 flex items-center justify-between text-xs uppercase tracking-[0.18em] text-slate-500">
+                          <span>Dataset notes</span>
+                          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">Autosaves</span>
+                        </div>
+                        <textarea
+                          value={datasetNotes}
+                          onChange={(e) => setDatasetNotes(e.target.value)}
+                          placeholder="Add collection context, quirks, or exclusions..."
+                          className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                            theme === 'dark'
+                              ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500'
+                              : 'border-slate-200 bg-white focus:border-cyan-500'
+                          }`}
+                          rows={3}
+                        />
                       </div>
                       <div className="mb-4 flex flex-wrap gap-2">
                         {preview.column_names.map((name) => {

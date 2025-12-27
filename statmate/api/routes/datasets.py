@@ -9,6 +9,7 @@ from database.session import get_db
 from statmate.api.dependencies import get_current_user_optional
 from statmate.api.models.dataset import (
     ColumnRenameRequest,
+    DatasetDescriptionUpdate,
     DatasetPreviewResponse,
     DatasetResponse,
     DatasetUploadResponse,
@@ -154,6 +155,29 @@ async def preview_dataset(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Dataset not found')
 
     return DatasetPreviewResponse(**preview)
+
+
+@router.patch('/{dataset_id}/description', response_model=DatasetResponse)
+async def update_dataset_description(
+    dataset_id: str,
+    payload: DatasetDescriptionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> DatasetResponse:
+    """Update dataset notes/description."""
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    dataset = DatasetService.update_description(
+        db=db,
+        dataset_id=dataset_id,
+        description=payload.description,
+        user_id=current_user.id if current_user else None,
+    )
+    if not dataset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Dataset not found')
+
+    return DatasetResponse.model_validate(dataset)
 
 
 @router.delete('/{dataset_id}', status_code=status.HTTP_204_NO_CONTENT)

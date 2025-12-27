@@ -8,6 +8,7 @@ from statmate.api.models.analysis import (
 )
 from statmate.api.models.dataset import (
     DatasetCreate,
+    DatasetDescriptionUpdate,
     DatasetPreviewResponse,
     DatasetResponse,
     DatasetUploadResponse,
@@ -26,6 +27,7 @@ __all__ = [
     'DatasetResponse',
     'DatasetUploadResponse',
     'DatasetPreviewResponse',
+    'DatasetDescriptionUpdate',
     # Analysis models
     'AnalysisCreate',
     'AnalysisResponse',

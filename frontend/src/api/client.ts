@@ -1,6 +1,12 @@
 export type HealthResponse = { version?: string; status?: string };
 export type User = { email: string };
-export type Dataset = { id: string; original_filename: string; row_count?: number; created_at?: string };
+export type Dataset = {
+  id: string;
+  original_filename: string;
+  row_count?: number;
+  created_at?: string;
+  description?: string | null;
+};
 export type DatasetPreview = {
   dataset_id: string;
   original_filename: string;
@@ -9,6 +15,7 @@ export type DatasetPreview = {
   preview_data: Record<string, unknown>[];
   data_types?: Record<string, string>;
   preview_rows?: number;
+  description?: string | null;
 };
 export type AnalysisStatus = {
   id: string;
@@ -264,13 +271,23 @@ export class ApiClient {
     return res.json();
   }
 
+  async updateDatasetDescription(datasetId: string, description: string | null): Promise<Dataset> {
+    const res = await fetch(`${this.baseUrl}/datasets/${datasetId}/description`, {
+      method: 'PATCH',
+      headers: this.headers(),
+      body: JSON.stringify({ description }),
+    });
+    if (!res.ok) throw await this.error(res);
+    return res.json();
+  }
+
   async availableModels(): Promise<AvailableModelsResponse> {
     const res = await fetch(`${this.baseUrl}/models/available`, { headers: this.headers(false) });
     if (!res.ok) throw await this.error(res);
     return res.json();
   }
 
-  async configuredCredentials(): Promise<{ configured_providers: string[] }> {
+  async configuredCredentials(): Promise<{ configured_providers: string[]; stored_credentials?: Record<string, string> }> {
     const res = await fetch(`${this.baseUrl}/models/credentials`, { headers: this.headers(false) });
     if (!res.ok) throw await this.error(res);
     return res.json();

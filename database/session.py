@@ -6,13 +6,16 @@ This module provides:
 - Dependency injection for FastAPI routes
 """
 
+import logging
 from collections.abc import Generator
 from typing import Any
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 # Create database engine
 engine = create_engine(
@@ -24,6 +27,41 @@ engine = create_engine(
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def _ensure_analysis_columns() -> None:
+    """Apply lightweight, idempotent migrations for the analyses table."""
+    inspector = inspect(engine)
+    try:
+        columns = {col['name'] for col in inspector.get_columns('analyses')}
+    except Exception as exc:  # pragma: no cover - defensive for missing table edge cases
+        logger.warning('Could not inspect analyses table: %s', exc)
+        return
+
+    statements: list[str] = []
+    if 'version' not in columns:
+        statements.append('ALTER TABLE analyses ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
+        statements.append('UPDATE analyses SET version = COALESCE(version, 1)')
+    if 'superseded_at' not in columns:
+        statements.append('ALTER TABLE analyses ADD COLUMN superseded_at TIMESTAMP NULL')
+    if 'comment' not in columns:
+        statements.append('ALTER TABLE analyses ADD COLUMN comment TEXT')
+    if 'model_name' not in columns:
+        statements.append('ALTER TABLE analyses ADD COLUMN model_name VARCHAR(100)')
+    if 'provider' not in columns:
+        statements.append('ALTER TABLE analyses ADD COLUMN provider VARCHAR(50)')
+    if 'decision_steps' not in columns:
+        statements.append('ALTER TABLE analyses ADD COLUMN decision_steps JSON')
+    if 'intermediate_log' not in columns:
+        statements.append('ALTER TABLE analyses ADD COLUMN intermediate_log TEXT')
+
+    if not statements:
+        return
+
+    with engine.begin() as conn:
+        for stmt in statements:
+            conn.execute(text(stmt))
+    logger.info('Ensured analyses table has required columns (applied %d migration steps)', len(statements))
 
 
 def get_db() -> Generator[Session, Any, None]:
@@ -47,13 +85,11 @@ def get_db() -> Generator[Session, Any, None]:
 
 
 def init_db() -> None:
-    """Initialize database by creating all tables.
-
-    This function should be called on application startup.
-    """
+    """Initialize database by creating all tables and applying lightweight migrations."""
     from database.models import Base
 
     Base.metadata.create_all(bind=engine)
+    _ensure_analysis_columns()
 
 
 def drop_db() -> None:

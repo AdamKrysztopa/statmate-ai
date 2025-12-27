@@ -242,6 +242,7 @@ class DatasetService:
             'data_types': dataset.data_types,
             'preview_data': preview_data,
             'preview_rows': len(preview_data),
+            'description': dataset.description,
         }
 
     @staticmethod
@@ -338,4 +339,19 @@ class DatasetService:
             'data_types': dataset.data_types,
             'preview_data': preview_data,
             'preview_rows': len(preview_data),
+            'description': dataset.description,
         }
+
+    @staticmethod
+    def update_description(
+        db: Session, dataset_id: str, description: str | None, *, user_id: str | None = None
+    ) -> Dataset | None:
+        """Update dataset notes/description."""
+        dataset = DatasetService.get_dataset(db, dataset_id, user_id=user_id)
+        if not dataset:
+            return None
+
+        dataset.description = description
+        db.commit()
+        db.refresh(dataset)
+        return dataset

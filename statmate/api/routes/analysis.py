@@ -174,43 +174,52 @@ async def stream_analysis_events(
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Analysis not found')
 
+    analysis_owner = current_user.id if current_user else None
+    from database.session import SessionLocal
+
     async def event_generator():
         last_step_idx = 0
         last_log_len = 0
+        session = SessionLocal()
+        try:
+            while True:
+                fresh = AnalysisService.get_analysis(session, analysis_id, user_id=analysis_owner)
+                if not fresh:
+                    break
 
-        while True:
-            db.refresh(analysis)
+                steps = fresh.decision_steps or []
+                while last_step_idx < len(steps):
+                    payload = dict(steps[last_step_idx])
+                    payload.setdefault('analysis_id', fresh.id)
+                    payload.setdefault('version', fresh.version)
+                    yield f'event: step\ndata: {json.dumps(payload, default=str)}\n\n'
+                    last_step_idx += 1
 
-            steps = analysis.decision_steps or []
-            while last_step_idx < len(steps):
-                payload = dict(steps[last_step_idx])
-                payload.setdefault('analysis_id', analysis.id)
-                payload.setdefault('version', analysis.version)
-                yield f'event: step\ndata: {json.dumps(payload, default=str)}\n\n'
-                last_step_idx += 1
+                log_text = fresh.intermediate_log or ''
+                if len(log_text) > last_log_len:
+                    chunk = log_text[last_log_len:]
+                    log_payload = {'analysis_id': fresh.id, 'chunk': chunk, 'version': fresh.version}
+                    yield f'event: log\ndata: {json.dumps(log_payload)}\n\n'
+                    last_log_len = len(log_text)
 
-            log_text = analysis.intermediate_log or ''
-            if len(log_text) > last_log_len:
-                chunk = log_text[last_log_len:]
-                log_payload = {'analysis_id': analysis.id, 'chunk': chunk, 'version': analysis.version}
-                yield f'event: log\ndata: {json.dumps(log_payload)}\n\n'
-                last_log_len = len(log_text)
+                status_value = fresh.status.value if hasattr(fresh.status, 'value') else str(fresh.status)
+                if fresh.status in (AnalysisStatus.COMPLETED, AnalysisStatus.FAILED, AnalysisStatus.CANCELLED):
+                    done_payload = {'analysis_id': fresh.id, 'status': status_value, 'version': fresh.version}
+                    yield f'event: done\ndata: {json.dumps(done_payload)}\n\n'
+                    break
 
-            status_value = analysis.status.value if hasattr(analysis.status, 'value') else str(analysis.status)
-            if analysis.status in (AnalysisStatus.COMPLETED, AnalysisStatus.FAILED, AnalysisStatus.CANCELLED):
-                done_payload = {'analysis_id': analysis.id, 'status': status_value, 'version': analysis.version}
-                yield f'event: done\ndata: {json.dumps(done_payload)}\n\n'
-                break
+                await asyncio.sleep(1.0)
 
-            await asyncio.sleep(1.0)
-
-        # Final flush of any remaining log content
-        db.refresh(analysis)
-        log_text = analysis.intermediate_log or ''
-        if len(log_text) > last_log_len:
-            chunk = log_text[last_log_len:]
-            log_payload = {'analysis_id': analysis.id, 'chunk': chunk}
-            yield f'event: log\ndata: {json.dumps(log_payload)}\n\n'
+            # Final flush of any remaining log content
+            fresh = AnalysisService.get_analysis(session, analysis_id, user_id=analysis_owner)
+            if fresh:
+                log_text = fresh.intermediate_log or ''
+                if len(log_text) > last_log_len:
+                    chunk = log_text[last_log_len:]
+                    log_payload = {'analysis_id': fresh.id, 'chunk': chunk}
+                    yield f'event: log\ndata: {json.dumps(log_payload)}\n\n'
+        finally:
+            session.close()
 
     return StreamingResponse(event_generator(), media_type='text/event-stream')
 

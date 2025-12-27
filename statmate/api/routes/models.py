@@ -30,6 +30,7 @@ class CredentialsRequest(BaseModel):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
+    gemini_api_key: str | None = None
     groq_api_key: str | None = None
     ollama_enabled: str | None = None
     ollama_base_url: str | None = None
@@ -48,6 +49,7 @@ class CredentialsListResponse(BaseModel):
     """Providers configured for the current user."""
 
     configured_providers: list[str]
+    stored_credentials: dict[str, str] | None = None
 
 
 class EnvironmentResponse(BaseModel):
@@ -200,13 +202,13 @@ async def set_credentials(
             incoming['openai'] = credentials.openai_api_key
         if credentials.anthropic_api_key:
             incoming['anthropic'] = credentials.anthropic_api_key
-        if credentials.google_api_key:
-            incoming['google'] = credentials.google_api_key
+        google_key = credentials.google_api_key
+        if credentials.gemini_api_key:
+            google_key = credentials.gemini_api_key
+        if google_key:
+            incoming['google'] = google_key
         if credentials.groq_api_key:
             incoming['groq'] = credentials.groq_api_key
-        # Allow gemini alias for google key
-        if hasattr(credentials, 'gemini_api_key') and credentials.gemini_api_key:
-            incoming['google'] = credentials.gemini_api_key
 
         configured_providers = CredentialService.upsert_credentials(db=db, user_id=current_user.id, credentials=incoming)
 
@@ -261,4 +263,8 @@ async def get_credentials(
         raise HTTPException(status_code=401, detail='Authentication required')
 
     stored = CredentialService.load_credentials(db=db, user_id=current_user.id)
-    return CredentialsListResponse(configured_providers=sorted(stored.keys()))
+    enriched = dict(stored)
+    if 'google' in stored and 'gemini' not in stored:
+        enriched['gemini'] = stored['google']
+    providers = sorted(set(stored.keys()) | ({'gemini'} if 'google' in stored else set()))
+    return CredentialsListResponse(configured_providers=providers, stored_credentials=enriched)

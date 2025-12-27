@@ -49,6 +49,7 @@ class DatasetPreviewResponse(BaseModel):
     data_types: dict[str, str] = Field(description='Data types for each column')
     preview_data: list[dict[str, Any]] = Field(description='First N rows of data')
     preview_rows: int = Field(description='Number of preview rows returned')
+    description: str | None = Field(default=None, description='User-provided dataset notes/description')
 
     class Config:
         """Pydantic config."""
@@ -67,3 +68,9 @@ class ColumnRenameRequest(BaseModel):
     """Request payload for renaming dataset columns."""
 
     renames: dict[str, str] | list[ColumnRename]
+
+
+class DatasetDescriptionUpdate(BaseModel):
+    """Request payload for updating dataset notes/description."""
+
+    description: str | None = Field(default=None, description='New dataset notes')
