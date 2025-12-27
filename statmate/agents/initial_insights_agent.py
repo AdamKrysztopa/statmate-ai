@@ -350,6 +350,14 @@ def format_data_by_recommendation(
         data = data.set_index(rec.group_column, drop=False)
 
     route = set(rec.route_to_test)
+    resolved_design = design.design_type if design else rec.data_design
+
+    design_dep_cols: list[str] = []
+    if design and design.dependent_variable:
+        for raw in str(design.dependent_variable).split(','):
+            cleaned = raw.strip(" []'\"")
+            if cleaned and cleaned in data.columns:
+                design_dep_cols.append(cleaned)
 
     # 3) Only these tests get a DataFrame back
     df_tests = {NodeName.CHI2, NodeName.FISHER, NodeName.ANOVA_RM}
@@ -359,7 +367,7 @@ def format_data_by_recommendation(
 
     # 4) Independent groups in long format: split by grouping variable instead of pairing rows.
     if (
-        rec.data_design == 'independent'
+        resolved_design == 'independent'
         and rec.group_column
         and rec.group_column in data.columns
         and rec.data_transformation == 'None'
@@ -389,7 +397,8 @@ def format_data_by_recommendation(
 
     # 5) Otherwise always return two Series; pad/borrow columns if agent provided fewer than two
     available_cols = list(data.columns)
-    chosen = [col for col in rec.analysis_columns if col in available_cols]
+    chosen = [col for col in design_dep_cols if col in available_cols]
+    chosen.extend([col for col in rec.analysis_columns if col in available_cols and col not in chosen])
     if len(chosen) < 2:
         remaining = [col for col in available_cols if col not in chosen]
         chosen.extend(remaining[: 2 - len(chosen)])

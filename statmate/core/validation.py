@@ -407,20 +407,36 @@ def validate_statistical_design(
     if group_var and group_var in frame.columns:
         groups = [str(g) for g in frame[group_var].dropna().unique().tolist()]
 
-    # 1. Wide-format paired: two numeric columns but no grouping variable.
-    if group_var is None and dep_values and len(dep_values) == 2:
+    # 1. Wide-format paired: multiple measurement columns imply row-wise pairing regardless of grouping.
+    if dep_values and len(dep_values) >= 2:
         return StatisticalDesign(
             design_type='paired',
             is_paired=True,
-            grouping_variable=None,
+            grouping_variable=group_var if group_var in frame.columns else None,
             subject_id_column=subject_id,
-            dependent_variable=dep_label,
-            rationale='Two distinct numeric columns provided for comparison (wide-format paired).',
+            dependent_variable=', '.join(dep_values),
+            rationale='Multiple measurement columns per row (wide-format) detected. Skipping group-overlap checks.',
             suggested_groups=[],
             keyword_cues=keyword_cues,
         )
 
-    # 2. No grouping provided: default to independent exploration.
+    # 2. Temporal/paired keyword cues: single dep var provided but paired-like columns exist.
+    paired_keywords = ('pre', 'post', 'baseline', 'followup', 'week')
+    if not group_var:
+        temporal_like = [col for col in frame.columns if any(tok in str(col).lower() for tok in paired_keywords)]
+        if len(temporal_like) >= 2:
+            return StatisticalDesign(
+                design_type='paired',
+                is_paired=True,
+                grouping_variable=None,
+                subject_id_column=subject_id,
+                dependent_variable=', '.join(temporal_like[:2]),
+                rationale=f"Found temporal column pair {temporal_like[:2]}; treating layout as paired.",
+                suggested_groups=[],
+                keyword_cues=keyword_cues,
+            )
+
+    # 3. No grouping provided: default to independent exploration.
     if not group_var:
         return StatisticalDesign(
             design_type='independent',
@@ -434,7 +450,7 @@ def validate_statistical_design(
         )
 
     overlap_summary: dict[str, Any] = {}
-    # 3. Long-format paired: overlapping subject IDs across two groups.
+    # 4. Long-format paired: overlapping subject IDs across two groups.
     if subject_id and subject_id in frame.columns and group_var in frame.columns:
         unique_groups = frame[group_var].dropna().unique()
         if len(unique_groups) >= 2:
@@ -466,7 +482,7 @@ def validate_statistical_design(
                     keyword_cues=keyword_cues,
                 )
 
-    # 4. Independent groups: no meaningful ID overlap detected.
+    # 5. Independent groups: no meaningful ID overlap detected.
     return StatisticalDesign(
         design_type='independent',
         is_paired=False,

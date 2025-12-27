@@ -7,7 +7,7 @@ from statmate.agents.initial_insights_agent import InitialInsightsAgentResults, 
 from statmate.agents.initial_insights_agent import NodeName as AgentNodeName
 from statmate.core.config import NodeName
 from statmate.core.exceptions import NodeExecutionError
-from statmate.core.validation import StatisticalDesign
+from statmate.core.validation import StatisticalDesign, validate_statistical_design
 from statmate.statistical_core.base import StatTestResult
 from statmate.workflow.edges import decide_two_independent, parametric_assumptions
 from statmate.workflow.nodes import call_test_agent, design_verification_node
@@ -169,3 +169,61 @@ def test_format_data_by_recommendation_splits_by_group_for_independent_design():
     s1, s2 = format_data_by_recommendation(df, rec, design)
     assert list(s1) == [1, 2]
     assert list(s2) == [3, 4]
+
+
+def test_validate_statistical_design_prioritises_wide_dep_list_with_group():
+    df = pd.DataFrame(
+        {
+            'pre_treatment_value': [1, 2, 3],
+            'post_treatment_value': [2, 3, 4],
+            'subject_id': [101, 102, 103],
+            'group': ['A', 'B', 'C'],
+        }
+    )
+
+    design = validate_statistical_design(
+        df,
+        dependent_var=['pre_treatment_value', 'post_treatment_value'],
+        group_var='group',
+        subject_id='subject_id',
+    )
+
+    assert design.design_type == 'paired'
+    assert design.is_paired is True
+    assert 'wide-format' in design.rationale.lower()
+
+
+def test_format_data_by_recommendation_prefers_validator_paired_design():
+    df = pd.DataFrame(
+        {
+            'pre': [1, 2, 3],
+            'post': [2, 3, 4],
+            'subject': ['a', 'b', 'c'],
+        }
+    )
+    rec = InitialInsightsAgentResults(
+        analysis_columns=['post'],
+        group_column='subject',
+        output_format='pd.Series',
+        data_analysis_result='',
+        route_to_test=[AgentNodeName.TWO_INDEPENDENT_GROUPS, AgentNodeName.INDEP_T],
+        comments='',
+        data_type='CONTINUOUS',
+        data_design='independent',
+        data_transformation='None',
+        tool_arguments={},
+        data_size=len(df),
+        number_of_columns=df.shape[1],
+    )
+    design = StatisticalDesign(
+        design_type='paired',
+        is_paired=True,
+        grouping_variable=None,
+        subject_id_column=None,
+        rationale='Multiple measurement columns per row (wide-format) detected.',
+        dependent_variable='pre, post',
+    )
+
+    s1, s2 = format_data_by_recommendation(df, rec, design)
+    assert list(s1) == [1, 2, 3]
+    assert list(s2) == [2, 3, 4]
