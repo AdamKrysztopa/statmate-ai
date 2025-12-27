@@ -300,11 +300,13 @@ class AnalysisService:
             _persist_intermediate_log()
             summary = messages[-1].content if messages else 'Analysis completed without a summary.'
             full_output = '\n\n'.join(msg.content for msg in messages)
-            plots = VisualizationService.generate_visualizations(
+            viz_payload = VisualizationService.generate_visualizations(
                 df,
                 selected_columns=analysis.selected_columns,
                 limit=6,
             )
+            plots = viz_payload.get('plots', [])
+            effect_sizes = viz_payload.get('effect_sizes', {})
 
             results_data = {
                 'analysis_id': analysis_id,
@@ -318,6 +320,7 @@ class AnalysisService:
                 'decision_steps': analysis.decision_steps,
                 'intermediate_log': analysis.intermediate_log,
                 'plots': plots,
+                'effect_sizes': effect_sizes,
                 'timestamp': datetime.utcnow().isoformat(),
             }
 
@@ -394,6 +397,7 @@ class AnalysisService:
             'decision_steps': analysis.decision_steps or results_data.get('decision_steps'),
             'intermediate_log': analysis.intermediate_log,
             'plots': results_data.get('plots'),
+            'effect_sizes': results_data.get('effect_sizes'),
             'log_available': bool(analysis.log_path),
         }
 

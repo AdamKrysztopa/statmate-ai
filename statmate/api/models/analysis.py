@@ -95,6 +95,9 @@ class AnalysisResultResponse(BaseModel):
         default=None, description='Rolling workflow log captured during streaming execution'
     )
     plots: list[dict[str, Any]] | None = Field(default=None, description='Base64-encoded diagnostic plots')
+    effect_sizes: dict[str, float] | None = Field(
+        default=None, description="Computed effect sizes (e.g., Cohen's d) when a binary grouping exists"
+    )
     log_available: bool = Field(description='Whether execution log is available')
 
     class Config:

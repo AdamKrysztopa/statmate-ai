@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="360" viewBox="0 0 720 360">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.25" />
+      <stop offset="1" stop-color="#0ea5e9" stop-opacity="0.35" />
+    </linearGradient>
+  </defs>
+  <rect width="720" height="360" fill="#0f172a" rx="18" />
+  <rect x="20" y="20" width="680" height="320" rx="16" fill="url(#g)" stroke="#22d3ee" opacity="0.7" />
+  <text x="360" y="120" text-anchor="middle" font-size="32" font-family="Inter, Arial, sans-serif" fill="#e2e8f0">Step 1 · Upload dataset</text>
+  <text x="360" y="170" text-anchor="middle" font-size="18" font-family="Inter, Arial, sans-serif" fill="#cbd5e1">Pick a CSV/XLSX or use the seeded samples.</text>
+  <text x="360" y="205" text-anchor="middle" font-size="16" font-family="Inter, Arial, sans-serif" fill="#94a3b8">Shows live preview and column selection chips.</text>
+</svg>

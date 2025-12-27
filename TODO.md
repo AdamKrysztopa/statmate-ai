@@ -16,6 +16,6 @@
 - [ ] Testing | QA: Push unit/integration coverage (>80%) for streaming, decision persistence, auth guards, upload validation; add e2e flows covering major decision branches and live updates.
 
 ## P2 – Product & UX Extras
-- [ ] Data Viz | Results: Auto-generate plots (distribution/box/scatter) for selected columns; ship in results payload and render in UI next to p-values/effect sizes.
-- [ ] Export/Docs | Product: Add exports (PDF/Word via WeasyPrint, CSV) and docs for the step-by-step view with screenshots; include seeded example datasets plus in-app tooltips/guided tour.
-- [ ] Release Prep | Ops: Run load/perf tests on realistic datasets; define SLAs/alerts; set up backups/retention; document rollback/runbook for V1.0.0; clarify pricing/usage limits if applicable.
+- [x] Data Viz | Results: Auto-generate plots (distribution/box/scatter) for selected columns; ship in results payload and render in UI next to p-values/effect sizes.
+- [x] Export/Docs | Product: Add exports (PDF/Word via WeasyPrint, CSV) and docs for the step-by-step view with screenshots; include seeded example datasets plus in-app tooltips/guided tour.
+- [x] Release Prep | Ops: Run load/perf tests on realistic datasets; define SLAs/alerts; set up backups/retention; document rollback/runbook for V1.0.0; clarify pricing/usage limits if applicable.

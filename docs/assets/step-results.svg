@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="360" viewBox="0 0 720 360">
+  <rect width="720" height="360" fill="#0f172a" rx="18" />
+  <rect x="20" y="22" width="680" height="316" rx="16" fill="#0b1223" stroke="#22d3ee" opacity="0.8" />
+  <text x="360" y="120" text-anchor="middle" font-size="32" font-family="Inter, Arial, sans-serif" fill="#e2e8f0">Step 3 · Results & exports</text>
+  <text x="360" y="165" text-anchor="middle" font-size="18" font-family="Inter, Arial, sans-serif" fill="#cbd5e1">P-values, effect sizes, plots side-by-side.</text>
+  <text x="360" y="200" text-anchor="middle" font-size="16" font-family="Inter, Arial, sans-serif" fill="#94a3b8">Export PDF/Word/CSV directly from the viewer.</text>
+</svg>

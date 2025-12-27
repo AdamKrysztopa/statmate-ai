@@ -61,6 +61,7 @@ function App() {
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [modelName, setModelName] = useState('gpt-4o');
   const [provider, setProvider] = useState('openai');
+  const [exporting, setExporting] = useState<'pdf' | 'docx' | 'csv' | null>(null);
 
   const api = useMemo(() => new ApiClient(apiBase, token), [apiBase, token]);
 
@@ -232,6 +233,30 @@ function App() {
       await pollLog();
     } finally {
       setLoadingLog(false);
+    }
+  };
+
+  const handleExport = async (format: 'pdf' | 'docx' | 'csv') => {
+    const id = analysisId || analysisResults?.id;
+    if (!id) {
+      setError('Run an analysis to export results.');
+      return;
+    }
+    try {
+      setExporting(format);
+      const blob = await api.exportAnalysis(id, format);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `analysis-${id}.${format === 'docx' ? 'docx' : format}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -410,6 +435,29 @@ function App() {
     return analysisResults.plots || analysisResults.results_detail?.plots || [];
   }, [analysisResults]);
 
+  const effectSizes = useMemo<Record<string, number>>(() => {
+    if (!analysisResults) return {};
+    return (
+      analysisResults.effect_sizes ||
+      analysisResults.results_detail?.effect_sizes ||
+      {}
+    );
+  }, [analysisResults]);
+
+  const statsRows = useMemo(
+    () => {
+      if (!analysisResults) return [];
+      const probabilities = analysisResults.probabilities || {};
+      const keys = new Set([...Object.keys(probabilities), ...Object.keys(effectSizes)]);
+      return Array.from(keys).map((name) => ({
+        name,
+        pValue: probabilities[name],
+        effectSize: effectSizes[name],
+      }));
+    },
+    [analysisResults, effectSizes]
+  );
+
   const agentMessages = useMemo(() => analysisResults?.results_detail?.messages || [], [analysisResults]);
 
   useEffect(() => {
@@ -565,6 +613,25 @@ function App() {
             {uploading ? 'Uploading…' : 'Upload'}
           </button>
         </div>
+
+        <div className="card">
+          <h3>Guided tour</h3>
+          <p className="muted">Start with a seeded dataset, watch the live decisions, then export to share.</p>
+          <ol className="mini-list">
+            <li>Download a sample CSV and upload it.</li>
+            <li>Select 2–4 columns to keep the visuals crisp.</li>
+            <li>Open the viewer to watch streaming agent steps.</li>
+            <li>Export the finished run as PDF/Word/CSV.</li>
+          </ol>
+          <div className="pill-row">
+            <a className="button" href="/samples/clinical_trial_sample.csv" download>
+              Clinical sample CSV
+            </a>
+            <a className="button" href="/samples/marketing_uplift.csv" download>
+              Marketing uplift CSV
+            </a>
+          </div>
+        </div>
       </section>
 
       <div className="section-title">Datasets</div>
@@ -600,7 +667,9 @@ function App() {
               <span className="badge">Columns: {preview.column_names.length}</span>
             </div>
             <div className="input-group" style={{ marginTop: 12 }}>
-              <label>Select columns for analysis (optional)</label>
+              <label title="Tip: keep 2–4 columns for faster plots and clearer box/scatter views">
+                Select columns for analysis (optional)
+              </label>
               <div className="pill-row">
                 {preview.column_names.map((name) => {
                   const active = selectedColumns.includes(name);
@@ -705,6 +774,17 @@ function App() {
               Open detailed view
             </button>
           </div>
+          <div className="pill-row" style={{ marginTop: 6 }}>
+            <button className="button" onClick={() => handleExport('pdf')} disabled={exporting !== null}>
+              Export PDF
+            </button>
+            <button className="button" onClick={() => handleExport('docx')} disabled={exporting !== null}>
+              Export Word
+            </button>
+            <button className="button" onClick={() => handleExport('csv')} disabled={exporting !== null}>
+              Export CSV
+            </button>
+          </div>
         </div>
       )}
 
@@ -720,6 +800,17 @@ function App() {
                   <span className="tag">Status: {analysisStatus?.status || analysisResults?.status || 'pending'}</span>
                   {analysisResults?.model_name && <span className="tag">Model: {analysisResults.model_name}</span>}
                   {analysisResults?.provider && <span className="tag">Provider: {analysisResults.provider}</span>}
+                </div>
+                <div className="pill-row" style={{ marginTop: 8 }}>
+                  <button className="button" onClick={() => handleExport('pdf')} disabled={exporting !== null}>
+                    {exporting === 'pdf' ? 'Generating PDF…' : 'Export PDF'}
+                  </button>
+                  <button className="button" onClick={() => handleExport('docx')} disabled={exporting !== null}>
+                    {exporting === 'docx' ? 'Generating DOCX…' : 'Export Word'}
+                  </button>
+                  <button className="button" onClick={() => handleExport('csv')} disabled={exporting !== null}>
+                    {exporting === 'csv' ? 'Generating CSV…' : 'Export CSV'}
+                  </button>
                 </div>
               </div>
               <div className="pill-row" style={{ gap: 8 }}>
@@ -794,45 +885,79 @@ function App() {
 
             {analysisResults && (
               <>
-                {analysisResults.probabilities && (
-                  <div className="table-like" style={{ marginTop: 12 }}>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Test</th>
-                          <th>P-Value</th>
-                          <th>Significance</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Object.entries(analysisResults.probabilities).map(([name, value]) => (
-                          <tr key={name}>
-                            <td>{name}</td>
-                            <td>{value.toFixed(4)}</td>
-                            <td>{value < 0.05 ? 'Significant' : 'Not significant'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {plots.length > 0 && (
-                  <div style={{ marginTop: 16 }}>
+                {(statsRows.length > 0 || plots.length > 0) && (
+                  <div style={{ marginTop: 12 }}>
                     <div className="section-title" style={{ marginTop: 0 }}>
-                      Visual Diagnostics
+                      Results & Diagnostics
                     </div>
-                    <div className="plot-grid">
-                      {plots.map((plot, idx) => (
-                        <div className="plot-card" key={`${plot.title}-${idx}`}>
-                          <img src={`data:image/png;base64,${plot.image_base64}`} alt={plot.title} />
-                          <div className="plot-meta">
-                            <div className="plot-title">{plot.title}</div>
-                            {plot.description && <p className="muted">{plot.description}</p>}
-                            {plot.column && <span className="tag">Column: {plot.column}</span>}
+                    <div className="stats-visual-wrap">
+                      {statsRows.length > 0 && (
+                        <div className="table-like stats-table">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Test / Metric</th>
+                                <th>P-Value</th>
+                                <th>Effect size</th>
+                                <th>Callouts</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {statsRows.map((row) => (
+                                <tr key={row.name}>
+                                  <td>{row.name}</td>
+                                  <td>{typeof row.pValue === 'number' ? row.pValue.toFixed(4) : '—'}</td>
+                                  <td>
+                                    {typeof row.effectSize === 'number' ? (
+                                      <div className="pill-row" style={{ gap: 4 }}>
+                                        <span className="badge">d = {row.effectSize.toFixed(3)}</span>
+                                        <span className="badge">
+                                          {Math.abs(row.effectSize) >= 0.8
+                                            ? 'Large'
+                                            : Math.abs(row.effectSize) >= 0.5
+                                              ? 'Medium'
+                                              : Math.abs(row.effectSize) >= 0.2
+                                                ? 'Small'
+                                                : 'Trivial'}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      '—'
+                                    )}
+                                  </td>
+                                  <td>
+                                    {typeof row.pValue === 'number' ? (
+                                      <span className="tag">{row.pValue < 0.05 ? 'Significant' : 'Not significant'}</span>
+                                    ) : (
+                                      <span className="tag">Exploratory</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {plots.length > 0 && (
+                        <div className="plot-panel">
+                          <div className="plot-grid">
+                            {plots.map((plot, idx) => (
+                              <div className="plot-card" key={`${plot.title}-${idx}`}>
+                                <img src={`data:image/png;base64,${plot.image_base64}`} alt={plot.title} />
+                                <div className="plot-meta">
+                                  <div className="plot-title">{plot.title}</div>
+                                  {plot.description && <p className="muted">{plot.description}</p>}
+                                  <div className="pill-row" style={{ gap: 6 }}>
+                                    {plot.column && <span className="tag">Column: {plot.column}</span>}
+                                    {plot.type && <span className="tag">{plot.type}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 )}

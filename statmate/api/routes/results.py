@@ -104,10 +104,13 @@ async def get_result_detail(
 
     # Try to load detailed results
     results_data = None
+    effect_sizes = None
     if analysis.result_path:
         from statmate.api.services.storage_service import StorageService
 
         results_data = StorageService.read_results(result_id)
+        if results_data:
+            effect_sizes = results_data.get('effect_sizes')
 
     return ResultDetailResponse(
         id=analysis.id,
@@ -121,6 +124,7 @@ async def get_result_detail(
         summary=analysis.summary,
         probabilities=analysis.probabilities,
         results_data=results_data,
+        effect_sizes=effect_sizes,
         error_message=analysis.error_message,
     )
 

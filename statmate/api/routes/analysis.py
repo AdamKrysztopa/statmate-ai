@@ -1,6 +1,7 @@
 """Analysis execution API routes."""
 
 import asyncio
+import io
 import json
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -17,6 +18,7 @@ from statmate.api.models.analysis import (
     AnalysisStatusResponse,
 )
 from statmate.api.services.analysis_service import AnalysisService
+from statmate.api.services.export_service import ExportService
 from database.models import AnalysisStatus, User
 
 router = APIRouter(prefix='/analysis', tags=['analysis'])
@@ -263,6 +265,43 @@ async def get_analysis_log(
         'log_content': log_content,
         'log_lines': str(len(log_content.split('\n'))),
     }
+
+
+@router.get('/{analysis_id}/export/{export_format}')
+async def export_analysis_report(
+    analysis_id: str,
+    export_format: str,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> StreamingResponse:
+    """Export an analysis as PDF, DOCX, or CSV."""
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    results = AnalysisService.get_analysis_results(db, analysis_id, user_id=current_user.id if current_user else None)
+    if not results:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Analysis not found or incomplete')
+
+    try:
+        html = ExportService.render_html_report(results)
+        filename = f'analysis-{analysis_id}.{export_format}'
+        if export_format == 'pdf':
+            payload = ExportService.render_pdf(html)
+            media_type = 'application/pdf'
+        elif export_format in ('docx', 'word'):
+            payload = ExportService.render_docx(results)
+            media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            filename = f'analysis-{analysis_id}.docx'
+        elif export_format == 'csv':
+            payload = ExportService.render_csv(results)
+            media_type = 'text/csv'
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported export format')
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+
+    headers = {'Content-Disposition': f'attachment; filename={filename}'}
+    return StreamingResponse(io.BytesIO(payload), media_type=media_type, headers=headers)
 
 
 @router.get('/', response_model=list[AnalysisResponse])

@@ -43,6 +43,9 @@ class ResultDetailResponse(BaseModel):
     results_data: dict[str, Any] | None = Field(
         description='Detailed results and statistical information'
     )
+    effect_sizes: dict[str, float] | None = Field(
+        default=None, description='Computed effect sizes when available (e.g., Cohen’s d)'
+    )
     error_message: str | None = Field(description='Error details if failed')
 
     class Config:

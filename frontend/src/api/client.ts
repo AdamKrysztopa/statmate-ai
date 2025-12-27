@@ -36,6 +36,7 @@ export type PlotInfo = {
 export type ResultsDetail = {
   messages?: string[];
   probabilities?: Record<string, number>;
+  effect_sizes?: Record<string, number>;
   summary?: string;
   full_output?: string;
   execution_trace?: TraceStep[];
@@ -49,6 +50,7 @@ export type AnalysisResult = {
   dataset_name?: string;
   summary?: string;
   probabilities?: Record<string, number>;
+  effect_sizes?: Record<string, number>;
   results_detail?: ResultsDetail;
   execution_trace?: TraceStep[];
   decision_steps?: TraceStep[];
@@ -166,6 +168,12 @@ export class ApiClient {
     const res = await fetch(`${this.baseUrl}/analysis/${id}/log`, { headers: this.headers(false) });
     if (!res.ok) throw await this.error(res);
     return res.json();
+  }
+
+  async exportAnalysis(id: string, format: 'pdf' | 'docx' | 'csv'): Promise<Blob> {
+    const res = await fetch(`${this.baseUrl}/analysis/${id}/export/${format}`, { headers: this.headers(false) });
+    if (!res.ok) throw await this.error(res);
+    return res.blob();
   }
 
   async analysisStream(id: string, signal?: AbortSignal): Promise<Response> {

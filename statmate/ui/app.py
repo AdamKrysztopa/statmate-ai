@@ -467,22 +467,42 @@ with tab3:
                         st.subheader('📝 Summary')
                         st.write(results['summary'])
 
-                    # P-values
-                    if results.get('probabilities'):
-                        st.subheader('📊 Statistical Tests')
-                        p_vals = results['probabilities']
+                    effect_sizes = results.get('effect_sizes') or (results.get('results_detail') or {}).get('effect_sizes')
 
-                        for test_name, p_value in p_vals.items():
+                    # P-values and effect sizes
+                    if results.get('probabilities') or effect_sizes:
+                        st.subheader('📊 Statistical Tests')
+                        p_vals = results.get('probabilities') or {}
+
+                        for test_name in set(list(p_vals.keys()) + list((effect_sizes or {}).keys())):
+                            p_value = p_vals.get(test_name)
+                            effect = (effect_sizes or {}).get(test_name)
                             col1, col2, col3 = st.columns([2, 1, 1])
                             with col1:
                                 st.write(f'**{test_name}**')
                             with col2:
-                                st.write(f'p = {p_value:.4f}')
+                                if p_value is not None:
+                                    st.write(f'p = {p_value:.4f}')
+                                elif effect is not None:
+                                    st.caption('effect size only')
                             with col3:
-                                if p_value < 0.05:
-                                    st.success('Significant')
-                                else:
-                                    st.info('Not significant')
+                                if p_value is not None:
+                                    if p_value < 0.05:
+                                        st.success('Significant')
+                                    else:
+                                        st.info('Not significant')
+                                if effect is not None:
+                                    st.caption(f"Cohen's d = {effect:.3f}")
+
+                    if effect_sizes:
+                        st.info('Effect sizes auto-computed when a binary grouping is present.')
+
+                    plots = results.get('plots') or (results.get('results_detail') or {}).get('plots')
+                    if plots:
+                        st.subheader('📈 Visual diagnostics')
+                        for plot in plots:
+                            st.markdown(f"**{plot.get('title', 'Plot')}** — {plot.get('description') or ''}")
+                            st.image(f"data:{plot.get('content_type', 'image/png')};base64,{plot.get('image_base64')}")
 
                     # Detailed results
                     if results.get('results_detail'):

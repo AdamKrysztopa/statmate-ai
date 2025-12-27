@@ -142,6 +142,14 @@ a {
   margin: 0 0 8px;
 }
 
+.mini-list {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  color: var(--muted);
+  display: grid;
+  gap: 4px;
+}
+
 .input-group {
   display: flex;
   flex-direction: column;
@@ -307,6 +315,25 @@ select:focus {
   margin-top: 6px;
 }
 
+.stats-visual-wrap {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) 1.1fr;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.stats-table {
+  height: 100%;
+  background: var(--bg-card);
+}
+
+.plot-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: var(--bg-card);
+}
+
 .plot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -332,6 +359,12 @@ select:focus {
 
 .plot-title {
   font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .stats-visual-wrap {
+    grid-template-columns: 1fr;
+  }
 }
 
 .trace-messages {
