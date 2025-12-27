@@ -49,6 +49,9 @@ class AnalysisResponse(BaseModel):
     intermediate_log: str | None = Field(
         default=None, description='Rolling workflow log captured during streaming execution'
     )
+    assumption_log: list[dict[str, Any]] | None = Field(
+        default=None, description='Assumption diagnostics captured during the workflow'
+    )
     scheduled_task_id: str | None = Field(description='Related scheduled task if any')
 
     class Config:
@@ -76,6 +79,9 @@ class AnalysisStatusResponse(BaseModel):
     )
     execution_trace: list[dict[str, Any]] | None = Field(
         default=None, description='Live step-by-step trace (may be partial while running)'
+    )
+    assumption_log: list[dict[str, Any]] | None = Field(
+        default=None, description='Assumption diagnostics captured so far'
     )
 
 
@@ -108,6 +114,15 @@ class AnalysisResultResponse(BaseModel):
     plots: list[dict[str, Any]] | None = Field(default=None, description='Base64-encoded diagnostic plots')
     effect_sizes: dict[str, float] | None = Field(
         default=None, description="Computed effect sizes (e.g., Cohen's d) when a binary grouping exists"
+    )
+    test_hierarchy: dict[str, Any] | None = Field(
+        default=None, description='Tree of attempted tests, assumption failures, and chosen path'
+    )
+    reviewer_report: dict[str, Any] | None = Field(
+        default=None, description='Reviewer/consensus agent verdict and adjusted summary'
+    )
+    assumption_log: list[dict[str, Any]] | None = Field(
+        default=None, description='All assumption diagnostics captured during the workflow'
     )
     log_available: bool = Field(description='Whether execution log is available')
     version: int = Field(description='Monotonic version number scoped to dataset/user')

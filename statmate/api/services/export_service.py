@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import zipfile
 from datetime import datetime
 from typing import Any
+
+import pandas as pd
+
+from statmate.core.pii import mask_dataframe
 
 
 class ExportService:
@@ -110,6 +116,29 @@ class ExportService:
             raise RuntimeError('WeasyPrint is required for PDF export') from exc
         return HTML(string=html).write_pdf()
 
+    @classmethod
+    def render_latex_report(cls, analysis: dict[str, Any]) -> bytes:
+        """Render a minimal LaTeX report for offline use."""
+        summary = cls._html_safe(analysis.get('summary') or analysis.get('results_detail', {}).get('summary'))
+        body = f"""
+\\documentclass{{article}}
+\\usepackage[margin=1in]{{geometry}}
+\\usepackage{{longtable}}
+\\begin{document}
+\\section*{{StatMate Analysis Report}}
+\\subsection*{{Summary}}
+{summary or 'No summary available.'}
+\\subsection*{{Probabilities}}
+"""
+        probabilities = analysis.get('probabilities') or {}
+        if probabilities:
+            body += "\\begin{longtable}{|l|l|}\\hline\nTest & p-value\\\\ \\hline\n"
+            for name, p_val in probabilities.items():
+                body += f"{name} & {p_val:.4f}\\\\ \\hline\n"
+            body += "\\end{longtable}\n"
+        body += "\\end{document}"
+        return body.encode('utf-8')
+
     @staticmethod
     def render_docx(analysis: dict[str, Any]) -> bytes:
         """Render a small DOCX using python-docx."""
@@ -175,3 +204,43 @@ class ExportService:
                 callout = 'Significant' if p_val < 0.05 else 'Not significant'
             writer.writerow([name, p_val if p_val is not None else '', effect_val if effect_val is not None else '', callout])
         return output.getvalue().encode('utf-8')
+
+    @classmethod
+    def build_repro_bundle(
+        cls,
+        analysis: dict[str, Any],
+        dataset: pd.DataFrame | None = None,
+        log_content: str | None = None,
+    ) -> bytes:
+        """Package data, logs, and decision context into a reproducibility bundle."""
+        buffer = io.BytesIO()
+        detail = analysis.get('results_detail') or {}
+        decision_steps = analysis.get('decision_steps') or detail.get('decision_steps') or []
+        assumption_log = analysis.get('assumption_log') or detail.get('assumption_log') or []
+        test_hierarchy = analysis.get('test_hierarchy') or detail.get('test_hierarchy')
+
+        snippets = []
+        for name, p_val in (analysis.get('probabilities') or {}).items():
+            snippets.append(
+                f"# {name}\n# Observed p-value: {p_val:.4f}\n# Replace <data> with your arrays\n# Example using scipy:\n"
+                f"from scipy import stats\n# result = stats.ttest_ind(<group_a>, <group_b>, equal_var=False)\n"
+            )
+
+        with zipfile.ZipFile(buffer, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr('summary.md', analysis.get('summary') or detail.get('summary') or 'No summary provided.')
+            zf.writestr('decision_steps.json', json.dumps(decision_steps, indent=2, default=str))
+            zf.writestr('assumption_log.json', json.dumps(assumption_log, indent=2, default=str))
+            if test_hierarchy:
+                zf.writestr('test_hierarchy.json', json.dumps(test_hierarchy, indent=2, default=str))
+            if log_content:
+                zf.writestr('execution.log', log_content)
+            if dataset is not None:
+                sample = dataset.head(200)
+                masked_sample, mask_report = mask_dataframe(sample)
+                zf.writestr('data_sample.csv', masked_sample.to_csv(index=False))
+                if mask_report.get('masked_columns'):
+                    zf.writestr('mask_report.json', json.dumps(mask_report, indent=2))
+            zf.writestr('code_snippets.md', '\n'.join(snippets) if snippets else 'No statistical calls recorded.')
+
+        buffer.seek(0)
+        return buffer.getvalue()

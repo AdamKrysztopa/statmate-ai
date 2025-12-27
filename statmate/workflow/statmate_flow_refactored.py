@@ -11,8 +11,9 @@ from typing import Any, Callable
 import pandas as pd
 
 from statmate.core.config import Config, default_config
+from statmate.core.pii import sanitize_dataframe
 from statmate.core.logging_config import get_logger, setup_logging
-from statmate.workflow.graph_builder import build_workflow_graph
+from statmate.workflow.graph_builder import build_workflow_graph, create_default_checkpointer
 from statmate.workflow.model_factory import initialize_default_factory
 from statmate.workflow.state import WorkflowState, create_initial_state
 
@@ -22,14 +23,16 @@ logger = get_logger(__name__)
 class StatMateWorkflow:
     """Main workflow class for StatMate statistical analysis."""
 
-    def __init__(self, config: Config | None = None):
+    def __init__(self, config: Config | None = None, checkpointer: Any | None = None):
         """Initialize the workflow.
 
         Args:
             config: Configuration object. If None, uses default_config.
+            checkpointer: Optional LangGraph checkpointer to persist state.
         """
         self.config = config or default_config
         setup_logging(self.config.logging)
+        self.checkpointer = checkpointer or create_default_checkpointer()
 
         # Initialize the global model factory with this workflow's config
         if hasattr(self.config, 'model'):
@@ -37,7 +40,7 @@ class StatMateWorkflow:
         else:
             logger.warning("Config has no 'model' attribute; model factory will use defaults.")
 
-        self.graph = build_workflow_graph()
+        self.graph = build_workflow_graph(checkpointer=self.checkpointer)
         logger.info('StatMate workflow initialized')
 
     def run(
@@ -49,6 +52,7 @@ class StatMateWorkflow:
         model_name: str | None = None,
         provider: str | None = None,
         on_update: Callable[[dict[str, Any]], None] | None = None,
+        thread_id: str | None = None,
     ) -> WorkflowState:
         """Run the statistical test workflow on the provided data.
 
@@ -59,6 +63,7 @@ class StatMateWorkflow:
             do_association: Whether to perform association tests.
             model_name: Override for the AI model to use.
             provider: Override for the model provider.
+            thread_id: Optional identifier used by LangGraph checkpointers to resume runs.
 
         Returns:
             Final workflow state with results.
@@ -75,20 +80,38 @@ class StatMateWorkflow:
             if final_model_name is None:
                 final_model_name = self.config.model.default_model_name
 
+        # Sanitize data before any LLM calls
+        original_series = isinstance(data, pd.Series)
+        base_frame = data if isinstance(data, pd.DataFrame) else pd.DataFrame(data)
+        sanitized_df, mask_report = sanitize_dataframe(base_frame)
+        if original_series and isinstance(sanitized_df, pd.DataFrame):
+            sanitized_df = sanitized_df.iloc[:, 0]
+
         # Create initial state
         initial_state = create_initial_state(
-            df=data,
+            df=sanitized_df,
             target_columns=target_columns,
             paired=paired,
             do_association=do_association,
             model_name=final_model_name,
             provider=final_provider,
         )
+        if mask_report.get('masked_columns'):
+            initial_state.add_assumption_entry({'node': 'PII masking', **mask_report})
+            initial_state.add_step(
+                step='Input Sanitization',
+                detail='Applied PII masking before agent calls.',
+                data=mask_report,
+            )
 
         # Run workflow
         try:
             final_state_result = None
-            for state_update in self.graph.stream(initial_state):
+            stream_config: dict[str, Any] = {}
+            if thread_id:
+                stream_config['configurable'] = {'thread_id': thread_id}
+
+            for state_update in self.graph.stream(initial_state, config=stream_config or None):
                 # The final state is the value of the last dictionary emitted
                 final_state_result = state_update
                 if on_update:

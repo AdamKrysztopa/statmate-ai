@@ -24,6 +24,7 @@ from statmate.agents.model_helper import (
     get_agent_model_settings,
 )
 from statmate.agents.normality_agent import normality_of_difference_agent, shapiro_wilk_agent
+from statmate.agents.reviewer_agent import ReviewerDeps, ReviewerResult, get_reviewer_agent
 
 __all__ = [
     'StatTestDeps',
@@ -52,4 +53,7 @@ __all__ = [
     'build_initial_insights_agent',
     'INITIAL_INSIGHTS_PROMPT',
     'normality_of_difference_agent',
+    'get_reviewer_agent',
+    'ReviewerDeps',
+    'ReviewerResult',
 ]

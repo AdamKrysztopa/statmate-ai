@@ -35,6 +35,11 @@ class CredentialsRequest(BaseModel):
     ollama_enabled: str | None = None
     ollama_base_url: str | None = None
     ollama_default_model: str | None = None
+    openai_quota: int | None = None
+    anthropic_quota: int | None = None
+    google_quota: int | None = None
+    gemini_quota: int | None = None
+    groq_quota: int | None = None
 
 
 class CredentialsResponse(BaseModel):
@@ -50,6 +55,7 @@ class CredentialsListResponse(BaseModel):
 
     configured_providers: list[str]
     stored_credentials: dict[str, str] | None = None
+    provider_quotas: dict[str, int] | None = None
 
 
 class EnvironmentResponse(BaseModel):
@@ -198,19 +204,34 @@ async def set_credentials(
 
     try:
         incoming: dict[str, str] = {}
+        quota_limits: dict[str, int] = {}
         if credentials.openai_api_key:
             incoming['openai'] = credentials.openai_api_key
+        if credentials.openai_quota is not None:
+            quota_limits['openai'] = credentials.openai_quota
         if credentials.anthropic_api_key:
             incoming['anthropic'] = credentials.anthropic_api_key
+        if credentials.anthropic_quota is not None:
+            quota_limits['anthropic'] = credentials.anthropic_quota
         google_key = credentials.google_api_key
         if credentials.gemini_api_key:
             google_key = credentials.gemini_api_key
         if google_key:
             incoming['google'] = google_key
+        if credentials.google_quota is not None:
+            quota_limits['google'] = credentials.google_quota
+        if credentials.gemini_quota is not None:
+            quota_limits['google'] = credentials.gemini_quota
         if credentials.groq_api_key:
             incoming['groq'] = credentials.groq_api_key
+        if credentials.groq_quota is not None:
+            quota_limits['groq'] = credentials.groq_quota
 
-        configured_providers = CredentialService.upsert_credentials(db=db, user_id=current_user.id, credentials=incoming)
+        configured_providers = CredentialService.upsert_credentials(
+            db=db, user_id=current_user.id, credentials=incoming, quota_limits=quota_limits
+        )
+        if quota_limits:
+            CredentialService.update_quota_limits(db=db, user_id=current_user.id, limits=quota_limits)
 
         # Apply configured providers to runtime settings for immediate use
         stored = CredentialService.load_credentials(db=db, user_id=current_user.id)
@@ -263,8 +284,11 @@ async def get_credentials(
         raise HTTPException(status_code=401, detail='Authentication required')
 
     stored = CredentialService.load_credentials(db=db, user_id=current_user.id)
+    quotas = CredentialService.get_quota_limits(db=db, user_id=current_user.id)
     enriched = dict(stored)
     if 'google' in stored and 'gemini' not in stored:
         enriched['gemini'] = stored['google']
     providers = sorted(set(stored.keys()) | ({'gemini'} if 'google' in stored else set()))
-    return CredentialsListResponse(configured_providers=providers, stored_credentials=enriched)
+    return CredentialsListResponse(
+        configured_providers=providers, stored_credentials=enriched, provider_quotas=quotas if quotas else None
+    )

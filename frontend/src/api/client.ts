@@ -28,6 +28,8 @@ export type AnalysisStatus = {
   decision_steps?: TraceStep[];
   intermediate_log?: string;
   execution_trace?: TraceStep[];
+  assumption_log?: Record<string, unknown>[];
+  progress?: number;
 };
 export type TraceStep = {
   step: string;
@@ -36,6 +38,25 @@ export type TraceStep = {
   p_value?: number;
   timestamp?: string;
   node?: string;
+  progress_pct?: number;
+  step_index?: number;
+  total_steps?: number;
+};
+export type TestHierarchyNode = {
+  name: string;
+  detail?: string;
+  p_value?: number;
+  assumptions?: Record<string, unknown>[];
+  timestamp?: string;
+  step_index?: number;
+  total_steps?: number;
+  node?: string;
+};
+export type TestHierarchy = {
+  attempted?: TestHierarchyNode[];
+  failures?: { test?: string; message?: string; timestamp?: string }[];
+  chosen_test?: string | null;
+  reviewer?: Record<string, unknown> | null;
 };
 export type PlotInfo = {
   title: string;
@@ -56,6 +77,9 @@ export type ResultsDetail = {
   timestamp?: string;
   comment?: string | null;
   version?: number;
+  test_hierarchy?: TestHierarchy;
+  reviewer_report?: Record<string, unknown>;
+  assumption_log?: Record<string, unknown>[];
 };
 export type AnalysisResult = {
   id: string;
@@ -78,6 +102,9 @@ export type AnalysisResult = {
   superseded_at?: string | null;
   start_time?: string;
   end_time?: string;
+  test_hierarchy?: TestHierarchy;
+  reviewer_report?: Record<string, unknown>;
+  assumption_log?: Record<string, unknown>[];
 };
 export type AnalysisLog = { analysis_id: string; log_content: string; log_lines: string };
 export type AnalysisListItem = {
@@ -224,7 +251,7 @@ export class ApiClient {
     return res.json();
   }
 
-  async exportAnalysis(id: string, format: 'pdf' | 'docx' | 'csv'): Promise<Blob> {
+  async exportAnalysis(id: string, format: 'pdf' | 'docx' | 'csv' | 'latex' | 'bundle'): Promise<Blob> {
     const res = await fetch(`${this.baseUrl}/analysis/${id}/export/${format}`, { headers: this.headers(false) });
     if (!res.ok) throw await this.error(res);
     return res.blob();
@@ -287,7 +314,11 @@ export class ApiClient {
     return res.json();
   }
 
-  async configuredCredentials(): Promise<{ configured_providers: string[]; stored_credentials?: Record<string, string> }> {
+  async configuredCredentials(): Promise<{
+    configured_providers: string[];
+    stored_credentials?: Record<string, string>;
+    provider_quotas?: Record<string, number>;
+  }> {
     const res = await fetch(`${this.baseUrl}/models/credentials`, { headers: this.headers(false) });
     if (!res.ok) throw await this.error(res);
     return res.json();
@@ -302,6 +333,11 @@ export class ApiClient {
     ollama_enabled?: string;
     ollama_base_url?: string;
     ollama_default_model?: string;
+    openai_quota?: number | string;
+    anthropic_quota?: number | string;
+    google_quota?: number | string;
+    gemini_quota?: number | string;
+    groq_quota?: number | string;
   }): Promise<{ configured_providers: string[] }> {
     const res = await fetch(`${this.baseUrl}/models/credentials`, {
       method: 'POST',

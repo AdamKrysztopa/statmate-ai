@@ -5,7 +5,9 @@ providers (OpenAI, Anthropic, Google, Ollama, Groq) using Pydantic AI.
 """
 
 import logging
-from typing import Any
+import math
+import time
+from typing import Any, Callable
 
 from pydantic_ai.models import Model
 
@@ -18,6 +20,63 @@ from statmate.core.model_config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _retry_after_seconds(exc: Exception) -> float | None:
+    """Extract Retry-After seconds when available on provider errors."""
+    for attr in ('retry_after', 'retry_after_ms', 'retry_after_seconds'):
+        if hasattr(exc, attr):
+            try:
+                value = getattr(exc, attr)
+                return float(value) / (1000 if 'ms' in attr else 1)
+            except Exception:
+                continue
+    response = getattr(exc, 'response', None)
+    if response is not None:
+        header = getattr(response, 'headers', {}) or {}
+        retry_after = header.get('Retry-After') or header.get('retry-after')
+        if retry_after:
+            try:
+                return float(retry_after)
+            except Exception:
+                return None
+    return None
+
+
+def is_rate_limit_error(exc: Exception) -> bool:
+    """Heuristic to detect rate limit or quota errors from providers."""
+    msg = str(exc).lower()
+    status = getattr(exc, 'status_code', None) or getattr(getattr(exc, 'response', None), 'status_code', None)
+    return any(
+        token in msg for token in ['rate limit', 'retry', 'too many requests', '429', 'quota']
+    ) or status == 429
+
+
+def execute_with_backoff(
+    func: Callable[[], Any],
+    *,
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    on_retry: Callable[[int, float, Exception], None] | None = None,
+) -> Any:
+    """Execute a callable with exponential backoff respecting Retry-After."""
+    attempt = 0
+    while True:
+        try:
+            return func()
+        except Exception as exc:  # pragma: no cover - exercised at runtime
+            attempt += 1
+            if attempt > max_retries or not is_rate_limit_error(exc):
+                raise
+            delay = _retry_after_seconds(exc)
+            if delay is None:
+                delay = base_delay * math.pow(2, attempt - 1)
+            if on_retry:
+                try:
+                    on_retry(attempt, delay, exc)
+                except Exception:
+                    pass
+            time.sleep(delay)
 
 
 class ModelProviderError(Exception):

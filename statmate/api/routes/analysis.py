@@ -20,7 +20,9 @@ from statmate.api.models.analysis import (
     AnalysisStatusResponse,
 )
 from statmate.api.services.analysis_service import AnalysisService
+from statmate.api.services.dataset_service import DatasetService
 from statmate.api.services.export_service import ExportService
+from statmate.api.services.storage_service import StorageService
 
 router = APIRouter(prefix='/analysis', tags=['analysis'])
 
@@ -146,9 +148,17 @@ async def get_analysis_status(
         if log_content:
             execution_trace = _parse_trace_from_log(log_content)
 
+    progress_pct = None
+    if analysis.decision_steps:
+        last_step = analysis.decision_steps[-1]
+        progress_pct = last_step.get('progress_pct') if isinstance(last_step, dict) else None
+        if progress_pct is None:
+            progress_pct = min(100.0, len(analysis.decision_steps) / AnalysisService.WORKFLOW_STEP_TARGET * 100)
+
     return AnalysisStatusResponse(
         id=analysis.id,
         status=analysis.status.value,
+        progress=progress_pct,
         message=analysis.summary or analysis.error_message,
         log_available=bool(analysis.log_path),
         version=analysis.version,
@@ -157,6 +167,7 @@ async def get_analysis_status(
         execution_trace=execution_trace,
         decision_steps=analysis.decision_steps,
         intermediate_log=analysis.intermediate_log,
+        assumption_log=analysis.assumption_log,
     )
 
 
@@ -180,6 +191,7 @@ async def stream_analysis_events(
     async def event_generator():
         last_step_idx = 0
         last_log_len = 0
+        last_assumption_idx = 0
         session = SessionLocal()
         try:
             while True:
@@ -190,10 +202,23 @@ async def stream_analysis_events(
                 steps = fresh.decision_steps or []
                 while last_step_idx < len(steps):
                     payload = dict(steps[last_step_idx])
+                    step_index = last_step_idx + 1
+                    total = payload.get('total_steps') or AnalysisService.WORKFLOW_STEP_TARGET
+                    payload.setdefault('step_index', step_index)
+                    payload.setdefault('total_steps', total)
+                    payload.setdefault('progress_pct', round(min(1.0, step_index / total) * 100, 2))
                     payload.setdefault('analysis_id', fresh.id)
                     payload.setdefault('version', fresh.version)
                     yield f'event: step\ndata: {json.dumps(payload, default=str)}\n\n'
                     last_step_idx += 1
+
+                assumptions = fresh.assumption_log or []
+                while last_assumption_idx < len(assumptions):
+                    payload = dict(assumptions[last_assumption_idx])
+                    payload.setdefault('analysis_id', fresh.id)
+                    payload.setdefault('version', fresh.version)
+                    yield f'event: assumptions\ndata: {json.dumps(payload, default=str)}\n\n'
+                    last_assumption_idx += 1
 
                 log_text = fresh.intermediate_log or ''
                 if len(log_text) > last_log_len:
@@ -204,7 +229,12 @@ async def stream_analysis_events(
 
                 status_value = fresh.status.value if hasattr(fresh.status, 'value') else str(fresh.status)
                 if fresh.status in (AnalysisStatus.COMPLETED, AnalysisStatus.FAILED, AnalysisStatus.CANCELLED):
-                    done_payload = {'analysis_id': fresh.id, 'status': status_value, 'version': fresh.version}
+                    done_payload = {
+                        'analysis_id': fresh.id,
+                        'status': status_value,
+                        'version': fresh.version,
+                        'progress_pct': 100.0,
+                    }
                     yield f'event: done\ndata: {json.dumps(done_payload)}\n\n'
                     break
 
@@ -218,6 +248,13 @@ async def stream_analysis_events(
                     chunk = log_text[last_log_len:]
                     log_payload = {'analysis_id': fresh.id, 'chunk': chunk}
                     yield f'event: log\ndata: {json.dumps(log_payload)}\n\n'
+                assumptions = fresh.assumption_log or []
+                while last_assumption_idx < len(assumptions):
+                    payload = dict(assumptions[last_assumption_idx])
+                    payload.setdefault('analysis_id', fresh.id)
+                    payload.setdefault('version', fresh.version)
+                    yield f'event: assumptions\ndata: {json.dumps(payload, default=str)}\n\n'
+                    last_assumption_idx += 1
         finally:
             session.close()
 
@@ -302,6 +339,14 @@ async def export_analysis_report(
     if not results:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Analysis not found or incomplete')
 
+    dataset_df = None
+    try:
+        dataset = DatasetService.get_dataset(db, results['dataset_id'], user_id=current_user.id if current_user else None)
+        if dataset:
+            dataset_df = StorageService.read_dataset(settings.get_upload_path(dataset.filename))
+    except Exception:
+        dataset_df = None
+
     try:
         html = ExportService.render_html_report(results)
         filename = f'analysis-{analysis_id}.{export_format}'
@@ -315,6 +360,15 @@ async def export_analysis_report(
         elif export_format == 'csv':
             payload = ExportService.render_csv(results)
             media_type = 'text/csv'
+        elif export_format in ('latex', 'tex'):
+            payload = ExportService.render_latex_report(results)
+            media_type = 'application/x-tex'
+            filename = f'analysis-{analysis_id}.tex'
+        elif export_format in ('bundle', 'zip'):
+            log_content = AnalysisService.get_analysis_log(db, analysis_id, user_id=current_user.id if current_user else None)
+            payload = ExportService.build_repro_bundle(results, dataset_df, log_content)
+            media_type = 'application/zip'
+            filename = f'analysis-{analysis_id}-bundle.zip'
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported export format')
     except RuntimeError as exc:

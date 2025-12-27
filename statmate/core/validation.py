@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from statmate.core.config import default_config
 from statmate.core.exceptions import (
     DataValidationError,
     InsufficientDataError,
@@ -264,3 +265,87 @@ def validate_test_parameters(**params: Any) -> None:
         valid_alternatives = ['two-sided', 'less', 'greater']
         if params['alternative'] not in valid_alternatives:
             raise DataValidationError(f'alternative must be one of {valid_alternatives}, got {params["alternative"]}')
+
+
+def _flatten_numeric_array(data: np.ndarray | pd.Series | pd.DataFrame) -> np.ndarray:
+    """Convert input data to a 1D numeric numpy array."""
+    if isinstance(data, pd.DataFrame):
+        numeric = data.select_dtypes(include=[np.number])
+        arr = numeric.to_numpy().ravel()
+    elif isinstance(data, pd.Series):
+        arr = data.to_numpy().ravel()
+    else:
+        arr = np.asarray(data).ravel()
+    try:
+        return arr.astype(float, copy=False)
+    except (TypeError, ValueError):
+        coerced = pd.to_numeric(arr, errors='coerce')
+        return np.asarray(coerced, dtype=float)
+
+
+def validate_assumptions(
+    data: np.ndarray | pd.Series | pd.DataFrame,
+    test_type: str,
+    secondary_data: np.ndarray | pd.Series | pd.DataFrame | None = None,
+) -> dict[str, Any]:
+    """Compute standardized diagnostics for key statistical assumptions.
+
+    The helper returns a structured payload instead of raising; callers can
+    log and stream the failures for transparency.
+
+    Args:
+        data: Primary sample data.
+        test_type: Identifier for the test being evaluated.
+        secondary_data: Optional comparison sample (used for variance ratios).
+
+    Returns:
+        Dictionary containing diagnostics and any detected failures.
+    """
+    thresholds = {
+        'skewness': default_config.statistical.skewness_threshold,
+        'kurtosis': default_config.statistical.kurtosis_threshold,
+        'variance_ratio': default_config.statistical.variance_ratio_threshold,
+        'sparsity': default_config.statistical.sparsity_threshold,
+    }
+
+    primary_arr = _flatten_numeric_array(data)
+    failures: list[str] = []
+
+    skewness = float(pd.Series(primary_arr).skew()) if primary_arr.size else None
+    if skewness is not None and abs(skewness) > thresholds['skewness']:
+        failures.append(f'High skewness ({skewness:.2f}) exceeds |{thresholds["skewness"]}| threshold.')
+
+    kurt = float(pd.Series(primary_arr).kurtosis()) if primary_arr.size else None
+    if kurt is not None and kurt > thresholds['kurtosis']:
+        failures.append(f'Heavy tails (kurtosis {kurt:.2f}) above {thresholds["kurtosis"]}.')
+
+    variance_ratio = None
+    if secondary_data is not None:
+        secondary_arr = _flatten_numeric_array(secondary_data)
+        var_a = float(np.nanvar(primary_arr, ddof=1)) if primary_arr.size > 1 else 0.0
+        var_b = float(np.nanvar(secondary_arr, ddof=1)) if secondary_arr.size > 1 else 0.0
+        if var_a > 0 and var_b > 0:
+            high = max(var_a, var_b)
+            low = min(var_a, var_b)
+            variance_ratio = high / low if low > 0 else None
+            if variance_ratio and variance_ratio > thresholds['variance_ratio']:
+                failures.append(
+                    f'Variance ratio {variance_ratio:.2f} exceeds threshold {thresholds["variance_ratio"]}; variances differ.'
+                )
+
+    zero_like = np.isnan(primary_arr) | (primary_arr == 0)
+    sparsity = float(np.mean(zero_like)) if primary_arr.size else None
+    if sparsity is not None and sparsity > thresholds['sparsity']:
+        failures.append(
+            f'Sparsity {sparsity:.2%} above threshold {thresholds["sparsity"]:.0%}; many zero/empty values.'
+        )
+
+    return {
+        'test_type': test_type,
+        'skewness': skewness,
+        'kurtosis': kurt,
+        'variance_ratio': variance_ratio,
+        'sparsity': sparsity,
+        'thresholds': thresholds,
+        'failures': failures,
+    }

@@ -12,15 +12,17 @@ from sqlalchemy.orm import Session
 
 from config.settings import settings
 from database.models import Analysis, AnalysisStatus
-from statmate.api.services.credential_service import CredentialService
+from statmate.api.services.credential_service import CredentialService, QuotaExceededError
 from statmate.api.services.dataset_service import DatasetService
 from statmate.api.services.storage_service import StorageService
 from statmate.api.services.visualization_service import VisualizationService
 from statmate.core.config import Config
 from statmate.core.model_config import ModelProvider, ModelProviderConfig
+from statmate.workflow.graph_builder import create_default_checkpointer
 from statmate.workflow.statmate_flow_refactored import StatMateWorkflow
 
 logger = logging.getLogger(__name__)
+WORKFLOW_STEP_TARGET = 10
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
@@ -36,8 +38,57 @@ def _state_value(state: Any, key: str, default: Any) -> Any:
     return getattr(state, key, default)
 
 
+def _build_test_hierarchy(
+    decision_steps: list[dict[str, Any]] | None,
+    assumption_log: list[dict[str, Any]] | None,
+    reviewer_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a lightweight hierarchy summarizing tests and assumption failures."""
+    attempted: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    assumption_by_test: dict[str, list[dict[str, Any]]] = {}
+
+    for entry in assumption_log or []:
+        test_key = str(entry.get('test_type') or entry.get('node') or 'unknown')
+        assumption_by_test.setdefault(test_key, []).append(entry)
+        for failure in entry.get('failures', []) or []:
+            failures.append({'test': test_key, 'message': failure, 'timestamp': entry.get('timestamp')})
+
+    chosen_test = None
+    for step in reversed(decision_steps or []):
+        step_name = step.get('step')
+        if step_name and step_name.lower() not in ('summary', 'reviewer'):
+            chosen_test = step_name
+            break
+
+    for step in decision_steps or []:
+        name = step.get('step') or 'Step'
+        attempted.append(
+            {
+                'name': name,
+                'detail': step.get('detail'),
+                'p_value': step.get('p_value'),
+                'assumptions': assumption_by_test.get(name, []),
+                'timestamp': step.get('timestamp'),
+                'step_index': step.get('step_index'),
+                'total_steps': step.get('total_steps'),
+                'node': step.get('node'),
+            }
+        )
+
+    return {
+        'attempted': attempted,
+        'failures': failures,
+        'assumptions': assumption_by_test,
+        'chosen_test': chosen_test,
+        'reviewer': reviewer_report,
+    }
+
+
 class AnalysisService:
     """Service for managing statistical analysis execution."""
+
+    WORKFLOW_STEP_TARGET = WORKFLOW_STEP_TARGET
 
     @staticmethod
     def create_analysis(
@@ -218,6 +269,7 @@ class AnalysisService:
         analysis.start_time = datetime.utcnow()
         analysis.decision_steps = []
         analysis.intermediate_log = ''
+        analysis.assumption_log = []
         db.commit()
         workflow_config = AnalysisService._build_model_config_for_analysis(db, analysis)
 
@@ -243,6 +295,7 @@ class AnalysisService:
         db.commit()
 
         seen_step_ids: set[str] = set()
+        seen_assumption_ids: set[str] = set()
 
         def _persist_decision_steps(new_steps: list[dict[str, Any]], *, node: str | None = None) -> None:
             """Append streamed decision steps and flush to the database."""
@@ -259,8 +312,27 @@ class AnalysisService:
                 if step_id in seen_step_ids:
                     continue
                 seen_step_ids.add(step_id)
+                entry.setdefault('step_index', len(stored) + 1)
+                entry.setdefault('total_steps', WORKFLOW_STEP_TARGET)
+                progress = min(1.0, entry['step_index'] / WORKFLOW_STEP_TARGET)
+                entry.setdefault('progress_pct', round(progress * 100, 2))
                 stored.append(entry)
             analysis.decision_steps = stored
+
+        def _persist_assumption_log(entries: list[dict[str, Any]]) -> None:
+            """Persist assumption diagnostics without duplicating entries."""
+            if not entries:
+                return
+            stored = analysis.assumption_log or []
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                entry_id = str(entry.get('timestamp') or entry.get('test_type') or len(stored))
+                if entry_id in seen_assumption_ids:
+                    continue
+                seen_assumption_ids.add(entry_id)
+                stored.append(entry)
+            analysis.assumption_log = stored
 
         def _persist_intermediate_log() -> None:
             """Write the rolling in-memory log to the analysis row."""
@@ -274,6 +346,9 @@ class AnalysisService:
             trace_entries = _state_value(state_val, 'execution_trace', []) or []
             if isinstance(trace_entries, list):
                 _persist_decision_steps(trace_entries, node=str(node))
+            assumption_entries = _state_value(state_val, 'assumption_log', []) or []
+            if isinstance(assumption_entries, list):
+                _persist_assumption_log(assumption_entries)
             _persist_intermediate_log()
             db.commit()
             try:
@@ -301,12 +376,25 @@ class AnalysisService:
             logger.info('   Rows: %d, Columns: %d', len(df), len(df.columns))
             logger.info('=' * 80)
 
+            provider_for_quota = analysis.provider or (
+                workflow_config.model.default_provider.value if getattr(workflow_config, 'model', None) else None
+            )
+            if analysis.user_id and provider_for_quota:
+                try:
+                    CredentialService.enforce_quota(db, analysis.user_id, str(provider_for_quota))
+                except QuotaExceededError as exc:
+                    _record_system_step('Quota exceeded', str(exc))
+                    raise
+
             fallback_attempted = False
 
             def _run_workflow(model_override: str | None = None) -> Any:
                 if model_override and workflow_config.model:
                     workflow_config.model.default_model_name = model_override
-                workflow = StatMateWorkflow(config=workflow_config)
+                workflow = StatMateWorkflow(
+                    config=workflow_config,
+                    checkpointer=create_default_checkpointer(),
+                )
                 return workflow.run(
                     data=df,
                     target_columns=analysis.selected_columns,
@@ -315,6 +403,7 @@ class AnalysisService:
                     model_name=model_override or analysis.model_name,
                     provider=analysis.provider,
                     on_update=_on_state_update,
+                    thread_id=analysis_id,
                 )
 
             try:
@@ -353,10 +442,21 @@ class AnalysisService:
             messages = _state_value(result_state, 'results', [])
             probabilities = _state_value(result_state, 'probabilities', {})
             execution_trace = _state_value(result_state, 'execution_trace', [])
+            reviewer_report = _state_value(result_state, 'reviewer_report', None)
             if not analysis.decision_steps and execution_trace:
                 analysis.decision_steps = execution_trace
+            assumption_log = _state_value(result_state, 'assumption_log', []) or analysis.assumption_log or []
+            analysis.assumption_log = assumption_log
+            test_hierarchy_state = _state_value(result_state, 'test_hierarchy', None)
+            test_hierarchy = test_hierarchy_state or _build_test_hierarchy(
+                analysis.decision_steps or execution_trace, assumption_log, reviewer_report
+            )
             _persist_intermediate_log()
-            summary = messages[-1].content if messages else 'Analysis completed without a summary.'
+            summary = None
+            if reviewer_report and isinstance(reviewer_report, dict):
+                summary = reviewer_report.get('adjusted_summary') or reviewer_report.get('summary')
+            if not summary:
+                summary = messages[-1].content if messages else 'Analysis completed without a summary.'
             full_output = '\n\n'.join(msg.content for msg in messages)
             viz_payload = VisualizationService.generate_visualizations(
                 df,
@@ -379,6 +479,9 @@ class AnalysisService:
                 'execution_trace': execution_trace,
                 'decision_steps': analysis.decision_steps,
                 'intermediate_log': analysis.intermediate_log,
+                'assumption_log': assumption_log,
+                'test_hierarchy': test_hierarchy,
+                'reviewer_report': reviewer_report,
                 'plots': plots,
                 'effect_sizes': effect_sizes,
                 'timestamp': datetime.utcnow().isoformat(),
@@ -397,6 +500,11 @@ class AnalysisService:
             logger.info('   Tests performed: %d', len(probabilities))
             logger.info('=' * 80)
 
+        except QuotaExceededError as e:
+            logger.error('Quota exceeded for analysis %s: %s', analysis_id, e)
+            AnalysisService._update_analysis_status(db, analysis, status=AnalysisStatus.FAILED, error_message=str(e))
+            log_stream.write(f'\n\nQuota exceeded: {e}')
+            raise
         except Exception as e:
             logger.error('Analysis failed: %s - %s', analysis_id, e, exc_info=True)
             AnalysisService._update_analysis_status(db, analysis, status=AnalysisStatus.FAILED, error_message=str(e))
@@ -457,6 +565,9 @@ class AnalysisService:
             'execution_trace': results_data.get('execution_trace'),
             'decision_steps': analysis.decision_steps or results_data.get('decision_steps'),
             'intermediate_log': analysis.intermediate_log,
+            'assumption_log': analysis.assumption_log or results_data.get('assumption_log'),
+            'test_hierarchy': results_data.get('test_hierarchy'),
+            'reviewer_report': results_data.get('reviewer_report'),
             'plots': results_data.get('plots'),
             'effect_sizes': results_data.get('effect_sizes'),
             'log_available': bool(analysis.log_path),

@@ -168,6 +168,7 @@ class Analysis(Base):
     probabilities = Column(JSON, nullable=True)  # {"test_name": p_value, ...}
     decision_steps = Column(JSON, nullable=True)  # [{step, detail, data, p_value, timestamp}]
     intermediate_log = Column(Text, nullable=True)  # Rolling log content while streaming
+    assumption_log = Column(JSON, nullable=True)  # Assumption diagnostics collected per test
 
     # Relationships
     dataset = relationship('Dataset', back_populates='analyses')
@@ -201,6 +202,7 @@ class Analysis(Base):
             'probabilities': self.probabilities,
             'decision_steps': self.decision_steps,
             'intermediate_log': self.intermediate_log,
+            'assumption_log': self.assumption_log,
             'scheduled_task_id': self.scheduled_task_id,
             'user_id': self.user_id,
         }
@@ -283,6 +285,9 @@ class ProviderCredential(Base):
     user_id = Column(String(36), ForeignKey('users.id'), nullable=False, index=True)
     provider = Column(String(50), nullable=False)
     encrypted_key = Column(Text, nullable=False)
+    quota_limit = Column(Integer, nullable=True)
+    quota_used = Column(Integer, default=0, nullable=False)
+    quota_reset_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

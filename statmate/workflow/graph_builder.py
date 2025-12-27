@@ -10,6 +10,7 @@ from statmate.agents import (
     chi2_agent,
     fisher_exact_agent,
     normality_of_difference_agent,
+    get_reviewer_agent,
     ttest_ind_agent,
     ttest_rel_agent,
     wilcoxon_agent,
@@ -28,6 +29,7 @@ from statmate.workflow.nodes import (
     call_initialization_agent,
     call_test_agent,
     nonparametric_node,
+    reviewer_node,
     summariser_node,
     two_independent_node,
 )
@@ -214,21 +216,27 @@ class WorkflowGraphBuilder:
         # Nonparametric node also goes to summary
         self.graph.add_edge(NodeName.NONPARAMETRIC, NodeName.SUMMARY)
 
-        # Summary goes to END
-        self.graph.add_edge(NodeName.SUMMARY, END)
-
         return self
 
-    def build(self):
+    def add_reviewer_node(self) -> 'WorkflowGraphBuilder':
+        """Add the reviewer/consensus node after summary."""
+        self.graph.add_node(NodeName.REVIEWER, reviewer_node)
+        self.graph.add_edge(NodeName.SUMMARY, NodeName.REVIEWER)
+        self.graph.add_edge(NodeName.REVIEWER, END)
+        return self
+
+    def build(self, checkpointer=None):
         """Build and compile the graph.
 
         Returns:
             Compiled graph ready for execution.
         """
+        if checkpointer:
+            return self.graph.compile(checkpointer=checkpointer)
         return self.graph.compile()
 
 
-def build_workflow_graph():
+def build_workflow_graph(checkpointer=None):
     """Build the complete statistical test workflow graph.
 
     Returns:
@@ -245,7 +253,8 @@ def build_workflow_graph():
         .add_independent_test_path()
         .add_categorical_tests()
         .add_summary_node()
-        .build()
+        .add_reviewer_node()
+        .build(checkpointer=checkpointer)
     )
 
     logger.info('Workflow graph built successfully')
@@ -253,4 +262,25 @@ def build_workflow_graph():
 
 
 # Create default graph instance
-default_graph = build_workflow_graph()
+try:
+    from config.settings import settings
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from pathlib import Path
+
+    def create_default_checkpointer():
+        """Create a persistent checkpointer backed by SQLite."""
+        checkpoint_dir = settings.DATA_DIR / 'checkpoints'
+        Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+        return SqliteSaver(str(checkpoint_dir / 'workflow.sqlite'))
+
+except Exception:  # pragma: no cover - langgraph optional fallback
+    def create_default_checkpointer():
+        try:
+            from langgraph.checkpoint.memory import MemorySaver
+
+            return MemorySaver()
+        except Exception:
+            return None
+
+
+default_graph = build_workflow_graph(checkpointer=create_default_checkpointer())

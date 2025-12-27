@@ -25,6 +25,7 @@ import {
   Dataset,
   DatasetPreview,
   TraceStep,
+  TestHierarchy,
   User as UserType,
 } from './api/client';
 import { useTheme } from './hooks/useTheme';
@@ -109,7 +110,7 @@ function App() {
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [modelName, setModelName] = useState('gpt-4o');
   const [provider, setProvider] = useState('openai');
-  const [exporting, setExporting] = useState<'pdf' | 'docx' | 'csv' | null>(null);
+  const [exporting, setExporting] = useState<'pdf' | 'docx' | 'csv' | 'latex' | 'bundle' | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const [renameDrafts, setRenameDrafts] = useState<Record<string, string>>({});
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
@@ -122,6 +123,11 @@ function App() {
     google: '',
     ollama_base_url: '',
     ollama_default_model: '',
+    openai_quota: '',
+    anthropic_quota: '',
+    google_quota: '',
+    gemini_quota: '',
+    groq_quota: '',
   });
   const [showKeys, setShowKeys] = useState(false);
   const [overwriteLatest, setOverwriteLatest] = useState(false);
@@ -200,6 +206,16 @@ function App() {
           groq: res.stored_credentials.groq || prev.groq,
           google: res.stored_credentials.google || res.stored_credentials.gemini || prev.google,
           gemini: res.stored_credentials.gemini || res.stored_credentials.google || prev.gemini,
+        }));
+      }
+      if (res.provider_quotas) {
+        setCredentialInputs((prev) => ({
+          ...prev,
+          openai_quota: res.provider_quotas.openai?.toString() || prev.openai_quota,
+          anthropic_quota: res.provider_quotas.anthropic?.toString() || prev.anthropic_quota,
+          google_quota: res.provider_quotas.google?.toString() || prev.google_quota,
+          gemini_quota: res.provider_quotas.google?.toString() || prev.gemini_quota,
+          groq_quota: res.provider_quotas.groq?.toString() || prev.groq_quota,
         }));
       }
     } catch (e) {
@@ -337,7 +353,7 @@ function App() {
     }
   };
 
-  const handleExport = async (format: 'pdf' | 'docx' | 'csv') => {
+  const handleExport = async (format: 'pdf' | 'docx' | 'csv' | 'latex' | 'bundle') => {
     const id = analysisId || analysisResults?.id;
     if (!id) return;
     try {
@@ -399,6 +415,11 @@ function App() {
         ollama_enabled: credentialInputs.ollama_base_url ? 'true' : undefined,
         ollama_base_url: credentialInputs.ollama_base_url || undefined,
         ollama_default_model: credentialInputs.ollama_default_model || undefined,
+        openai_quota: credentialInputs.openai_quota ? Number(credentialInputs.openai_quota) : undefined,
+        anthropic_quota: credentialInputs.anthropic_quota ? Number(credentialInputs.anthropic_quota) : undefined,
+        google_quota: credentialInputs.google_quota ? Number(credentialInputs.google_quota) : undefined,
+        gemini_quota: credentialInputs.google_quota ? Number(credentialInputs.google_quota) : undefined,
+        groq_quota: credentialInputs.groq_quota ? Number(credentialInputs.groq_quota) : undefined,
       });
       setConfiguredProviders(res.configured_providers || []);
     } catch (e) {
@@ -477,9 +498,20 @@ function App() {
 
             if (event === 'step') {
               setStreamSteps((prev) => mergeUniqueSteps(prev, [data as TraceStep]));
+              setAnalysisStatus((prev) => ({
+                ...(prev || { id: analysisId, status: 'running' as AnalysisStatus['status'] }),
+                progress: data.progress_pct ?? prev?.progress,
+                decision_steps: mergeUniqueSteps(prev?.decision_steps || [], [data as TraceStep]),
+              }));
             }
             if (event === 'log') {
               setLogContent((prev) => `${prev}${data.chunk || ''}`);
+            }
+            if (event === 'assumptions') {
+              setAnalysisStatus((prev) => ({
+                ...(prev || { id: analysisId, status: 'running' as AnalysisStatus['status'] }),
+                assumption_log: [...(prev?.assumption_log || []), data],
+              }));
             }
             if (event === 'done') {
               setStreaming(false);
@@ -565,8 +597,27 @@ function App() {
     return Array.from(keys).map((key) => ({ name: key, pValue: probabilities[key], effectSize: effectSizes[key] }));
   }, [analysisResults, effectSizes]);
 
+  const reviewerReport = analysisResults?.reviewer_report || analysisResults?.results_detail?.reviewer_report;
+  const reviewerSummary =
+    (reviewerReport?.adjusted_summary as string | undefined) || (reviewerReport?.summary as string | undefined);
   const summaryText =
-    analysisResults?.summary || analysisResults?.results_detail?.summary || (streaming ? 'Generating summary…' : 'Waiting for results');
+    reviewerSummary ||
+    analysisResults?.summary ||
+    analysisResults?.results_detail?.summary ||
+    (streaming ? 'Generating summary…' : 'Waiting for results');
+  const testHierarchy: TestHierarchy | undefined = useMemo(
+    () => analysisResults?.test_hierarchy || analysisResults?.results_detail?.test_hierarchy,
+    [analysisResults]
+  );
+  const assumptionLog = useMemo(
+    () => analysisResults?.assumption_log || analysisResults?.results_detail?.assumption_log || analysisStatus?.assumption_log || [],
+    [analysisResults, analysisStatus]
+  );
+  const progressPct = useMemo(() => {
+    const lastStep = trace.length ? trace[trace.length - 1] : undefined;
+    if (typeof analysisStatus?.progress === 'number') return analysisStatus.progress;
+    return lastStep?.progress_pct;
+  }, [analysisStatus?.progress, trace]);
 
   const providerOptions = useMemo(() => {
     if (availableModels.length) {
@@ -1200,6 +1251,48 @@ function App() {
                       />
                     </label>
                   </div>
+                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+                    <label className="text-sm text-slate-300">
+                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">OpenAI quota (runs)</span>
+                      <input
+                        type="number"
+                        value={credentialInputs.openai_quota}
+                        onChange={(e) => setCredentialInputs((prev) => ({ ...prev, openai_quota: e.target.value }))}
+                        className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm outline-none"
+                        placeholder="Optional limit"
+                      />
+                    </label>
+                    <label className="text-sm text-slate-300">
+                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Anthropic quota</span>
+                      <input
+                        type="number"
+                        value={credentialInputs.anthropic_quota}
+                        onChange={(e) => setCredentialInputs((prev) => ({ ...prev, anthropic_quota: e.target.value }))}
+                        className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm outline-none"
+                        placeholder="Optional limit"
+                      />
+                    </label>
+                    <label className="text-sm text-slate-300">
+                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Google/Gemini quota</span>
+                      <input
+                        type="number"
+                        value={credentialInputs.google_quota}
+                        onChange={(e) => setCredentialInputs((prev) => ({ ...prev, google_quota: e.target.value, gemini_quota: e.target.value }))}
+                        className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm outline-none"
+                        placeholder="Optional limit"
+                      />
+                    </label>
+                    <label className="text-sm text-slate-300">
+                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Groq quota</span>
+                      <input
+                        type="number"
+                        value={credentialInputs.groq_quota}
+                        onChange={(e) => setCredentialInputs((prev) => ({ ...prev, groq_quota: e.target.value }))}
+                        className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm outline-none"
+                        placeholder="Optional limit"
+                      />
+                    </label>
+                  </div>
                   <div className="mt-3 flex items-center justify-between">
                     <div className="text-xs text-slate-400">
                       Configured: {configuredProviders.length ? configuredProviders.join(', ') : 'None'}
@@ -1244,6 +1337,20 @@ function App() {
                         >
                           <Download size={14} /> CSV
                         </button>
+                        <button
+                          onClick={() => handleExport('latex')}
+                          disabled={exporting !== null}
+                          className="flex items-center gap-2 rounded-full border border-slate-700/80 px-4 py-2 text-xs font-semibold text-slate-100 hover:border-cyan-500"
+                        >
+                          <Download size={14} /> LaTeX
+                        </button>
+                        <button
+                          onClick={() => handleExport('bundle')}
+                          disabled={exporting !== null}
+                          className="flex items-center gap-2 rounded-full border border-slate-700/80 px-4 py-2 text-xs font-semibold text-slate-100 hover:border-cyan-500"
+                        >
+                          <Download size={14} /> Bundle
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1275,9 +1382,45 @@ function App() {
                           {streaming ? 'Running' : analysisStatus?.status || analysisResults?.status || 'Ready'}
                         </span>
                       </div>
+                      {typeof progressPct === 'number' && (
+                        <div className="mb-3">
+                          <div className="flex items-center justify-between text-[11px] text-slate-400">
+                            <span>Progress</span>
+                            <span>{progressPct.toFixed(1)}%</span>
+                          </div>
+                          <div className="mt-1 h-2 rounded-full bg-slate-800">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500"
+                              style={{ width: `${Math.min(100, Math.max(0, progressPct))}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
                       <div className={`prose max-w-none text-base leading-relaxed ${theme === 'dark' ? 'prose-invert text-slate-200' : 'text-slate-800'}`}>
                         {summaryText}
                       </div>
+                      {reviewerReport && (
+                        <div className="mt-4 rounded-xl border border-cyan-500/40 bg-cyan-500/10 p-4">
+                          <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-slate-300">
+                            <span>Reviewer Agent</span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] ${
+                                reviewerReport.approved ? 'bg-emerald-500/20 text-emerald-200' : 'bg-amber-500/20 text-amber-200'
+                              }`}
+                            >
+                              {reviewerReport.approved ? 'Approved' : 'Adjusted'}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm text-slate-100">
+                            {(reviewerReport.adjusted_summary as string) || summaryText}
+                          </p>
+                          {Array.isArray(reviewerReport.hallucination_flags) && reviewerReport.hallucination_flags.length > 0 && (
+                            <p className="mt-2 text-xs text-amber-200">
+                              Flags: {(reviewerReport.hallucination_flags as string[]).join('; ')}
+                            </p>
+                          )}
+                        </div>
+                      )}
                       <div className="mt-4">
                         <div className="mb-1 flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-500">
                           <span>Comment</span>
@@ -1353,6 +1496,54 @@ function App() {
                         <div className="mt-3 text-[11px] text-slate-500">
                           Use <span className="font-semibold text-cyan-300">Run analysis</span> to start a new version, or enable overwrite to supersede the latest run.
                         </div>
+                      </div>
+
+                      <div className={`rounded-2xl border p-4 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Test hierarchy</p>
+                          {testHierarchy?.chosen_test && (
+                            <span className="text-[11px] text-emerald-300">Chosen: {testHierarchy.chosen_test}</span>
+                          )}
+                        </div>
+                        <div className="mt-3 space-y-2 max-h-64 overflow-y-auto pr-1">
+                          {testHierarchy?.attempted?.length ? (
+                            testHierarchy.attempted.map((node, idx) => (
+                              <div
+                                key={`${node.name}-${idx}`}
+                                className={`rounded-xl border p-3 ${
+                                  theme === 'dark' ? 'border-slate-800 bg-slate-950/60' : 'border-slate-200 bg-slate-50'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between text-sm font-semibold text-slate-100">
+                                  <span>{node.name}</span>
+                                  {typeof node.p_value === 'number' && (
+                                    <span className="text-xs text-slate-400">p={node.p_value.toFixed(3)}</span>
+                                  )}
+                                </div>
+                                {node.detail && <p className="mt-1 text-xs text-slate-400">{node.detail}</p>}
+                                {Array.isArray(node.assumptions) && node.assumptions.length > 0 && (
+                                  <p className="mt-1 text-[11px] text-amber-300">
+                                    Assumption flags:{' '}
+                                    {((node.assumptions[0]?.failures as string[] | undefined) || []).join('; ') ||
+                                      node.assumptions.length}
+                                  </p>
+                                )}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-slate-800/70 bg-slate-900/60 p-3 text-xs text-slate-400">
+                              Waiting for hierarchy…
+                            </div>
+                          )}
+                        </div>
+                        {Array.isArray(testHierarchy?.failures) && testHierarchy?.failures?.length ? (
+                          <div className="mt-2 text-[11px] text-amber-300">
+                            {testHierarchy.failures.length} assumption issue(s) detected.
+                          </div>
+                        ) : null}
+                        {assumptionLog.length > 0 && (
+                          <div className="mt-1 text-[11px] text-slate-400">Assumptions logged: {assumptionLog.length}</div>
+                        )}
                       </div>
 
                       {analysisId && (

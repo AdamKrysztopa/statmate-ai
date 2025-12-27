@@ -42,6 +42,16 @@ class WorkflowState(BaseModel):
     # Results fields
     results: list[AIMessage] = Field(default_factory=list, description='List of test results as AIMessages')
     probabilities: dict[str, float] = Field(default_factory=dict, description='P-values from executed tests')
+    assumption_log: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description='Diagnostics and failures collected during assumption checks',
+    )
+    reviewer_report: dict[str, Any] | None = Field(
+        default=None, description='Reviewer agent findings and adjusted summary'
+    )
+    test_hierarchy: dict[str, Any] | None = Field(
+        default=None, description='Structured tree of attempted tests and outcomes'
+    )
 
     # Model configuration
     model_name: str | None = Field(default=None, description='AI model to use for analysis')
@@ -100,6 +110,10 @@ class WorkflowState(BaseModel):
         self.execution_trace.append(entry)
         logger.info('Trace step: %s | %s', step, (detail or '').strip() or 'No detail')
 
+    def add_assumption_entry(self, entry: dict[str, Any]) -> None:
+        """Append a structured assumption diagnostic entry."""
+        self.assumption_log.append(entry)
+
 
 def create_initial_state(
     df: pd.DataFrame | pd.Series,
@@ -132,6 +146,9 @@ def create_initial_state(
         number_of_samples=0,
         results=[],
         probabilities={},
+        assumption_log=[],
+        reviewer_report=None,
+        test_hierarchy=None,
         model_name=model_name,
         provider=provider,
         execution_trace=[],

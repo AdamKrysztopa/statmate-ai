@@ -4,6 +4,8 @@ This module contains all the node functions for the statistical test workflow,
 extracted from the monolithic statmate_flow.py for better organization.
 """
 
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 from langchain_core.messages import AIMessage
@@ -22,9 +24,12 @@ from statmate.agents.initial_insights_agent import (
     format_data_by_recommendation,
     validate_tool_args,
 )
+from statmate.agents.reviewer_agent import ReviewerDeps, get_reviewer_agent
 from statmate.agents.summarizer_agent import SummariserDeps, get_summariser_agent
 from statmate.core import NodeExecutionError, get_logger
 from statmate.core.config import default_config
+from statmate.core.model_provider import execute_with_backoff
+from statmate.core.validation import validate_assumptions
 from statmate.workflow.model_factory import create_model, create_model_settings
 from statmate.workflow.state import WorkflowState
 
@@ -43,6 +48,9 @@ def call_test_agent(
     state: WorkflowState,
     alpha: float | None = None,
     probability_key: str | None = None,
+    assumption_test_type: str | None = None,
+    assumption_secondary: pd.Series | pd.DataFrame | np.ndarray | None = None,
+    assess_assumptions: bool = True,
 ) -> WorkflowState:
     """Call a statistical agent and append its result.
 
@@ -51,6 +59,9 @@ def call_test_agent(
         state: Current workflow state.
         alpha: Significance level. If None, uses default from config.
         probability_key: Explicit key under which to store the p-value.
+        assumption_test_type: Override for labeling assumption diagnostics.
+        assumption_secondary: Explicit secondary data for assumption checks.
+        assess_assumptions: When False, skip assumption diagnostics.
 
     Returns:
         Updated workflow state.
@@ -67,7 +78,26 @@ def call_test_agent(
             data_secondary=state.secondary_df,
             test_params={'alpha': alpha},
         )
-        result = run_sync_agent(test_agent, user_prompt='', deps=deps)
+
+        assumption_entry: dict[str, object] | None = None
+        if assess_assumptions:
+            secondary = assumption_secondary if assumption_secondary is not None else state.secondary_df
+            diag = validate_assumptions(
+                state.df,
+                test_type=assumption_test_type or getattr(test_agent, '_statmate_test_name', test_agent.name),
+                secondary_data=secondary,
+            )
+            assumption_entry = {**diag, 'node': test_agent.name, 'timestamp': datetime.utcnow().isoformat()}
+            state.add_assumption_entry(assumption_entry)
+
+        result = execute_with_backoff(
+            lambda: run_sync_agent(test_agent, user_prompt='', deps=deps),
+            on_retry=lambda attempt, delay, exc: state.add_step(
+                step='Rate limit backoff',
+                detail=f'Retrying {test_agent.name} in {delay:.1f}s (attempt {attempt})',
+                data={'error': str(exc)},
+            ),
+        )
 
         # Always compute the underlying statistical test to guarantee tool execution,
         # even if the LLM skipped the run_test tool.
@@ -112,7 +142,10 @@ def call_test_agent(
                 else stats_value,
                 'null_hypothesis': result.statistical_test_result.null_hypothesis,
                 'alternative': result.statistical_test_result.alternative,
+                'effect_size_type': result.statistical_test_result.effect_size_type,
+                'confidence_interval': result.statistical_test_result.confidence_interval,
                 'comments': result.comments,
+                'assumptions': assumption_entry,
             },
             p_value=p_float,
         )
@@ -145,12 +178,19 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
             model_settings=settings,
         )
 
-        results = agent.run_sync(
-            user_prompt='Analyze the data and suggest the appropriate test.',
-            deps=InitialInsightsAgentDeps(
-                user_input='Perform a statistical test.',
-                input_data=state.df,
-                columns_decision=None,
+        results = execute_with_backoff(
+            lambda: agent.run_sync(
+                user_prompt='Analyze the data and suggest the appropriate test.',
+                deps=InitialInsightsAgentDeps(
+                    user_input='Perform a statistical test.',
+                    input_data=state.df,
+                    columns_decision=None,
+                ),
+            ),
+            on_retry=lambda attempt, delay, exc: state.add_step(
+                step='Rate limit backoff',
+                detail=f'Retrying initialization in {delay:.1f}s (attempt {attempt})',
+                data={'error': str(exc)},
             ),
         )
 
@@ -220,7 +260,14 @@ def assess_study_design_node(state: WorkflowState) -> WorkflowState:
         logger.info('assess_study_design_node\nmodel is fed with those data:')
         logger.info(state.results)
 
-        res = agent.run_sync(deps=AssessDesignDeps(msg=state.results))
+        res = execute_with_backoff(
+            lambda: agent.run_sync(deps=AssessDesignDeps(msg=state.results)),
+            on_retry=lambda attempt, delay, exc: state.add_step(
+                step='Rate limit backoff',
+                detail=f'Retrying study design check in {delay:.1f}s (attempt {attempt})',
+                data={'error': str(exc)},
+            ),
+        )
         state.paired = res.data.paired
 
         msg = '~~~Paired comparison~~~' if res.data.paired else '~~~Two independent groups~~~'
@@ -364,7 +411,14 @@ def summariser_node(state: WorkflowState) -> WorkflowState:
         )
 
         agent = get_summariser_agent(model, settings)
-        res = agent.run_sync(deps=deps)
+        res = execute_with_backoff(
+            lambda: agent.run_sync(deps=deps),
+            on_retry=lambda attempt, delay, exc: state.add_step(
+                step='Rate limit backoff',
+                detail=f'Retrying summary in {delay:.1f}s (attempt {attempt})',
+                data={'error': str(exc)},
+            ),
+        )
 
         state.add_result(AIMessage(content=str(res.data)))
         logger.info(f'Summariser output: {res.data}')
@@ -378,3 +432,49 @@ def summariser_node(state: WorkflowState) -> WorkflowState:
     except Exception as e:
         logger.error(f'Error in summariser_node: {e}')
         raise NodeExecutionError(node_name='summariser_node', original_error=e) from e
+
+
+def reviewer_node(state: WorkflowState) -> WorkflowState:
+    """Review the generated summary against raw outputs to catch hallucinations."""
+    try:
+        model = create_model(model_name=state.model_name, provider=state.provider)
+        settings = create_model_settings(model_name=state.model_name)
+
+        summary_text = ''
+        if state.results:
+            summary_text = str(state.results[-1].content)
+
+        agent = get_reviewer_agent(model, settings)
+        deps = ReviewerDeps(summary=summary_text, results=state.results, probabilities=state.probabilities)
+        res = execute_with_backoff(
+            lambda: agent.run_sync(deps=deps),
+            on_retry=lambda attempt, delay, exc: state.add_step(
+                step='Rate limit backoff',
+                detail=f'Retrying reviewer in {delay:.1f}s (attempt {attempt})',
+                data={'error': str(exc)},
+            ),
+        )
+
+        state.reviewer_report = res.data.model_dump()
+        adjusted_summary = res.data.adjusted_summary or summary_text
+
+        # Track reviewer decision for downstream clients
+        state.add_result(AIMessage(content=str(res.data)))
+        state.add_step(
+            step='Reviewer',
+            detail='Approved summary' if res.data.approved else 'Adjusted summary to match evidence',
+            data={
+                'approved': res.data.approved,
+                'risk_score': res.data.risk_score,
+                'flags': res.data.hallucination_flags,
+                'adjusted_summary': adjusted_summary,
+            },
+        )
+
+        # Preserve vetted summary for API consumers
+        state.test_hierarchy = state.test_hierarchy or {}
+        state.test_hierarchy['reviewer'] = state.reviewer_report
+        return state
+    except Exception as e:
+        logger.error(f'Error in reviewer_node: {e}')
+        raise NodeExecutionError(node_name='reviewer_node', original_error=e) from e

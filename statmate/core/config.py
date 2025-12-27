@@ -26,6 +26,18 @@ class StatisticalTestConfig:
     variance_threshold: float = 0.05
     """P-value threshold for variance equality tests."""
 
+    skewness_threshold: float = 2.0
+    """Absolute skewness above this value is flagged for assumption diagnostics."""
+
+    kurtosis_threshold: float = 7.0
+    """Kurtosis above this value (excess) is flagged as heavy-tailed."""
+
+    variance_ratio_threshold: float = 4.0
+    """Ratio of max/min variance above this value indicates heteroscedasticity."""
+
+    sparsity_threshold: float = 0.2
+    """Fraction of zero/empty values above this value is considered sparse."""
+
     categorical_sample_size_threshold: int = 10
     """Minimum sample size for Chi-square test (vs Fisher's exact)."""
 
@@ -121,6 +133,7 @@ class NodeName:
     FISHER = 'Fisher exact test'
     NORMALITY_OF_DIFFERENCE = 'Parametric assumptions hold?'
     ANOVA_RM = 'ANOVA repeated measures'
+    REVIEWER = 'Reviewer Agent'
 
 
 class DataType:
