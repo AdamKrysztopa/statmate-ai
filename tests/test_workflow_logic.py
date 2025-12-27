@@ -1,11 +1,14 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from statmate.agents.agent_builder import AgentResult
 from statmate.core.config import NodeName
+from statmate.core.exceptions import NodeExecutionError
+from statmate.core.validation import StatisticalDesign
 from statmate.statistical_core.base import StatTestResult
 from statmate.workflow.edges import decide_two_independent, parametric_assumptions
-from statmate.workflow.nodes import call_test_agent
+from statmate.workflow.nodes import call_test_agent, design_verification_node
 from statmate.workflow.state import create_initial_state
 
 
@@ -68,3 +71,18 @@ def test_parametric_assumptions_for_paired_branch():
 
     state.probabilities['normality_of_difference'] = 0.01
     assert parametric_assumptions(state, alpha=0.05) == NodeName.WILCOXON
+
+
+def test_design_verification_blocks_mismatch():
+    state = create_initial_state(df=pd.DataFrame({'a': [1, 2]}))
+    state.statistical_design = StatisticalDesign(
+        design_type='paired',
+        is_paired=True,
+        grouping_variable='group',
+        subject_id_column='subject_id',
+        rationale='overlap detected',
+    )
+    state.agent_design_hypothesis = 'independent'
+
+    with pytest.raises(NodeExecutionError):
+        design_verification_node(state)

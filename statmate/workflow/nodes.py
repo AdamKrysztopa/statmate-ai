@@ -4,6 +4,8 @@ This module contains all the node functions for the statistical test workflow,
 extracted from the monolithic statmate_flow.py for better organization.
 """
 
+import inspect
+import json
 from datetime import datetime
 
 import numpy as np
@@ -29,7 +31,7 @@ from statmate.agents.summarizer_agent import SummariserDeps, get_summariser_agen
 from statmate.core import NodeExecutionError, get_logger
 from statmate.core.config import default_config
 from statmate.core.model_provider import execute_with_backoff
-from statmate.core.validation import validate_assumptions
+from statmate.core.validation import infer_statistical_design, validate_assumptions
 from statmate.workflow.model_factory import create_model, create_model_settings
 from statmate.workflow.state import WorkflowState
 
@@ -73,10 +75,17 @@ def call_test_agent(
         alpha = default_config.statistical.default_alpha
 
     try:
+        fallback_func = getattr(test_agent, '_statmate_test_function', None)
+        test_params: dict[str, Any] = {'alpha': alpha}
+        if state.statistical_design and callable(fallback_func):
+            func_sig = inspect.signature(fallback_func)
+            if 'design_type' in func_sig.parameters:
+                test_params['design_type'] = state.statistical_design.design_type
+
         deps = StatTestDeps(
             data=state.df,
             data_secondary=state.secondary_df,
-            test_params={'alpha': alpha},
+            test_params=test_params,
         )
 
         assumption_entry: dict[str, object] | None = None
@@ -101,7 +110,6 @@ def call_test_agent(
 
         # Always compute the underlying statistical test to guarantee tool execution,
         # even if the LLM skipped the run_test tool.
-        fallback_func = getattr(test_agent, '_statmate_test_function', None)
         if callable(fallback_func):
             if isinstance(deps.data, pd.Series):
                 primary = deps.data.to_numpy()
@@ -113,10 +121,11 @@ def call_test_agent(
             else:
                 secondary = deps.data_secondary
 
+            computed_params = deps.test_params or {}
             computed = (
-                fallback_func(primary, secondary, **(deps.test_params or {}))
+                fallback_func(primary, secondary, **computed_params)
                 if secondary is not None
-                else fallback_func(primary, **(deps.test_params or {}))
+                else fallback_func(primary, **computed_params)
             )
             result.statistical_test_result = computed
 
@@ -169,6 +178,20 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         NodeExecutionError: If the initialization fails.
     """
     try:
+        # Deterministic structural validation before any LLM reasoning
+        design, structural_summary = infer_statistical_design(state.df)
+        state.statistical_design = design
+        state.paired = design.is_paired
+        state.comparison_matrix = design.comparison_matrix
+        state.add_step(
+            step='Structural Validation',
+            detail=design.rationale or 'Structural design check completed.',
+            data={
+                'statistical_design': design.as_dict(),
+                'structural_summary': structural_summary,
+            },
+        )
+
         # Use model from state if specified
         model = create_model(model_name=state.model_name, provider=state.provider)
         settings = create_model_settings(model_name=state.model_name)
@@ -178,9 +201,21 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
             model_settings=settings,
         )
 
+        structural_prompt = json.dumps(
+            {
+                'statistical_design': design.as_dict(),
+                'structural_summary': structural_summary,
+            },
+            default=str,
+        )
+
         results = execute_with_backoff(
             lambda: agent.run_sync(
-                user_prompt='Analyze the data and suggest the appropriate test.',
+                user_prompt=(
+                    'Analyze the data and suggest the appropriate test. '
+                    'Use the structural summary to stay consistent with detected design. '
+                    f'STRUCTURAL SUMMARY: {structural_prompt}'
+                ),
                 deps=InitialInsightsAgentDeps(
                     user_input='Perform a statistical test.',
                     input_data=state.df,
@@ -218,6 +253,7 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         state.data_type = results.data.data_type
         cols = results.data.analysis_columns
         state.target_columns = cols if set(cols).issubset(set(inp_df.columns)) else list(inp_df.columns)
+        state.agent_design_hypothesis = results.data.data_design
         state.add_result(AIMessage(content=str(results.data)))
         state.add_step(
             step='Initialization',
@@ -229,6 +265,7 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
                 'group_column': results.data.group_column,
                 'data_transformation': results.data.data_transformation,
                 'tool_arguments': results.data.tool_arguments,
+                'data_design': results.data.data_design,
             },
         )
 
@@ -237,6 +274,37 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
     except Exception as e:
         logger.error(f'Error in call_initialization_agent: {e}')
         raise NodeExecutionError(node_name='call_initialization_agent', original_error=e) from e
+
+
+def design_verification_node(state: WorkflowState) -> WorkflowState:
+    """Verify that agent design hypothesis aligns with structural validator output."""
+    try:
+        design = state.statistical_design
+        agent_design = state.agent_design_hypothesis
+        mismatch = bool(design and agent_design and agent_design != design.design_type)
+
+        detail = 'Structural and agent designs are aligned.'
+        if mismatch:
+            detail = (
+                f'Design mismatch: validator={design.design_type} vs agent={agent_design}. '
+                'Halting until clarified.'
+            )
+        state.design_verification = {
+            'mismatch': mismatch,
+            'structural_design': design.as_dict() if design else None,
+            'agent_design': agent_design,
+        }
+        state.add_step(
+            step='Design Verification',
+            detail=detail,
+            data=state.design_verification,
+        )
+        if mismatch:
+            raise NodeExecutionError(node_name='design_verification', original_error=ValueError(detail))
+        return state
+    except Exception as e:
+        logger.error(f'Error in design_verification_node: {e}')
+        raise NodeExecutionError(node_name='design_verification', original_error=e) from e
 
 
 def assess_study_design_node(state: WorkflowState) -> WorkflowState:
@@ -252,6 +320,15 @@ def assess_study_design_node(state: WorkflowState) -> WorkflowState:
         NodeExecutionError: If the assessment fails.
     """
     try:
+        if state.statistical_design:
+            state.paired = state.statistical_design.is_paired
+            state.add_step(
+                step='Assess Study Design',
+                detail='Using structural validator output',
+                data=state.statistical_design.as_dict(),
+            )
+            return state
+
         # Use model from state if specified
         model = create_model(model_name=state.model_name, provider=state.provider)
         settings = create_model_settings(model_name=state.model_name)

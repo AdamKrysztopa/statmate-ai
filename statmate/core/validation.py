@@ -4,7 +4,8 @@ This module provides functions to validate input data for statistical tests
 and workflows.
 """
 
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Literal, Sequence
 
 import numpy as np
 import pandas as pd
@@ -349,3 +350,208 @@ def validate_assumptions(
         'thresholds': thresholds,
         'failures': failures,
     }
+
+
+@dataclass
+class StatisticalDesign:
+    """Structured output describing the detected study design."""
+
+    design_type: Literal['independent', 'paired', 'mixed']
+    is_paired: bool
+    grouping_variable: str | None
+    subject_id_column: str | None
+    rationale: str
+    overlap_summary: dict[str, Any] = field(default_factory=dict)
+    comparison_matrix: dict[str, Any] = field(default_factory=dict)
+    keyword_cues: dict[str, list[str]] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        """Convert to a JSON-serialisable dictionary."""
+        return {
+            'design_type': self.design_type,
+            'is_paired': self.is_paired,
+            'grouping_variable': self.grouping_variable,
+            'subject_id_column': self.subject_id_column,
+            'rationale': self.rationale,
+            'overlap_summary': self.overlap_summary,
+            'comparison_matrix': self.comparison_matrix,
+            'keyword_cues': self.keyword_cues,
+        }
+
+
+def _keyword_cues(columns: Sequence[str]) -> dict[str, list[str]]:
+    """Detect temporal vs grouping cues from column names."""
+    temporal_tokens = ('time', 'visit', 'week', 'month', 'follow', 'day', 'year')
+    grouping_tokens = ('group', 'arm', 'cohort', 'treatment', 'variant', 'condition')
+    lower = {col: col.lower() for col in columns}
+    temporal_like = [col for col, low in lower.items() if any(tok in low for tok in temporal_tokens)]
+    group_like = [col for col, low in lower.items() if any(tok in low for tok in grouping_tokens)]
+    return {'temporal_like': temporal_like, 'group_like': group_like}
+
+
+def _candidate_subject_columns(df: pd.DataFrame, provided: Sequence[str] | None = None) -> list[str]:
+    """Identify plausible subject ID columns."""
+    if provided:
+        return [col for col in provided if col in df.columns]
+    keywords = ('id', 'subject', 'participant', 'patient', 'user')
+    candidates = []
+    for col in df.columns:
+        low = str(col).lower()
+        if any(k in low for k in keywords):
+            candidates.append(col)
+    if df.index.name:
+        candidates.append(df.index.name)
+    return list(dict.fromkeys(candidates))  # preserve order, deduplicate
+
+
+def _candidate_group_columns(df: pd.DataFrame, provided: Sequence[str] | None = None) -> list[str]:
+    """Identify columns likely representing grouping/arms."""
+    if provided:
+        return [col for col in provided if col in df.columns]
+    max_cardinality = max(2, int(len(df) * 0.5))
+    cat_cols = []
+    for col in df.columns:
+        nunique = df[col].nunique(dropna=True)
+        if nunique <= max_cardinality and not pd.api.types.is_numeric_dtype(df[col]):
+            cat_cols.append(col)
+    return cat_cols
+
+
+def _build_comparison_matrix(df: pd.DataFrame, subject_col: str, group_col: str) -> dict[str, Any]:
+    """Enumerate cross-group overlaps for mixed designs."""
+    subset = df[[subject_col, group_col]].dropna()
+    levels = list(subset[group_col].unique())
+    id_sets = {lvl: set(subset[subset[group_col] == lvl][subject_col]) for lvl in levels}
+    comparisons: list[dict[str, Any]] = []
+    for i, group_a in enumerate(levels):
+        for group_b in levels[i + 1 :]:
+            shared = len(id_sets[group_a] & id_sets[group_b])
+            comparisons.append(
+                {
+                    'group_a': group_a,
+                    'group_b': group_b,
+                    'shared_ids': shared,
+                    'comparison_type': 'paired' if shared > 0 else 'independent',
+                }
+            )
+    return {'groups': levels, 'comparisons': comparisons}
+
+
+def _overlap_summary(df: pd.DataFrame, subject_col: str, group_col: str) -> dict[str, Any]:
+    """Compute overlap diagnostics for subject/group pairs."""
+    overlaps = df.groupby(subject_col)[group_col].nunique(dropna=True)
+    shared_ids = int((overlaps > 1).sum())
+    repeated_within_group = int(df.duplicated(subset=[subject_col, group_col]).sum())
+    total_ids = int(df[subject_col].nunique(dropna=True))
+    overlap_rate = float(shared_ids / total_ids) if total_ids else 0.0
+    comparison_matrix = _build_comparison_matrix(df, subject_col, group_col)
+    return {
+        'shared_ids_across_groups': shared_ids,
+        'repeated_within_group': repeated_within_group,
+        'total_subjects': total_ids,
+        'overlap_rate': overlap_rate,
+        'comparison_matrix': comparison_matrix,
+    }
+
+
+def infer_statistical_design(
+    data: pd.DataFrame | pd.Series,
+    group_candidates: Sequence[str] | None = None,
+    subject_id_candidates: Sequence[str] | None = None,
+) -> tuple[StatisticalDesign, dict[str, Any]]:
+    """Infer whether the design is paired, independent, or mixed based on structure.
+
+    Args:
+        data: Input dataset.
+        group_candidates: Optional candidate grouping columns.
+        subject_id_candidates: Optional candidate subject ID columns.
+
+    Returns:
+        Tuple of (StatisticalDesign, structural_summary).
+    """
+    frame = data.to_frame() if isinstance(data, pd.Series) else data.copy()
+    summary: dict[str, Any] = {
+        'n_rows': int(len(frame)),
+        'n_cols': int(frame.shape[1]),
+        'nunique_by_column': {col: int(frame[col].nunique(dropna=True)) for col in frame.columns},
+    }
+    summary['keyword_cues'] = _keyword_cues(frame.columns)
+
+    subject_cols = _candidate_subject_columns(frame, subject_id_candidates)
+    group_cols = _candidate_group_columns(frame, group_candidates)
+    summary['subject_id_candidates'] = subject_cols
+    summary['group_candidates'] = group_cols
+
+    best_pair: tuple[str, str] | None = None
+    best_overlap: dict[str, Any] = {}
+    best_score = -1
+
+    for subj in subject_cols:
+        subj_series = frame[subj] if subj in frame.columns else pd.Series(frame.index, name=subj)
+        if subj_series.isna().all():
+            continue
+        for grp in group_cols:
+            if grp == subj:
+                continue
+            candidate_df = frame[[subj, grp]].dropna()
+            if candidate_df.empty:
+                continue
+            overlap = _overlap_summary(candidate_df, subj, grp)
+            score = overlap['shared_ids_across_groups'] + overlap['repeated_within_group']
+            if score > best_score:
+                best_score = score
+                best_overlap = overlap
+                best_pair = (subj, grp)
+
+    # Fallback: row-wise paired signals (wide format)
+    paired_by_row = False
+    if best_pair is None:
+        numeric_cols = frame.select_dtypes(include=[np.number]).columns
+        paired_by_row = len(numeric_cols) >= 2 and len(frame) > 1
+        if paired_by_row:
+            best_overlap = {'paired_by_row': True, 'shared_ids_across_groups': 0, 'repeated_within_group': 0}
+
+    design_type: Literal['independent', 'paired', 'mixed'] = 'independent'
+    grouping_variable: str | None = None
+    subject_id_column: str | None = None
+    rationale_parts: list[str] = []
+
+    if best_pair:
+        subject_id_column, grouping_variable = best_pair
+        overlap = best_overlap
+        comparison_matrix = overlap.get('comparison_matrix', {})
+        shared = overlap.get('shared_ids_across_groups', 0)
+        repeated = overlap.get('repeated_within_group', 0)
+        if shared > 0 and repeated > 0:
+            design_type = 'mixed'
+            rationale_parts.append(
+                f'{shared} subject IDs appear across groups and {repeated} repeated entries within at least one group.'
+            )
+        elif shared > 0 or repeated > 0:
+            design_type = 'paired'
+            if shared > 0:
+                rationale_parts.append(f'{shared} subject IDs overlap across groups, implying paired/crossover data.')
+            if repeated > 0:
+                rationale_parts.append(f'{repeated} repeated IDs within a group suggest longitudinal tracking.')
+        else:
+            rationale_parts.append('No subject overlaps detected across groups; treating as independent samples.')
+        best_overlap.setdefault('comparison_matrix', comparison_matrix)
+    elif paired_by_row:
+        design_type = 'paired'
+        rationale_parts.append('Multiple measurement columns per row imply a paired/wide layout.')
+    else:
+        rationale_parts.append('No ID/group overlap found; defaulting to independent design.')
+
+    design = StatisticalDesign(
+        design_type=design_type,
+        is_paired=design_type != 'independent',
+        grouping_variable=grouping_variable,
+        subject_id_column=subject_id_column,
+        rationale=' '.join(rationale_parts).strip(),
+        overlap_summary=best_overlap,
+        comparison_matrix=best_overlap.get('comparison_matrix', {}),
+        keyword_cues=summary['keyword_cues'],
+    )
+    summary['overlap_summary'] = best_overlap
+    summary['design_type'] = design_type
+    return design, summary

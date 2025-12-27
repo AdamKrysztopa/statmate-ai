@@ -69,6 +69,7 @@ _NODE_ALIAS: dict[str, str] = {
     'summary': NodeName.SUMMARY,
     'reviewer': NodeName.REVIEWER,
     'reviewer agent': NodeName.REVIEWER,
+    'design verification': NodeName.DESIGN_VERIFICATION,
 }
 
 
@@ -78,6 +79,14 @@ _NODES: list[WorkflowNode] = [
         id=normalize_node_id(NodeName.INITIALIZATION),
         label=NodeName.INITIALIZATION,
         kind='agent',
+        transitions=[
+            normalize_node_id(NodeName.DESIGN_VERIFICATION),
+        ],
+    ),
+    WorkflowNode(
+        id=normalize_node_id(NodeName.DESIGN_VERIFICATION),
+        label=NodeName.DESIGN_VERIFICATION,
+        kind='checkpoint',
         transitions=[
             normalize_node_id(NodeName.ASSESS_STUDY_DESIGN),
             normalize_node_id(NodeName.CHI2),

@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage
 from pydantic import BaseModel, Field
 
 from statmate.core import get_logger
+from statmate.core.validation import StatisticalDesign
 
 logger = get_logger(__name__)
 
@@ -51,6 +52,18 @@ class WorkflowState(BaseModel):
     )
     test_hierarchy: dict[str, Any] | None = Field(
         default=None, description='Structured tree of attempted tests and outcomes'
+    )
+    statistical_design: StatisticalDesign | None = Field(
+        default=None, description='Deterministic structural assessment of the study design'
+    )
+    agent_design_hypothesis: str | None = Field(
+        default=None, description='InitialInsights agent-reported data design classification'
+    )
+    design_verification: dict[str, Any] | None = Field(
+        default=None, description='Checkpoint result comparing structural vs agent design'
+    )
+    comparison_matrix: dict[str, Any] | None = Field(
+        default=None, description='Valid comparisons for mixed/longitudinal designs'
     )
 
     # Model configuration
@@ -149,6 +162,10 @@ def create_initial_state(
         assumption_log=[],
         reviewer_report=None,
         test_hierarchy=None,
+        statistical_design=None,
+        agent_design_hypothesis=None,
+        design_verification=None,
+        comparison_matrix=None,
         model_name=model_name,
         provider=provider,
         execution_trace=[],

@@ -17,6 +17,8 @@ Follow these numbered instructions exactly—do not add or omit steps:
    • transform_independent_tool(ctx, value_col, group_col) → deps
    • transform_categorical_tool(ctx, row_category, col_category) → deps
    
+   Structural context (ID overlaps, candidate groups, temporal cues) is provided via the user prompt. Keep all
+   recommendations consistent with that structural summary.
 
 2. **Column Analysis**  - verify the columns names, and use take them into acount for path selection.
    2.1 List each column with its data type and unique-value count.  
@@ -60,6 +62,7 @@ Follow these numbered instructions exactly—do not add or omit steps:
         "route_to_test": ["<NodeName>", "...", "<FinalTest>"],
         "comments": "<…>",
         "data_type": "<CONTINUOUS|CATEGORICAL>",
+        "data_design": "<independent|paired|mixed>",
         "data_transformation": "<transform_independent|transform_categorical|None>",
         "tool_arguments": {
                 "value_col": "<col_or_null>",
@@ -173,6 +176,7 @@ class InitialInsightsAgentResults(BaseModel):
     comments: str
 
     data_type: Literal['CATEGORICAL', 'CONTINUOUS']
+    data_design: Literal['independent', 'paired', 'mixed']
     data_transformation: Literal['transform_independent', 'transform_categorical', 'None']
     tool_arguments: dict[str, Any] = Field(
         default_factory=dict, description='Arguments to pass to the chosen data transformation tool'
@@ -190,6 +194,7 @@ class InitialInsightsAgentResults(BaseModel):
             f'  {route}\n\n'
             f'### Additional Information ###\n'
             f'- Data Type: {self.data_type}\n'
+            f'- Data Design: {self.data_design}\n'
             f'- Data Size: {self.data_size}\n'
             f'- Number of Columns: {self.number_of_columns}\n'
             f'- Data Transformations: {self.data_transformation}\n'
