@@ -7,6 +7,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
+from statmate.core.validation import StatisticalDesign
 
 INITIAL_INSIGHTS_PROMPT = """
     You are a deterministic statistical-test routing agent.  
@@ -330,16 +331,21 @@ def build_initial_insights_agent(
 def format_data_by_recommendation(
     data: pd.DataFrame,
     rec: InitialInsightsAgentResults,
+    design: StatisticalDesign | None = None,
 ) -> pd.Series | tuple[pd.Series, pd.Series] | pd.DataFrame:
     """Formats the data based on the agent's recommendation.
 
     Args:
         data: The input data.
         recommendation: The agent's recommendations.
+        design: Optional structural design metadata to guide grouping.
 
     Returns:
         Formatted DataFrame.
     """
+    if isinstance(data, pd.Series):
+        data = data.to_frame()
+
     if rec.group_column and rec.group_column in data.columns:
         data = data.set_index(rec.group_column, drop=False)
 
@@ -351,11 +357,47 @@ def format_data_by_recommendation(
     if route & df_tests:
         return data[rec.analysis_columns] if set(rec.analysis_columns).issubset(set(data.columns)) else data
 
-    # 4) Otherwise always return two Series
-    if set(rec.analysis_columns).issubset(set(data.columns)):
-        col1, col2 = rec.analysis_columns[:2]
-    else:
-        col1, col2 = data.columns[:2]
+    # 4) Independent groups in long format: split by grouping variable instead of pairing rows.
+    if (
+        rec.data_design == 'independent'
+        and rec.group_column
+        and rec.group_column in data.columns
+        and rec.data_transformation == 'None'
+    ):
+        value_cols = [col for col in rec.analysis_columns if col in data.columns and col != rec.group_column]
+        if not value_cols:
+            value_cols = [
+                col for col in data.columns if col != rec.group_column and pd.api.types.is_numeric_dtype(data[col])
+            ]
+        if not value_cols:
+            raise ValueError('No numeric value column found for independent group comparison.')
+
+        group_levels = [g for g in data[rec.group_column].dropna().unique().tolist()]
+        if design and design.suggested_groups:
+            ordered = [g for g in design.suggested_groups if g in group_levels]
+            if len(ordered) >= 2:
+                group_levels = ordered
+
+        if len(group_levels) < 2:
+            raise ValueError('Need at least two groups for independent comparison.')
+
+        value_col = value_cols[0]
+        group_a, group_b = group_levels[:2]
+        s1 = data[data[rec.group_column] == group_a][value_col].dropna()
+        s2 = data[data[rec.group_column] == group_b][value_col].dropna()
+        return s1, s2
+
+    # 5) Otherwise always return two Series; pad/borrow columns if agent provided fewer than two
+    available_cols = list(data.columns)
+    chosen = [col for col in rec.analysis_columns if col in available_cols]
+    if len(chosen) < 2:
+        remaining = [col for col in available_cols if col not in chosen]
+        chosen.extend(remaining[: 2 - len(chosen)])
+    if len(chosen) < 2:
+        raise ValueError(
+            f'Need at least two columns for independent/paired comparison, found {len(chosen)}: {chosen}'
+        )
+    col1, col2 = chosen[:2]
     s1 = data[col1].dropna()
     s2 = data[col2].dropna()
     return s1, s2

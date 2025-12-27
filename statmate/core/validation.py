@@ -4,8 +4,9 @@ This module provides functions to validate input data for statistical tests
 and workflows.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -361,6 +362,8 @@ class StatisticalDesign:
     grouping_variable: str | None
     subject_id_column: str | None
     rationale: str
+    dependent_variable: str | None = None
+    suggested_groups: list[str] = field(default_factory=list)
     overlap_summary: dict[str, Any] = field(default_factory=dict)
     comparison_matrix: dict[str, Any] = field(default_factory=dict)
     keyword_cues: dict[str, list[str]] = field(default_factory=dict)
@@ -373,10 +376,120 @@ class StatisticalDesign:
             'grouping_variable': self.grouping_variable,
             'subject_id_column': self.subject_id_column,
             'rationale': self.rationale,
+            'dependent_variable': self.dependent_variable,
+            'suggested_groups': self.suggested_groups,
             'overlap_summary': self.overlap_summary,
             'comparison_matrix': self.comparison_matrix,
             'keyword_cues': self.keyword_cues,
         }
+
+    def dict(self) -> dict[str, Any]:
+        """Alias for callers expecting Pydantic-style dict() on this dataclass."""
+        return self.as_dict()
+
+
+def validate_statistical_design(
+    df: pd.DataFrame,
+    dependent_var: str | Sequence[str],
+    group_var: str | None = None,
+    subject_id: str | None = None,
+) -> StatisticalDesign:
+    """Deterministically classify dataset design as paired or independent."""
+    frame = df if isinstance(df, pd.DataFrame) else df.to_frame()
+    keyword_cues = _keyword_cues(frame.columns)
+
+    dep_values: list[str] = []
+    if isinstance(dependent_var, Sequence) and not isinstance(dependent_var, str):
+        dep_values = [str(col) for col in dependent_var]
+    dep_label = dep_values[0] if dep_values else (str(dependent_var) if dependent_var is not None else None)
+
+    groups: list[str] = []
+    if group_var and group_var in frame.columns:
+        groups = [str(g) for g in frame[group_var].dropna().unique().tolist()]
+
+    # 1. Wide-format paired: two numeric columns but no grouping variable.
+    if group_var is None and dep_values and len(dep_values) == 2:
+        return StatisticalDesign(
+            design_type='paired',
+            is_paired=True,
+            grouping_variable=None,
+            subject_id_column=subject_id,
+            dependent_variable=dep_label,
+            rationale='Two distinct numeric columns provided for comparison (wide-format paired).',
+            suggested_groups=[],
+            keyword_cues=keyword_cues,
+        )
+
+    # 2. No grouping provided: default to independent exploration.
+    if not group_var:
+        return StatisticalDesign(
+            design_type='independent',
+            is_paired=False,
+            grouping_variable=None,
+            subject_id_column=subject_id,
+            dependent_variable=dep_label,
+            rationale='No grouping variable provided; assuming single group or independent exploration.',
+            suggested_groups=[],
+            keyword_cues=keyword_cues,
+        )
+
+    overlap_summary: dict[str, Any] = {}
+    # 3. Long-format paired: overlapping subject IDs across two groups.
+    if subject_id and subject_id in frame.columns and group_var in frame.columns:
+        unique_groups = frame[group_var].dropna().unique()
+        if len(unique_groups) >= 2:
+            group_a, group_b = unique_groups[:2]
+            g1_ids = set(frame[frame[group_var] == group_a][subject_id].dropna())
+            g2_ids = set(frame[frame[group_var] == group_b][subject_id].dropna())
+            overlap = g1_ids.intersection(g2_ids)
+            denom = min(len(g1_ids), len(g2_ids)) or 1
+            percent_overlap = len(overlap) / denom
+            overlap_summary = {
+                'group_a': group_a,
+                'group_b': group_b,
+                'overlap_count': len(overlap),
+                'percent_overlap': percent_overlap,
+            }
+
+            if percent_overlap > 0.8:
+                return StatisticalDesign(
+                    design_type='paired',
+                    is_paired=True,
+                    grouping_variable=group_var,
+                    subject_id_column=subject_id,
+                    dependent_variable=dep_label,
+                    rationale=(
+                        f'High ID overlap ({percent_overlap:.1%}) between groups suggests paired/longitudinal design.'
+                    ),
+                    suggested_groups=[str(group_a), str(group_b)],
+                    overlap_summary=overlap_summary,
+                    keyword_cues=keyword_cues,
+                )
+
+    # 4. Independent groups: no meaningful ID overlap detected.
+    return StatisticalDesign(
+        design_type='independent',
+        is_paired=False,
+        grouping_variable=group_var,
+        subject_id_column=subject_id,
+        dependent_variable=dep_label,
+        rationale='Unique entities per group or no ID overlap detected. Treating as independent samples.',
+        suggested_groups=groups,
+        overlap_summary=overlap_summary,
+        keyword_cues=keyword_cues,
+    )
+
+
+def get_structural_summary(df: pd.DataFrame, group_var: str) -> str:
+    """Return a simple textual summary of grouping structure for prompts/logs."""
+    if group_var not in df.columns:
+        return f"Grouping column '{group_var}' not found."
+
+    counts = df[group_var].value_counts(dropna=False).to_dict()
+    summary = f"Data Structure: Grouping by '{group_var}'.\n"
+    for group, count in counts.items():
+        summary += f"- Group '{group}': {count} observations.\n"
+    return summary
 
 
 def _keyword_cues(columns: Sequence[str]) -> dict[str, list[str]]:

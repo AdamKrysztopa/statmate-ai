@@ -31,7 +31,12 @@ from statmate.agents.summarizer_agent import SummariserDeps, get_summariser_agen
 from statmate.core import NodeExecutionError, get_logger
 from statmate.core.config import default_config
 from statmate.core.model_provider import execute_with_backoff
-from statmate.core.validation import infer_statistical_design, validate_assumptions
+from statmate.core.validation import (
+    get_structural_summary,
+    infer_statistical_design,
+    validate_assumptions,
+    validate_statistical_design,
+)
 from statmate.workflow.model_factory import create_model, create_model_settings
 from statmate.workflow.state import WorkflowState
 
@@ -184,7 +189,7 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         state.paired = design.is_paired
         state.comparison_matrix = design.comparison_matrix
         state.add_step(
-            step='Structural Validation',
+            step='Structural Validation (pre-agent)',
             detail=design.rationale or 'Structural design check completed.',
             data={
                 'statistical_design': design.as_dict(),
@@ -242,8 +247,34 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
 
         inp_df = state.df if isinstance(state.df, pd.DataFrame) else pd.DataFrame(state.df)
 
+        # Re-run structural validation using agent-selected columns to lock design.
+        validated_design = validate_statistical_design(
+            inp_df,
+            dependent_var=results.data.analysis_columns or list(inp_df.columns),
+            group_var=results.data.group_column,
+            subject_id=design.subject_id_column,
+        )
+        state.statistical_design = validated_design
+        state.paired = validated_design.is_paired
+        state.comparison_matrix = validated_design.comparison_matrix or state.comparison_matrix
+
+        structural_text = (
+            get_structural_summary(inp_df, results.data.group_column)
+            if results.data.group_column
+            else 'No grouping column provided.'
+        )
+        state.add_step(
+            step='Structural Validation',
+            detail=validated_design.rationale or 'Structural design confirmed.',
+            data={
+                'statistical_design': validated_design.as_dict(),
+                'structural_summary': structural_summary,
+                'structural_text': structural_text,
+            },
+        )
+
         # Format for downstream tests
-        formatted = format_data_by_recommendation(inp_df, results.data)
+        formatted = format_data_by_recommendation(inp_df, results.data, state.statistical_design)
         if isinstance(formatted, tuple):
             state.df, state.secondary_df = formatted
         else:

@@ -3,6 +3,8 @@ import pandas as pd
 import pytest
 
 from statmate.agents.agent_builder import AgentResult
+from statmate.agents.initial_insights_agent import InitialInsightsAgentResults, format_data_by_recommendation
+from statmate.agents.initial_insights_agent import NodeName as AgentNodeName
 from statmate.core.config import NodeName
 from statmate.core.exceptions import NodeExecutionError
 from statmate.core.validation import StatisticalDesign
@@ -86,3 +88,84 @@ def test_design_verification_blocks_mismatch():
 
     with pytest.raises(NodeExecutionError):
         design_verification_node(state)
+
+
+def test_format_data_by_recommendation_pads_missing_columns():
+    df = pd.DataFrame({'value': [1, 2, 3], 'group': ['a', 'a', 'b']})
+    rec = InitialInsightsAgentResults(
+        analysis_columns=['value'],
+        group_column=None,
+        output_format='pd.Series',
+        data_analysis_result='',
+        route_to_test=[
+            AgentNodeName.ASSESS_STUDY_DESIGN,
+            AgentNodeName.TWO_INDEPENDENT_GROUPS,
+            AgentNodeName.INDEP_T,
+        ],
+        comments='',
+        data_type='CONTINUOUS',
+        data_design='independent',
+        data_transformation='None',
+        tool_arguments={},
+        data_size=len(df),
+        number_of_columns=df.shape[1],
+    )
+
+    s1, s2 = format_data_by_recommendation(df, rec)
+    assert len(s1) == len(df)
+    assert len(s2) == len(df)
+
+
+def test_format_data_by_recommendation_raises_when_only_one_column():
+    df = pd.DataFrame({'value': [1, 2, 3]})
+    rec = InitialInsightsAgentResults(
+        analysis_columns=['value'],
+        group_column=None,
+        output_format='pd.Series',
+        data_analysis_result='',
+        route_to_test=[AgentNodeName.INDEP_T],
+        comments='',
+        data_type='CONTINUOUS',
+        data_design='independent',
+        data_transformation='None',
+        tool_arguments={},
+        data_size=len(df),
+        number_of_columns=df.shape[1],
+    )
+
+    with pytest.raises(ValueError):
+        format_data_by_recommendation(df, rec)
+
+
+def test_format_data_by_recommendation_splits_by_group_for_independent_design():
+    df = pd.DataFrame({'value': [1, 2, 3, 4], 'group': ['A', 'A', 'B', 'B']})
+    rec = InitialInsightsAgentResults(
+        analysis_columns=['value'],
+        group_column='group',
+        output_format='pd.Series',
+        data_analysis_result='',
+        route_to_test=[
+            AgentNodeName.ASSESS_STUDY_DESIGN,
+            AgentNodeName.TWO_INDEPENDENT_GROUPS,
+            AgentNodeName.INDEP_T,
+        ],
+        comments='',
+        data_type='CONTINUOUS',
+        data_design='independent',
+        data_transformation='None',
+        tool_arguments={},
+        data_size=len(df),
+        number_of_columns=df.shape[1],
+    )
+    design = StatisticalDesign(
+        design_type='independent',
+        is_paired=False,
+        grouping_variable='group',
+        subject_id_column=None,
+        rationale='No overlap',
+        suggested_groups=['A', 'B'],
+    )
+
+    s1, s2 = format_data_by_recommendation(df, rec, design)
+    assert list(s1) == [1, 2]
+    assert list(s2) == [3, 4]
