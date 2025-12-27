@@ -96,6 +96,32 @@ def decrypt_email(token: str) -> str:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Invalid email ciphertext') from exc
 
 
+def _get_credential_cipher() -> Fernet:
+    key = settings.API_CREDENTIAL_KEY
+    if not key:
+        raise ValueError('API_CREDENTIAL_KEY must be set (base64url-encoded 32-byte key)')
+    try:
+        return Fernet(key.encode('utf-8'))
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError('Invalid API_CREDENTIAL_KEY; must be base64url-encoded 32-byte key') from exc
+
+
+def encrypt_secret(value: str) -> str:
+    """Encrypt a secret value (e.g., API key) for storage."""
+    cipher = _get_credential_cipher()
+    token = cipher.encrypt(value.encode('utf-8'))
+    return token.decode('utf-8')
+
+
+def decrypt_secret(token: str) -> str:
+    """Decrypt a stored secret value."""
+    cipher = _get_credential_cipher()
+    try:
+        return cipher.decrypt(token.encode('utf-8')).decode('utf-8')
+    except InvalidToken as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Invalid credential ciphertext') from exc
+
+
 def normalize_email(email: str) -> str:
     """Lowercase and strip surrounding whitespace for consistent storage and hashing."""
     return email.strip().lower()

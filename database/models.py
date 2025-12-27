@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from typing import Any
 
-from sqlalchemy import JSON, Column, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -265,3 +265,22 @@ class ScheduledTask(Base):
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'user_id': self.user_id,
         }
+
+
+class ProviderCredential(Base):
+    """Encrypted provider credential per user and provider."""
+
+    __tablename__ = 'provider_credentials'
+    __table_args__ = (UniqueConstraint('user_id', 'provider', name='uq_user_provider'),)
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey('users.id'), nullable=False, index=True)
+    provider = Column(String(50), nullable=False)
+    encrypted_key = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    owner = relationship('User')
+
+    def __repr__(self) -> str:
+        return f'<ProviderCredential(user_id={self.user_id}, provider={self.provider})>'

@@ -125,6 +125,10 @@ class Settings(BaseSettings):
         default='',
         description='Required: base64url-encoded 32-byte key used to encrypt stored emails',
     )
+    API_CREDENTIAL_KEY: str = Field(
+        default='',
+        description='Required: base64url-encoded 32-byte key used to encrypt stored API credentials',
+    )
     CORS_ORIGINS: list[str] = Field(
         default=[
             'http://localhost:8501',
@@ -239,6 +243,22 @@ class Settings(BaseSettings):
                 raise ValueError('EMAIL_ENCRYPTION_KEY must be valid base64url-encoded') from exc
             if len(decoded) != 32:
                 raise ValueError('EMAIL_ENCRYPTION_KEY must decode to exactly 32 bytes')
+
+        if not self.API_CREDENTIAL_KEY:
+            if is_dev and dev_secrets.get('API_CREDENTIAL_KEY'):
+                self.API_CREDENTIAL_KEY = dev_secrets['API_CREDENTIAL_KEY']
+            elif is_dev:
+                self.API_CREDENTIAL_KEY = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
+                generated['API_CREDENTIAL_KEY'] = self.API_CREDENTIAL_KEY
+            else:
+                missing.append('API_CREDENTIAL_KEY (base64url-encoded 32-byte key)')
+        else:
+            try:
+                decoded = base64.urlsafe_b64decode(self.API_CREDENTIAL_KEY.encode())
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError('API_CREDENTIAL_KEY must be valid base64url-encoded') from exc
+            if len(decoded) != 32:
+                raise ValueError('API_CREDENTIAL_KEY must decode to exactly 32 bytes')
 
         if generated and is_dev:
             _persist_dev_secrets(generated)

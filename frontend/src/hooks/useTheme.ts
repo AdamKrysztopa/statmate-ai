@@ -7,21 +7,27 @@ const storageKey = 'statmate-theme';
 export function useTheme(): [Theme, () => void] {
   const [theme, setTheme] = useState<Theme>('dark');
 
+  const applyTheme = (next: Theme) => {
+    document.documentElement.setAttribute('data-theme', next);
+    document.documentElement.classList.remove(next === 'dark' ? 'light' : 'dark');
+    document.documentElement.classList.add(next === 'dark' ? 'dark' : 'light');
+  };
+
   useEffect(() => {
     const stored = (localStorage.getItem(storageKey) as Theme | null) || undefined;
     if (stored) {
       setTheme(stored);
-      document.documentElement.setAttribute('data-theme', stored);
+      applyTheme(stored);
       return;
     }
     const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
     const next = prefersLight ? 'light' : 'dark';
     setTheme(next);
-    document.documentElement.setAttribute('data-theme', next);
+    applyTheme(next);
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    applyTheme(theme);
     localStorage.setItem(storageKey, theme);
   }, [theme]);
 

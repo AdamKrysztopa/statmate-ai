@@ -4,6 +4,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from config.settings import settings
 from statmate.api.models.model_config import (
@@ -14,6 +15,8 @@ from statmate.api.models.model_config import (
 from statmate.workflow.model_factory import get_default_factory, initialize_default_factory
 from statmate.api.dependencies import get_current_user_optional
 from database.models import User
+from database.session import get_db
+from statmate.api.services.credential_service import CredentialService
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +170,7 @@ async def get_environment() -> EnvironmentResponse:
 async def set_credentials(
     credentials: CredentialsRequest,
     current_user: User | None = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
 ) -> CredentialsResponse:
     """Set user credentials for PROD mode.
 
@@ -179,39 +183,34 @@ async def set_credentials(
     Raises:
         HTTPException: If environment is not production or credentials are invalid.
     """
-    # Only allow in production mode
-    if settings.ENVIRONMENT.lower() != 'production':
-        raise HTTPException(
-            status_code=403,
-            detail='Credential management only available in production mode',
-        )
-
     if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=401, detail='Authentication required')
+    if not current_user:
         raise HTTPException(status_code=401, detail='Authentication required')
 
     try:
-        # Update settings with user-provided credentials
-        configured_providers = []
-
+        incoming: dict[str, str] = {}
         if credentials.openai_api_key:
-            settings.OPENAI_API_KEY = credentials.openai_api_key
-            configured_providers.append('openai')
-            logger.info('OpenAI credentials configured')
-
+            incoming['openai'] = credentials.openai_api_key
         if credentials.anthropic_api_key:
-            settings.ANTHROPIC_API_KEY = credentials.anthropic_api_key
-            configured_providers.append('anthropic')
-            logger.info('Anthropic credentials configured')
-
+            incoming['anthropic'] = credentials.anthropic_api_key
         if credentials.google_api_key:
-            settings.GOOGLE_API_KEY = credentials.google_api_key
-            configured_providers.append('google')
-            logger.info('Google credentials configured')
-
+            incoming['google'] = credentials.google_api_key
         if credentials.groq_api_key:
-            settings.GROQ_API_KEY = credentials.groq_api_key
-            configured_providers.append('groq')
-            logger.info('Groq credentials configured')
+            incoming['groq'] = credentials.groq_api_key
+
+        configured_providers = CredentialService.upsert_credentials(db=db, user_id=current_user.id, credentials=incoming)
+
+        # Apply configured providers to runtime settings for immediate use
+        stored = CredentialService.load_credentials(db=db, user_id=current_user.id)
+        if 'openai' in stored:
+            settings.OPENAI_API_KEY = stored['openai']
+        if 'anthropic' in stored:
+            settings.ANTHROPIC_API_KEY = stored['anthropic']
+        if 'google' in stored:
+            settings.GOOGLE_API_KEY = stored['google']
+        if 'groq' in stored:
+            settings.GROQ_API_KEY = stored['groq']
 
         if credentials.ollama_enabled == 'true':
             settings.OLLAMA_ENABLED = True
@@ -220,24 +219,18 @@ async def set_credentials(
             if credentials.ollama_default_model:
                 settings.OLLAMA_DEFAULT_MODEL = credentials.ollama_default_model
             configured_providers.append('ollama')
-            logger.info('Ollama configured')
 
         if not configured_providers:
-            raise HTTPException(
-                status_code=400,
-                detail='No valid credentials provided',
-            )
+            raise HTTPException(status_code=400, detail='No valid credentials provided')
 
-        # Reinitialize model factory with new credentials
+        # Reinitialize model factory with updated keys
         multi_model_config = settings.create_multi_model_config()
         initialize_default_factory(multi_model_config)
 
-        logger.info(f'Model factory reinitialized with {len(configured_providers)} provider(s)')
-
         return CredentialsResponse(
             success=True,
-            message=f'Successfully configured {len(configured_providers)} provider(s)',
-            configured_providers=configured_providers,
+            message=f'Successfully stored {len(configured_providers)} provider credential(s)',
+            configured_providers=sorted(set(configured_providers)),
         )
 
     except HTTPException:

@@ -1,40 +1,89 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiClient, AnalysisResult, AnalysisStatus, DatasetPreview, Dataset, TraceStep, User } from './api/client';
+import { FormEvent, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import {
+  Activity,
+  BarChart3,
+  CheckCircle2,
+  Database,
+  Download,
+  FileText,
+  LayoutDashboard,
+  Loader2,
+  LogOut,
+  Moon,
+  Settings,
+  Sun,
+  Terminal,
+  UploadCloud,
+  Zap,
+} from 'lucide-react';
+import {
+  ApiClient,
+  AnalysisResult,
+  AnalysisStatus,
+  Dataset,
+  DatasetPreview,
+  TraceStep,
+  User as UserType,
+} from './api/client';
 import { useTheme } from './hooks/useTheme';
 
 const resolveDefaultApi = () => {
   const envBase = import.meta.env.VITE_API_BASE;
   if (envBase) return envBase;
-
   if (typeof window === 'undefined') return 'http://localhost:8000/api/v1';
-
   const { protocol, hostname, port } = window.location;
-
-  // GitHub Codespaces/VS Code remote: ports encoded in subdomain (e.g., -3000 → -8000)
   if (hostname.endsWith('.app.github.dev')) {
     return `${protocol}//${hostname.replace(/-\d+\.app\.github\.dev$/, '-8000.app.github.dev')}/api/v1`;
   }
-
-  // Local/dev servers: swap current port for API port
-  if (port) {
-    return `${protocol}//${hostname}:8000/api/v1`;
-  }
-
-  return `${protocol}//${hostname}:8000/api/v1`;
+  return port ? `${protocol}//${hostname}:8000/api/v1` : `${protocol}//${hostname}:8000/api/v1`;
 };
 
 const defaultApi = resolveDefaultApi();
 
+type Tab = 'datasets' | 'analysis' | 'logs';
+
+type NavItemProps = {
+  icon: JSX.Element;
+  label: string;
+  active: boolean;
+  isOpen: boolean;
+  onClick: () => void;
+  theme: 'light' | 'dark';
+};
+
+type StatRow = { name: string; pValue?: number; effectSize?: number };
+
+const formatTimestamp = (value?: string) => (value ? new Date(value).toLocaleTimeString() : '');
+
+const mergeUniqueSteps = (existing: TraceStep[], next: TraceStep[]) => {
+  const seen = new Set(existing.map((s) => `${s.timestamp || ''}-${s.step}-${s.detail || ''}`));
+  const merged = [...existing];
+  next.forEach((step) => {
+    const key = `${step.timestamp || ''}-${step.step}-${step.detail || ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(step);
+    }
+  });
+  return merged;
+};
+
 function App() {
+  // Theming + layout
   const [theme, toggleTheme] = useTheme();
+  const [activeTab, setActiveTab] = useState<Tab>('datasets');
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [isRightPanelOpen, setRightPanelOpen] = useState(true);
+
+  // Core app state
   const [apiBase, setApiBase] = useState(defaultApi);
-  const [token, setToken] = useState<string | undefined>(undefined);
-  const [user, setUser] = useState<User | undefined>();
-  const [health, setHealth] = useState<string>('');
-  const [error, setError] = useState<string>('');
+  const [token, setToken] = useState<string | undefined>();
+  const [user, setUser] = useState<UserType | undefined>();
+  const [health, setHealth] = useState('');
+  const [error, setError] = useState('');
 
   const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [selectedDataset, setSelectedDataset] = useState<string>('');
+  const [selectedDatasetId, setSelectedDatasetId] = useState('');
   const [preview, setPreview] = useState<DatasetPreview | undefined>();
 
   const [email, setEmail] = useState('');
@@ -45,18 +94,13 @@ function App() {
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
 
-  const [analysisId, setAnalysisId] = useState<string>('');
+  const [analysisId, setAnalysisId] = useState('');
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | undefined>();
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult | undefined>();
-  const [logContent, setLogContent] = useState<string>('');
-  const [loadingLog, setLoadingLog] = useState(false);
+  const [logContent, setLogContent] = useState('');
   const [streamSteps, setStreamSteps] = useState<TraceStep[]>([]);
   const [streaming, setStreaming] = useState(false);
-  const [streamError, setStreamError] = useState<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
-  const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerDismissed, setViewerDismissed] = useState(false);
-  const [lastTraceUpdate, setLastTraceUpdate] = useState<string | null>(null);
 
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [modelName, setModelName] = useState('gpt-4o');
@@ -86,9 +130,6 @@ function App() {
     try {
       const res = await api.login(email, password);
       setToken(res.access_token);
-      const me = await api.withToken(res.access_token).me();
-      setUser(me);
-      await loadDatasets(api.withToken(res.access_token));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -100,16 +141,16 @@ function App() {
     try {
       await api.register(email, password);
       setRegistering(false);
-      setHealth('Account created. You can log in now.');
+      setHealth('Account created. Sign in to continue.');
     } catch (e) {
       setError((e as Error).message);
     }
   };
 
-  const loadDatasets = async (client = api) => {
-    if (!token && client.token === undefined) return;
+  const loadDatasets = async () => {
+    if (!token) return;
     try {
-      const list = await client.datasets();
+      const list = await api.datasets();
       setDatasets(list);
     } catch (e) {
       setError((e as Error).message);
@@ -117,13 +158,11 @@ function App() {
   };
 
   const selectDataset = async (id: string) => {
-    setSelectedDataset(id);
+    setSelectedDatasetId(id);
     setAnalysisResults(undefined);
     setAnalysisStatus(undefined);
     setAnalysisId('');
     setLogContent('');
-    setViewerOpen(false);
-    setViewerDismissed(false);
     if (!id) return;
     try {
       const p = await api.previewDataset(id);
@@ -140,7 +179,6 @@ function App() {
     clearMessages();
     try {
       const result = await api.uploadDataset(file, description || undefined);
-      setHealth(`Uploaded dataset ${result.dataset_id.slice(0, 8)}…`);
       setDescription('');
       setFile(null);
       await loadDatasets();
@@ -153,102 +191,37 @@ function App() {
   };
 
   const handleRunAnalysis = async () => {
-    if (!selectedDataset) {
-      setError('Pick a dataset first');
-      return;
-    }
+    if (!selectedDatasetId) return;
     clearMessages();
     try {
       const { id } = await api.runAnalysis({
-        dataset_id: selectedDataset,
+        dataset_id: selectedDatasetId,
         selected_columns: selectedColumns.length ? selectedColumns : undefined,
-        model_name: modelName || undefined,
-        provider: provider || undefined,
+        model_name: modelName,
+        provider,
       });
       streamAbortRef.current?.abort();
-      setStreamSteps([]);
-      setStreamError(null);
-      setStreaming(true);
       setAnalysisId(id);
-      setAnalysisStatus({ id, status: 'pending' });
+      setStreamSteps([]);
+      setStreaming(true);
       setAnalysisResults(undefined);
-      setLogContent('');
-      setViewerDismissed(false);
-      setViewerOpen(true);
-      pollLog(true);
+      setAnalysisStatus({ id, status: 'running' });
+      setActiveTab('analysis');
     } catch (e) {
       setError((e as Error).message);
-    }
-  };
-
-  const refreshStatus = async () => {
-    if (!analysisId) return;
-    try {
-      const status = await api.analysisStatus(analysisId);
-      setAnalysisStatus(status);
-      if (status.decision_steps?.length) {
-        setStreamSteps((prev) => {
-          const seen = new Set(prev.map((s) => `${s.timestamp || ''}-${s.step}`));
-          const merged = [...prev];
-          status.decision_steps?.forEach((step) => {
-            const key = `${step.timestamp || ''}-${step.step}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              merged.push(step);
-            }
-          });
-          return merged;
-        });
-      }
-      if (status.intermediate_log && status.intermediate_log.length > logContent.length) {
-        setLogContent(status.intermediate_log);
-      }
-      if (status.status === 'completed') {
-        const results = await api.analysisResults(analysisId);
-        setAnalysisResults(results);
-        setStreaming(false);
-      }
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const pollLog = async (silent = false) => {
-    if (!analysisId) return;
-    try {
-      const log = await api.analysisLog(analysisId);
-      setLogContent(log.log_content);
-    } catch (e) {
-      const message = (e as Error).message || '';
-      if (!silent && !message.toLowerCase().includes('not found')) {
-        setError(message);
-      }
-    }
-  };
-
-  const loadLog = async () => {
-    if (!analysisId) return;
-    setLoadingLog(true);
-    try {
-      await pollLog();
-    } finally {
-      setLoadingLog(false);
     }
   };
 
   const handleExport = async (format: 'pdf' | 'docx' | 'csv') => {
     const id = analysisId || analysisResults?.id;
-    if (!id) {
-      setError('Run an analysis to export results.');
-      return;
-    }
+    if (!id) return;
     try {
       setExporting(format);
       const blob = await api.exportAnalysis(id, format);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `analysis-${id}.${format === 'docx' ? 'docx' : format}`;
+      link.download = `analysis-${id}.${format}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -260,62 +233,50 @@ function App() {
     }
   };
 
+  const loadLog = async () => {
+    if (!analysisId) return;
+    try {
+      const log = await api.analysisLog(analysisId);
+      setLogContent(log.log_content);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  // Effects
   useEffect(() => {
     const storedToken = localStorage.getItem('statmate-token');
-    if (storedToken) {
-      setToken(storedToken);
-    }
+    if (storedToken) setToken(storedToken);
   }, []);
 
   useEffect(() => {
     if (token) {
       localStorage.setItem('statmate-token', token);
-      api.withToken(token)
+      api
+        .withToken(token)
         .me()
         .then(setUser)
         .catch(() => setToken(undefined));
-      loadDatasets(api.withToken(token));
+      loadDatasets();
+      connect();
     } else {
       localStorage.removeItem('statmate-token');
       setUser(undefined);
       setDatasets([]);
+      setPreview(undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   useEffect(() => {
     if (!analysisId) return undefined;
-    const tick = () => {
-      refreshStatus();
-      pollLog(true);
-    };
-    tick();
-    const interval = setInterval(tick, 2000);
-    return () => clearInterval(interval);
-  }, [analysisId]);
-
-  useEffect(() => {
-    setLastTraceUpdate(null);
-  }, [analysisId]);
-
-  useEffect(() => {
-    if (!analysisId) return undefined;
     const controller = new AbortController();
     streamAbortRef.current = controller;
-    setStreamError(null);
-    setStreaming(true);
-    setStreamSteps([]);
-    setLogContent('');
 
-    const connect = async () => {
+    const connectStream = async () => {
       try {
         const res = await api.analysisStream(analysisId, controller.signal);
-        if (!res.body) {
-          setStreaming(false);
-          setStreamError('Streaming not supported by the server response');
-          return;
-        }
-
+        if (!res.body) return;
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -324,686 +285,836 @@ function App() {
           const { value, done } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
 
-          let idx = buffer.indexOf('\n\n');
-          while (idx !== -1) {
-            const raw = buffer.slice(0, idx).trim();
-            buffer = buffer.slice(idx + 2);
-            if (!raw) {
-              idx = buffer.indexOf('\n\n');
-              continue;
-            }
-
+          for (const raw of parts) {
+            if (!raw.trim()) continue;
             const lines = raw.split('\n');
-            const eventLine = lines.find((line) => line.startsWith('event:'));
-            const dataLine = lines.find((line) => line.startsWith('data:'));
-            const eventName = eventLine ? eventLine.replace('event:', '').trim() : 'message';
-            const dataText = dataLine ? dataLine.replace('data:', '').trim() : '';
+            const eventLine = lines.find((l) => l.startsWith('event:'));
+            const dataLine = lines.find((l) => l.startsWith('data:'));
+            const event = eventLine?.replace('event:', '').trim();
+            const data = dataLine ? JSON.parse(dataLine.replace('data:', '').trim()) : {};
 
-            let payload: any = {};
-            try {
-              payload = dataText ? JSON.parse(dataText) : {};
-            } catch {
-              payload = { raw: dataText };
+            if (event === 'step') {
+              setStreamSteps((prev) => mergeUniqueSteps(prev, [data as TraceStep]));
             }
-
-            if (eventName === 'step') {
-              setStreamSteps((prev) => {
-                const seen = new Set(prev.map((s) => `${s.timestamp || ''}-${s.step}`));
-                const key = `${payload.timestamp || ''}-${payload.step}`;
-                if (seen.has(key)) return prev;
-                return [...prev, payload as TraceStep];
-              });
-              setLastTraceUpdate(new Date().toLocaleTimeString());
-            } else if (eventName === 'log') {
-              setLogContent((prev) => `${prev}${payload.chunk || ''}`);
-            } else if (eventName === 'done') {
+            if (event === 'log') {
+              setLogContent((prev) => `${prev}${data.chunk || ''}`);
+            }
+            if (event === 'done') {
               setStreaming(false);
-              refreshStatus();
+              const resJson = await api.analysisResults(analysisId);
+              setAnalysisResults(resJson);
+              setAnalysisStatus((prev) => ({ ...(prev || { id: analysisId, status: 'completed' }), status: 'completed' }));
             }
-
-            idx = buffer.indexOf('\n\n');
           }
         }
       } catch (e) {
         if (!controller.signal.aborted) {
-          setStreamError((e as Error).message);
           setStreaming(false);
+          setError((e as Error).message);
         }
       }
     };
 
-    connect();
+    connectStream();
     return () => controller.abort();
   }, [analysisId, api]);
 
-  const resultTrace: TraceStep[] = useMemo(() => {
-    if (analysisResults?.decision_steps?.length) return analysisResults.decision_steps;
-    if (analysisResults?.execution_trace?.length) return analysisResults.execution_trace;
-    if (analysisResults?.results_detail?.execution_trace?.length) return analysisResults.results_detail.execution_trace;
-    if (analysisResults?.results_detail?.messages?.length) {
-      return analysisResults.results_detail.messages.map((msg, idx) => ({
-        step: `Message ${idx + 1}`,
-        detail: msg,
-        data: {},
-      }));
-    }
-    return [];
-  }, [analysisResults]);
-
-  const logTrace: TraceStep[] = useMemo(() => {
-    if (!logContent) return [];
-    const lines = logContent.split('\n').filter((line) => line.includes('Trace step:'));
-    return lines.map((line, idx) => {
-      const [, rest] = line.split('Trace step:');
-      const [stepPart, detailPart] = rest ? rest.split('|') : [];
-      const step = stepPart?.trim() || `Step ${idx + 1}`;
-      const detail = detailPart?.trim() || '';
-      return { step, detail, data: {} };
-    });
-  }, [logContent]);
-
-  const statusTrace = analysisStatus?.decision_steps || analysisStatus?.execution_trace || [];
-
-  const liveTrace: TraceStep[] = useMemo(() => {
-    const merged: TraceStep[] = [];
-    const seen = new Set<string>();
-
-    const addSteps = (steps: TraceStep[]) => {
-      steps.forEach((item, idx) => {
-        const key = `${item.timestamp || ''}-${item.step}-${item.detail}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        merged.push({
-          ...item,
-          step: item.step || `Step ${merged.length + 1}`,
-          detail: item.detail || (item.data ? JSON.stringify(item.data) : ''),
-        });
-      });
-    };
-
-    addSteps(streamSteps);
-    addSteps(statusTrace);
-    addSteps(logTrace);
-    addSteps(resultTrace);
-
-    return merged;
-  }, [streamSteps, statusTrace, logTrace, resultTrace]);
-
-  const plots = useMemo(() => {
-    if (!analysisResults) return [];
-    return analysisResults.plots || analysisResults.results_detail?.plots || [];
-  }, [analysisResults]);
-
-  const effectSizes = useMemo<Record<string, number>>(() => {
-    if (!analysisResults) return {};
-    return (
-      analysisResults.effect_sizes ||
-      analysisResults.results_detail?.effect_sizes ||
-      {}
-    );
-  }, [analysisResults]);
-
-  const statsRows = useMemo(
-    () => {
-      if (!analysisResults) return [];
-      const probabilities = analysisResults.probabilities || {};
-      const keys = new Set([...Object.keys(probabilities), ...Object.keys(effectSizes)]);
-      return Array.from(keys).map((name) => ({
-        name,
-        pValue: probabilities[name],
-        effectSize: effectSizes[name],
-      }));
-    },
-    [analysisResults, effectSizes]
-  );
-
-  const agentMessages = useMemo(() => analysisResults?.results_detail?.messages || [], [analysisResults]);
-
   useEffect(() => {
-    if (liveTrace.length) {
-      setLastTraceUpdate(new Date().toLocaleTimeString());
-    }
-  }, [liveTrace]);
+    if (!analysisId) return undefined;
+    const interval = setInterval(async () => {
+      try {
+        const status = await api.analysisStatus(analysisId);
+        setAnalysisStatus(status);
+        if (status.decision_steps?.length) {
+          setStreamSteps((prev) => mergeUniqueSteps(prev, status.decision_steps || []));
+        }
+        if (status.intermediate_log) {
+          setLogContent(status.intermediate_log);
+        }
+        if (status.status === 'completed' && !analysisResults) {
+          const resJson = await api.analysisResults(analysisId);
+          setAnalysisResults(resJson);
+          setStreaming(false);
+        }
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [analysisId, api, analysisResults]);
 
-  const openViewer = () => {
-    setViewerDismissed(false);
-    setViewerOpen(true);
-  };
+  // Derived data
+  const trace = useMemo(() => {
+    const fromResults = analysisResults?.decision_steps || analysisResults?.execution_trace || analysisResults?.results_detail?.execution_trace || [];
+    const fromStatus = analysisStatus?.decision_steps || analysisStatus?.execution_trace || [];
+    return mergeUniqueSteps([], [...streamSteps, ...fromStatus, ...fromResults]);
+  }, [analysisResults, analysisStatus, streamSteps]);
 
-  const closeViewer = () => {
-    setViewerDismissed(true);
-    setViewerOpen(false);
-  };
+  const plots = useMemo(() => analysisResults?.plots || analysisResults?.results_detail?.plots || [], [analysisResults]);
 
+  const effectSizes = useMemo(() => {
+    if (!analysisResults) return {} as Record<string, number>;
+    return analysisResults.effect_sizes || analysisResults.results_detail?.effect_sizes || {};
+  }, [analysisResults]);
+
+  const statsRows: StatRow[] = useMemo(() => {
+    if (!analysisResults) return [];
+    const probabilities = analysisResults.probabilities || analysisResults.results_detail?.probabilities || {};
+    const keys = new Set([...Object.keys(probabilities), ...Object.keys(effectSizes)]);
+    return Array.from(keys).map((key) => ({ name: key, pValue: probabilities[key], effectSize: effectSizes[key] }));
+  }, [analysisResults, effectSizes]);
+
+  const summaryText =
+    analysisResults?.summary || analysisResults?.results_detail?.summary || (streaming ? 'Generating summary…' : 'Waiting for results');
+
+  const connectionLabel = health || (error && !token ? error : 'API status unknown');
+
+  // Render: Auth
   if (!token) {
     return (
-      <div className="app-shell">
-        <header className="header">
-          <div className="logo">
-            <div className="logo-mark">Σ</div>
-            <div className="title-block">
-              <h1>StatmateAI Frontend</h1>
-              <p>Modern React client for FastAPI + LangGraph</p>
-            </div>
-          </div>
-          <div className="controls">
-            <button className="button" onClick={toggleTheme} aria-label="Toggle theme">
-              {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
-            </button>
-            <button className="button" onClick={connect}>
-              🔌 Check API
-            </button>
-          </div>
-        </header>
-
-        {error && <div className="toast error">{error}</div>}
-        {health && <div className="toast">{health}</div>}
-
-        <section className="card-grid">
-          <div className="card">
-            <h3>API Connection</h3>
-            <p className="muted">Point to your running FastAPI instance.</p>
-            <div className="input-group">
-              <label>API Base URL</label>
-              <input value={apiBase} onChange={(e) => setApiBase(e.target.value)} placeholder="http://localhost:8000/api/v1" />
-            </div>
-            <div className="pill-row">
-              <span className="badge">ENV: {import.meta.env.MODE}</span>
-              <span className="badge">Theme: {theme}</span>
-              <span className="badge">Auth: required</span>
-            </div>
-          </div>
-
-          <div className="card">
-            <h3>{registering ? 'Create Account' : 'Sign In'}</h3>
-            <form onSubmit={registering ? handleRegister : handleLogin}>
-              <div className="input-group">
-                <label>Email</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-              </div>
-              <div className="input-group">
-                <label>Password</label>
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-              </div>
-              <div className="pill-row">
-                <button className="button primary" type="submit">
-                  {registering ? 'Create & Login' : 'Login'}
+      <div className={`relative min-h-screen overflow-hidden ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+        <div className="pointer-events-none absolute inset-0 opacity-80">
+          <div className="absolute -left-10 top-10 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
+          <div className="absolute -right-10 top-32 h-72 w-72 rounded-full bg-indigo-500/10 blur-3xl" />
+        </div>
+        <div className="relative mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-12">
+          <div className="grid w-full grid-cols-1 gap-8 lg:grid-cols-2">
+            <div className={`rounded-3xl border p-10 shadow-2xl backdrop-blur ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white/90'}`}>
+              <div className="mb-10 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 text-2xl font-black text-slate-950 shadow-glow">
+                    Σ
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-cyan-400">Statmate AI</p>
+                    <h1 className="text-2xl font-bold">Secure workspace</h1>
+                  </div>
+                </div>
+                <button
+                  onClick={toggleTheme}
+                  className={`rounded-full border p-3 transition-colors ${theme === 'dark' ? 'border-slate-800 bg-slate-900 hover:bg-slate-800' : 'border-slate-200 bg-white hover:bg-slate-100'}`}
+                  aria-label="Toggle theme"
+                >
+                  {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                 </button>
-                <button className="button" type="button" onClick={() => setRegistering((v) => !v)}>
+              </div>
+
+              <div className="mb-6 flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm shadow-sm backdrop-blur-sm">
+                <span className={`h-2 w-2 rounded-full ${health ? 'bg-emerald-400 shadow-[0_0_10px_rgba(74,222,128,0.7)]' : 'bg-amber-400 animate-pulse'}`} />
+                <div className="flex flex-col">
+                  <span className="text-xs uppercase tracking-[0.18em] text-slate-400">API</span>
+                  <span className="font-medium text-slate-200">{connectionLabel}</span>
+                </div>
+                <button onClick={connect} className="ml-auto rounded-full border px-3 py-1 text-xs font-semibold text-cyan-400">
+                  Check
+                </button>
+              </div>
+
+              {error && <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">{error}</div>}
+              {health && <div className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">{health}</div>}
+
+              <form onSubmit={registering ? handleRegister : handleLogin} className="space-y-5">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className={`w-full rounded-xl border px-4 py-3 outline-none transition ${theme === 'dark' ? 'border-slate-800 bg-slate-900/80 focus:border-cyan-500' : 'border-slate-200 bg-white focus:border-cyan-500'}`}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className={`w-full rounded-xl border px-4 py-3 outline-none transition ${theme === 'dark' ? 'border-slate-800 bg-slate-900/80 focus:border-cyan-500' : 'border-slate-200 bg-white focus:border-cyan-500'}`}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full rounded-xl bg-gradient-to-r from-cyan-400 to-blue-600 py-3 font-bold text-slate-950 shadow-lg shadow-cyan-500/25 transition hover:translate-y-[1px] active:translate-y-[2px]"
+                >
+                  {registering ? 'Create account' : 'Sign in'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRegistering((v) => !v)}
+                  className="w-full text-sm font-semibold text-cyan-300 hover:text-white"
+                >
                   {registering ? 'Have an account? Sign in' : 'Need an account? Register'}
                 </button>
+              </form>
+            </div>
+
+            <div
+              className={`flex flex-col justify-between gap-6 rounded-3xl border p-10 shadow-2xl backdrop-blur ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white/90'}`}
+            >
+              <div>
+                <div className="mb-6 flex items-center gap-3">
+                  <div className="rounded-full bg-cyan-500/10 p-3 text-cyan-300">
+                    <Zap size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Workspace</p>
+                    <h2 className="text-xl font-bold">Live analytics studio</h2>
+                  </div>
+                </div>
+                <div className="space-y-3 text-sm text-slate-400">
+                  <div className="flex items-start gap-3 rounded-2xl border border-slate-800/50 bg-slate-900/30 p-3 shadow-inner">
+                    <CheckCircle2 size={16} className="mt-0.5 text-emerald-400" />
+                    <div>
+                      <p className="font-semibold text-slate-200">Upload smart datasets</p>
+                      <p className="text-slate-400">CSV, TSV, Parquet, Excel, and docs—automatically profiled.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 rounded-2xl border border-slate-800/50 bg-slate-900/30 p-3 shadow-inner">
+                    <Zap size={16} className="mt-0.5 text-cyan-400" />
+                    <div>
+                      <p className="font-semibold text-slate-200">Streaming analysis</p>
+                      <p className="text-slate-400">Watch the agent trace, summary, plots, and export PDFs/Word.</p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <p className="muted">Sign in to access datasets and analysis.</p>
-            </form>
+
+              <div className="space-y-3 rounded-2xl border border-slate-800/40 bg-slate-900/30 p-4">
+                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">API base</label>
+                <input
+                  value={apiBase}
+                  onChange={(e) => setApiBase(e.target.value)}
+                  className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500' : 'border-slate-200 bg-white focus:border-cyan-500'}`}
+                  placeholder="http://localhost:8000/api/v1"
+                />
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>Environment: {import.meta.env.MODE}</span>
+                  <span>Theme: {theme}</span>
+                </div>
+              </div>
+            </div>
           </div>
-        </section>
+        </div>
       </div>
     );
   }
 
+  // Render: Main app
   return (
-    <div className="app-shell">
-      <header className="header">
-        <div className="logo">
-          <div className="logo-mark">Σ</div>
-          <div className="title-block">
-            <h1>StatmateAI Frontend</h1>
-            <p>Modern React client for FastAPI + LangGraph</p>
-          </div>
-        </div>
-        <div className="controls">
-          <span className="badge">{user ? `Signed in: ${user.email}` : 'Signed in'}</span>
-          <button className="button" onClick={toggleTheme} aria-label="Toggle theme">
-            {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
-          </button>
-          <button className="button" onClick={connect}>
-            🔌 Check API
-          </button>
-          <button className="button" type="button" onClick={() => setToken(undefined)}>
-            Log out
-          </button>
-        </div>
-      </header>
-
-      {error && <div className="toast error">{error}</div>}
-      {health && <div className="toast">{health}</div>}
-
-      <section className="card-grid">
-        <div className="card">
-          <h3>API Connection</h3>
-          <p className="muted">Point to your running FastAPI instance.</p>
-          <div className="input-group">
-            <label>API Base URL</label>
-            <input value={apiBase} onChange={(e) => setApiBase(e.target.value)} placeholder="http://localhost:8000/api/v1" />
-          </div>
-          <div className="pill-row">
-            <span className="badge">ENV: {import.meta.env.MODE}</span>
-            <span className="badge">Theme: {theme}</span>
-            <span className="badge">{user ? `Signed in: ${user.email}` : 'Signed in'}</span>
-          </div>
-        </div>
-
-        <div className="card">
-          <h3>Account</h3>
-          <p className="muted">You are signed in.</p>
-          <div className="pill-row">
-            <span className="badge">{user?.email}</span>
-            <button className="button" type="button" onClick={() => setToken(undefined)}>
-              Log out
-            </button>
-          </div>
-        </div>
-
-        <div className="card">
-          <h3>Upload Dataset</h3>
-          <div className="input-group">
-            <label>File</label>
-            <input
-              type="file"
-              accept=".csv,.tsv,.txt,.xlsx,.xls,.json,.parquet,.md,.doc,.docx"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-            />
-          </div>
-          <div className="input-group">
-            <label>Description (optional)</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Study notes or variables" />
-          </div>
-          <button className="button primary" disabled={!file || uploading || !token} onClick={handleUpload}>
-            {uploading ? 'Uploading…' : 'Upload'}
-          </button>
-        </div>
-
-        <div className="card">
-          <h3>Guided tour</h3>
-          <p className="muted">Start with a seeded dataset, watch the live decisions, then export to share.</p>
-          <ol className="mini-list">
-            <li>Download a sample CSV and upload it.</li>
-            <li>Select 2–4 columns to keep the visuals crisp.</li>
-            <li>Open the viewer to watch streaming agent steps.</li>
-            <li>Export the finished run as PDF/Word/CSV.</li>
-          </ol>
-          <div className="pill-row">
-            <a className="button" href="/samples/clinical_trial_sample.csv" download>
-              Clinical sample CSV
-            </a>
-            <a className="button" href="/samples/marketing_uplift.csv" download>
-              Marketing uplift CSV
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <div className="section-title">Datasets</div>
-      <div className="card">
-        <div className="pill-row" style={{ marginBottom: 12 }}>
-          <span className="badge">{datasets.length} available</span>
-          <button className="button" disabled={!token} onClick={() => loadDatasets()}>
-            Refresh list
-          </button>
-        </div>
-        <div className="pill-row">
-          {datasets.map((ds) => (
-            <button
-              key={ds.id}
-              className="button"
-              style={{
-                borderColor: selectedDataset === ds.id ? 'var(--primary)' : 'var(--border)',
-                color: selectedDataset === ds.id ? 'var(--primary)' : 'var(--text)',
-              }}
-              onClick={() => selectDataset(ds.id)}
-            >
-              {selectedDataset === ds.id ? '✓ ' : ''}
-              {ds.original_filename}
-            </button>
-          ))}
-          {!datasets.length && <span className="muted">No datasets yet.</span>}
-        </div>
-
-        {preview && (
-          <div style={{ marginTop: 16 }}>
-            <div className="pill-row">
-              <span className="badge">Rows: {preview.row_count}</span>
-              <span className="badge">Columns: {preview.column_names.length}</span>
-            </div>
-            <div className="input-group" style={{ marginTop: 12 }}>
-              <label title="Tip: keep 2–4 columns for faster plots and clearer box/scatter views">
-                Select columns for analysis (optional)
-              </label>
-              <div className="pill-row">
-                {preview.column_names.map((name) => {
-                  const active = selectedColumns.includes(name);
-                  return (
-                    <button
-                      key={name}
-                      className="button"
-                      style={{ borderColor: active ? 'var(--primary)' : 'var(--border)', color: active ? 'var(--primary)' : 'var(--text)' }}
-                      type="button"
-                      onClick={() =>
-                        setSelectedColumns((cols) => (cols.includes(name) ? cols.filter((c) => c !== name) : [...cols, name]))
-                      }
-                    >
-                      {active ? '✓ ' : ''}
-                      {name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="table-like">
-              <table>
-                <thead>
-                  <tr>
-                    {preview.column_names.map((c) => (
-                      <th key={c}>{c}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.preview_data.slice(0, 5).map((row, idx) => (
-                    <tr key={idx}>
-                      {preview.column_names.map((c) => (
-                        <td key={c}>{String((row as Record<string, unknown>)[c])}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+    <div className={`relative flex min-h-screen ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+      <div className="pointer-events-none absolute inset-0 opacity-70">
+        <div className="absolute left-20 top-10 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
+        <div className="absolute right-10 top-40 h-72 w-72 rounded-full bg-indigo-500/10 blur-3xl" />
       </div>
 
-      <div className="section-title">Analysis</div>
-      <div className="card-grid">
-        <div className="card">
-          <h3>Model</h3>
-          <div className="input-group">
-            <label>Provider</label>
-            <select value={provider} onChange={(e) => setProvider(e.target.value)}>
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="google">Gemini</option>
-              <option value="groq">Groq</option>
-              <option value="ollama">Ollama</option>
-            </select>
+      {/* Sidebar */}
+      <aside
+        className={`relative z-10 flex-shrink-0 border-r backdrop-blur transition-all duration-300 ${
+          isSidebarOpen ? 'w-64' : 'w-20'
+        } ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white/70'}`}
+      >
+        <div className="flex h-16 items-center gap-3 px-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-lg font-extrabold text-slate-950 shadow-glow">
+            Σ
           </div>
-          <div className="input-group">
-            <label>Model name</label>
-            <input value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="gpt-4o" />
-          </div>
-          <button className="button primary" disabled={!selectedDataset || !token} onClick={handleRunAnalysis}>
-            🚀 Run analysis
-          </button>
-          {!selectedDataset && <p className="muted">Pick a dataset first.</p>}
-        </div>
-
-        <div className="card">
-          <h3>Status</h3>
-          <div className="input-group">
-            <label>Analysis ID</label>
-            <input value={analysisId} onChange={(e) => setAnalysisId(e.target.value)} placeholder="auto-filled after run" />
-          </div>
-          <div className="pill-row">
-            <button className="button" disabled={!analysisId} onClick={refreshStatus}>
-              Refresh
-            </button>
-            <span className="badge">{analysisStatus ? `Status: ${analysisStatus.status}` : 'Waiting to start'}</span>
-            {analysisResults && (
-              <button className="button" type="button" onClick={openViewer}>
-                Open detailed view
-              </button>
-            )}
-          </div>
-          {analysisStatus?.message && <p className="muted">{analysisStatus.message}</p>}
-        </div>
-      </div>
-
-      {analysisResults && (
-        <div className="card" style={{ marginTop: 12 }}>
-          <h3>Results</h3>
-          <div className="pill-row" style={{ marginBottom: 12 }}>
-            {analysisResults.model_name && <span className="tag">Model: {analysisResults.model_name}</span>}
-            {analysisResults.provider && <span className="tag">Provider: {analysisResults.provider}</span>}
-          </div>
-          {(analysisResults.summary || analysisResults.results_detail?.summary) && (
-            <p>{analysisResults.summary || analysisResults.results_detail?.summary}</p>
+          {isSidebarOpen && (
+            <div>
+              <div className="text-sm uppercase tracking-[0.2em] text-slate-500">Statmate</div>
+              <div className="text-lg font-bold">AI Studio</div>
+            </div>
           )}
-          <div className="pill-row" style={{ marginTop: 8 }}>
-            <button className="button primary" type="button" onClick={openViewer}>
-              Open detailed view
-            </button>
-          </div>
-          <div className="pill-row" style={{ marginTop: 6 }}>
-            <button className="button" onClick={() => handleExport('pdf')} disabled={exporting !== null}>
-              Export PDF
-            </button>
-            <button className="button" onClick={() => handleExport('docx')} disabled={exporting !== null}>
-              Export Word
-            </button>
-            <button className="button" onClick={() => handleExport('csv')} disabled={exporting !== null}>
-              Export CSV
-            </button>
-          </div>
+          <button
+            onClick={() => setSidebarOpen((v) => !v)}
+            className={`ml-auto rounded-lg border p-2 text-slate-500 transition ${
+              theme === 'dark' ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-100'
+            }`}
+            aria-label="Toggle sidebar"
+          >
+            <LayoutDashboard size={16} />
+          </button>
         </div>
-      )}
 
-      {viewerOpen && (
-        <div className="viewer-overlay">
-          <div className="viewer-backdrop" onClick={closeViewer} />
-          <div className="viewer-panel">
-            <div className="viewer-header">
-              <div>
-                <div className="section-title" style={{ margin: 0 }}>Analysis Detail</div>
-                <div className="pill-row" style={{ marginTop: 6 }}>
-                  {analysisId && <span className="tag">ID: {analysisId.slice(0, 8)}…</span>}
-                  <span className="tag">Status: {analysisStatus?.status || analysisResults?.status || 'pending'}</span>
-                  {analysisResults?.model_name && <span className="tag">Model: {analysisResults.model_name}</span>}
-                  {analysisResults?.provider && <span className="tag">Provider: {analysisResults.provider}</span>}
-                </div>
-                <div className="pill-row" style={{ marginTop: 8 }}>
-                  <button className="button" onClick={() => handleExport('pdf')} disabled={exporting !== null}>
-                    {exporting === 'pdf' ? 'Generating PDF…' : 'Export PDF'}
-                  </button>
-                  <button className="button" onClick={() => handleExport('docx')} disabled={exporting !== null}>
-                    {exporting === 'docx' ? 'Generating DOCX…' : 'Export Word'}
-                  </button>
-                  <button className="button" onClick={() => handleExport('csv')} disabled={exporting !== null}>
-                    {exporting === 'csv' ? 'Generating CSV…' : 'Export CSV'}
-                  </button>
-                </div>
-              </div>
-              <div className="pill-row" style={{ gap: 8 }}>
-                <button className="button" onClick={() => { refreshStatus(); pollLog(); }}>
-                  Refresh now
-                </button>
-                <button className="button" onClick={closeViewer}>Close</button>
-              </div>
+        <nav className="mt-4 space-y-2 px-2">
+          <NavItem
+            icon={<Database size={18} />}
+            label="Datasets"
+            active={activeTab === 'datasets'}
+            isOpen={isSidebarOpen}
+            onClick={() => setActiveTab('datasets')}
+            theme={theme}
+          />
+          <NavItem
+            icon={<Activity size={18} />}
+            label="Analysis"
+            active={activeTab === 'analysis'}
+            isOpen={isSidebarOpen}
+            onClick={() => setActiveTab('analysis')}
+            theme={theme}
+          />
+          <NavItem
+            icon={<Terminal size={18} />}
+            label="Logs"
+            active={activeTab === 'logs'}
+            isOpen={isSidebarOpen}
+            onClick={() => setActiveTab('logs')}
+            theme={theme}
+          />
+        </nav>
+
+        <div className="absolute bottom-4 w-full px-3">
+          <div className={`mb-2 rounded-xl border px-3 py-2 text-xs ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white/70'}`}>
+            <div className="flex items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${health ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+              <span className="font-semibold">{connectionLabel}</span>
             </div>
+            <p className="mt-1 text-[11px] text-slate-500">{apiBase}</p>
+          </div>
+          <button
+            onClick={toggleTheme}
+            className={`flex w-full items-center gap-3 rounded-xl p-3 text-sm font-semibold transition ${
+              theme === 'dark' ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
+            }`}
+          >
+            {theme === 'dark' ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-indigo-600" />}
+            {isSidebarOpen && <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
+          </button>
+        </div>
+      </aside>
 
-            {analysisStatus?.message && <p className="muted">{analysisStatus.message}</p>}
-            {(analysisResults?.summary || analysisResults?.results_detail?.summary) && (
-              <p>{analysisResults?.summary || analysisResults?.results_detail?.summary}</p>
+      {/* Main area */}
+      <main className="relative z-0 flex flex-1 flex-col overflow-hidden">
+        <header
+          className={`flex h-16 items-center justify-between border-b px-6 backdrop-blur ${
+            theme === 'dark' ? 'border-slate-800 bg-slate-950/70' : 'border-slate-200 bg-white/70'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <span className={`h-2 w-2 rounded-full ${streaming ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Workspace</p>
+              <p className="text-sm font-semibold text-slate-200">{analysisResults?.dataset_name || preview?.original_filename || 'Ready'}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className={`hidden items-center gap-2 rounded-full border px-3 py-1.5 text-sm md:flex ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white/70'}`}>
+              <span className="text-slate-400">API</span>
+              <input
+                value={apiBase}
+                onChange={(e) => setApiBase(e.target.value)}
+                className={`w-48 bg-transparent text-sm outline-none ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}
+              />
+              <button onClick={connect} className="rounded-full border px-2 py-1 text-[11px] font-semibold text-cyan-400">
+                Ping
+              </button>
+            </div>
+            <div className={`hidden items-center gap-2 rounded-full border px-3 py-1.5 text-sm md:flex ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white/70'}`}>
+              <span className="text-slate-400">{user?.email}</span>
+            </div>
+            <button
+              onClick={() => setToken(undefined)}
+              className={`rounded-full border p-2 transition ${theme === 'dark' ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-100'}`}
+              aria-label="Log out"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        </header>
+
+        <div className="flex flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-6">
+            {error && <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">{error}</div>}
+            {health && <div className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">{health}</div>}
+
+            {activeTab === 'datasets' && (
+              <div className="space-y-8">
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Library</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-3xl font-bold tracking-tight">Dataset library</h2>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={loadDatasets}
+                        className="rounded-full border border-slate-800/70 px-3 py-1 text-xs font-semibold text-cyan-400"
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('analysis')}
+                        className="flex items-center gap-2 rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-100"
+                      >
+                        <BarChart3 size={14} />
+                        Go to analysis
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-slate-400">Upload datasets, review previews, and pick columns before running the agent.</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+                  <div className={`rounded-2xl border p-6 shadow-lg ${theme === 'dark' ? 'border-slate-800/80 bg-slate-900/80' : 'border-slate-200 bg-white'}`}>
+                    <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      <UploadCloud size={16} className="text-cyan-400" /> Upload
+                    </h3>
+                    <div className="space-y-3 text-sm">
+                      <label className="block cursor-pointer rounded-xl border border-dashed border-slate-700/80 bg-slate-900/40 p-3 text-center text-slate-400 hover:border-cyan-500">
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => setFile(e.target.files?.[0] || null)}
+                          accept=".csv,.tsv,.txt,.xlsx,.xls,.json,.parquet,.md,.doc,.docx"
+                        />
+                        {file ? file.name : 'Select a CSV, TSV, Excel, JSON, or Parquet file'}
+                      </label>
+                      <textarea
+                        placeholder="Optional notes for the agent"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                          theme === 'dark' ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500' : 'border-slate-200 bg-white focus:border-cyan-500'
+                        }`}
+                        rows={3}
+                      />
+                      <button
+                        disabled={!file || uploading}
+                        onClick={handleUpload}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-600 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-500/25 disabled:opacity-60"
+                      >
+                        {uploading ? <Loader2 className="animate-spin" size={16} /> : <UploadCloud size={16} />}
+                        {uploading ? 'Uploading…' : 'Process file'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={`xl:col-span-2 rounded-2xl border p-6 shadow-lg ${theme === 'dark' ? 'border-slate-800/80 bg-slate-900/80' : 'border-slate-200 bg-white'}`}>
+                    <div className="mb-4 flex items-center justify-between gap-2">
+                      <h3 className="text-lg font-semibold">Available datasets</h3>
+                      <span className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300">{datasets.length} files</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      {datasets.map((ds) => {
+                        const active = selectedDatasetId === ds.id;
+                        return (
+                          <button
+                            key={ds.id}
+                            onClick={() => selectDataset(ds.id)}
+                            className={`group flex w-full flex-col rounded-2xl border p-4 text-left transition ${
+                              active
+                                ? 'border-cyan-500/70 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
+                                : theme === 'dark'
+                                  ? 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
+                                  : 'border-slate-200 bg-white hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-semibold text-slate-100">{ds.original_filename}</span>
+                              {active && <CheckCircle2 size={16} className="text-cyan-400" />}
+                            </div>
+                            <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+                              <span>{ds.row_count ? `${ds.row_count} rows` : 'Row count pending'}</span>
+                              <span>•</span>
+                              <span>{ds.id.slice(0, 6)}…</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {!datasets.length && (
+                        <div className="flex min-h-[120px] items-center justify-center rounded-2xl border border-dashed border-slate-800/70 text-sm text-slate-500">
+                          Upload a dataset to get started.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {preview && (
+                  <div className={`rounded-2xl border shadow-xl ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                    <div className="flex items-center justify-between border-b border-slate-800/60 px-6 py-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Data preview</p>
+                        <h3 className="text-lg font-semibold">{preview.original_filename}</h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 rounded-full border border-slate-800/50 px-3 py-1 text-xs text-slate-400">
+                          <Settings size={14} />
+                          <select
+                            value={provider}
+                            onChange={(e) => setProvider(e.target.value)}
+                            className="bg-transparent text-sm outline-none"
+                          >
+                            <option value="openai">OpenAI</option>
+                            <option value="anthropic">Anthropic</option>
+                            <option value="google">Gemini</option>
+                            <option value="groq">Groq</option>
+                            <option value="ollama">Ollama</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2 rounded-full border border-slate-800/50 px-3 py-1 text-xs text-slate-400">
+                          <input
+                            value={modelName}
+                            onChange={(e) => setModelName(e.target.value)}
+                            className="bg-transparent text-sm outline-none"
+                            placeholder="Model name"
+                          />
+                        </div>
+                        <button
+                          onClick={handleRunAnalysis}
+                          className="flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-600 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20"
+                        >
+                          <Zap size={16} /> Run analysis
+                        </button>
+                      </div>
+                    </div>
+                    <div className="px-6 py-4">
+                      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                        <span className="rounded-full bg-slate-800/60 px-3 py-1">{preview.row_count} rows</span>
+                        <span className="rounded-full bg-slate-800/60 px-3 py-1">{preview.column_names.length} columns</span>
+                        <span className="rounded-full bg-slate-800/60 px-3 py-1">Select columns below</span>
+                      </div>
+                      <div className="mb-4 flex flex-wrap gap-2">
+                        {preview.column_names.map((name) => {
+                          const active = selectedColumns.includes(name);
+                          return (
+                            <button
+                              key={name}
+                              onClick={() =>
+                                setSelectedColumns((cols) =>
+                                  cols.includes(name) ? cols.filter((c) => c !== name) : [...cols, name]
+                                )
+                              }
+                              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                                active
+                                  ? 'border-cyan-500 bg-cyan-500/10 text-cyan-200 shadow-cyan-500/10'
+                                  : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                              }`}
+                              type="button"
+                            >
+                              {active ? '✓ ' : ''}
+                              {name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead className="bg-slate-900/60">
+                            <tr>
+                              {preview.column_names.map((c) => (
+                                <th key={c} className="px-4 py-3 font-semibold text-slate-400">
+                                  {c}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800">
+                            {preview.preview_data.slice(0, 5).map((row, i) => (
+                              <tr key={i} className="hover:bg-white/5">
+                                {preview.column_names.map((c) => (
+                                  <td key={c} className="px-4 py-3 font-mono text-xs text-slate-200">
+                                    {String((row as Record<string, unknown>)[c])}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
-            <div style={{ marginTop: 12 }}>
-              <div className="section-title" style={{ marginTop: 0 }}>
-                Live agent steps
-              </div>
-              <div className="pill-row" style={{ marginBottom: 8 }}>
-                <span className="badge">Live trace</span>
-                {analysisStatus?.status === 'running' && <span className="badge">Status: running</span>}
-                {streaming && <span className="badge">Streaming…</span>}
-                {streamError && <span className="badge">Stream error: {streamError}</span>}
-                {lastTraceUpdate && <span className="badge">Updated: {lastTraceUpdate}</span>}
-              </div>
-              {liveTrace.length > 0 ? (
-                <div className="trace-grid">
-                  {liveTrace.map((item, idx) => (
-                    <div className="trace-card" key={`${item.step}-${idx}`}>
-                      <div className="trace-header">
-                        <span className="badge">{item.step || `Step ${idx + 1}`}</span>
-                        <div className="pill-row" style={{ gap: 6 }}>
-                          {item.timestamp && <span className="tag">{new Date(item.timestamp).toLocaleTimeString()}</span>}
-                          {typeof item.p_value === 'number' && (
-                            <span className="tag">p = {item.p_value.toFixed(4)}</span>
-                          )}
+            {activeTab === 'analysis' && (
+              <div className="space-y-6">
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Analysis</p>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-3xl font-bold tracking-tight">Results & diagnostics</h2>
+                    {analysisResults && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleExport('pdf')}
+                          disabled={exporting !== null}
+                          className="flex items-center gap-2 rounded-full border border-slate-700/80 px-4 py-2 text-xs font-semibold text-slate-100 hover:border-cyan-500"
+                        >
+                          <Download size={14} /> PDF
+                        </button>
+                        <button
+                          onClick={() => handleExport('docx')}
+                          disabled={exporting !== null}
+                          className="flex items-center gap-2 rounded-full border border-slate-700/80 px-4 py-2 text-xs font-semibold text-slate-100 hover:border-cyan-500"
+                        >
+                          <Download size={14} /> Word
+                        </button>
+                        <button
+                          onClick={() => handleExport('csv')}
+                          disabled={exporting !== null}
+                          className="flex items-center gap-2 rounded-full border border-slate-700/80 px-4 py-2 text-xs font-semibold text-slate-100 hover:border-cyan-500"
+                        >
+                          <Download size={14} /> CSV
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-slate-400">Live status, executive summary, and visuals from the latest run.</p>
+                </div>
+
+                {!analysisId && !analysisResults ? (
+                  <div className="flex min-h-[220px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-800/70 bg-slate-900/60 text-center">
+                    <BarChart3 size={48} className="mb-3 text-slate-700" />
+                    <p className="text-slate-500">Select a dataset and run analysis to see results here.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+                    <div className={`xl:col-span-2 rounded-2xl border p-6 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Executive summary</p>
+                          <h3 className="text-xl font-bold">{analysisResults?.dataset_name || 'Latest run'}</h3>
+                        </div>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${
+                            streaming
+                              ? 'bg-amber-500/20 text-amber-300'
+                              : analysisStatus?.status === 'completed' || analysisResults
+                                ? 'bg-emerald-500/20 text-emerald-300'
+                                : 'bg-slate-800 text-slate-300'
+                          }`}
+                        >
+                          {streaming ? 'Running' : analysisStatus?.status || analysisResults?.status || 'Ready'}
+                        </span>
+                      </div>
+                      <div className={`prose max-w-none text-base leading-relaxed ${theme === 'dark' ? 'prose-invert text-slate-200' : 'text-slate-800'}`}>
+                        {summaryText}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className={`rounded-2xl border p-4 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Metadata</p>
+                        <div className="mt-3 space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Model</span>
+                            <span className="font-mono text-cyan-300">{analysisResults?.model_name || modelName}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Provider</span>
+                            <span className="capitalize text-slate-200">{analysisResults?.provider || provider}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Dataset</span>
+                            <span className="truncate text-slate-200">{preview?.original_filename || analysisResults?.dataset_name || '—'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Status</span>
+                            <span className="text-emerald-300">{analysisStatus?.status || analysisResults?.status || (streaming ? 'running' : 'idle')}</span>
+                          </div>
                         </div>
                       </div>
-                      {item.detail && <p className="muted">{item.detail}</p>}
-                      {item.data && (
-                        <div className="trace-data">
-                          {Object.entries(item.data).map(([key, value]) => (
-                            <div key={key} className="pill mono">
-                              {key}: {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                            </div>
-                          ))}
+
+                      <div className={`rounded-2xl border p-4 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Live log</p>
+                          <button onClick={loadLog} className="text-xs font-semibold text-cyan-300">
+                            Fetch latest
+                          </button>
                         </div>
-                      )}
+                        <pre className="mt-3 max-h-48 overflow-auto rounded-xl bg-slate-950/80 p-3 text-xs text-emerald-200 shadow-inner">
+                          {logContent || '// Waiting for execution logs…'}
+                        </pre>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="muted">Waiting for the first agent decision…</p>
-              )}
-            </div>
 
-            <div style={{ marginTop: 12 }}>
-              <div className="section-title" style={{ marginTop: 0 }}>
-                Live log
-              </div>
-              <div className="pill-row" style={{ marginBottom: 8 }}>
-                <button className="button" onClick={() => pollLog()} disabled={!analysisId}>
-                  Fetch latest log
-                </button>
-                {loadingLog && <span className="badge">Loading…</span>}
-                {analysisStatus?.log_available && <span className="badge">Log streaming</span>}
-                <span className="badge">Auto refresh every 2s</span>
-              </div>
-              <pre className="log-viewer">{logContent || 'Collecting log output…'}</pre>
-            </div>
-
-            {analysisResults && (
-              <>
-                {(statsRows.length > 0 || plots.length > 0) && (
-                  <div style={{ marginTop: 12 }}>
-                    <div className="section-title" style={{ marginTop: 0 }}>
-                      Results & Diagnostics
-                    </div>
-                    <div className="stats-visual-wrap">
-                      {statsRows.length > 0 && (
-                        <div className="table-like stats-table">
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>Test / Metric</th>
-                                <th>P-Value</th>
-                                <th>Effect size</th>
-                                <th>Callouts</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {statsRows.map((row) => (
-                                <tr key={row.name}>
-                                  <td>{row.name}</td>
-                                  <td>{typeof row.pValue === 'number' ? row.pValue.toFixed(4) : '—'}</td>
-                                  <td>
-                                    {typeof row.effectSize === 'number' ? (
-                                      <div className="pill-row" style={{ gap: 4 }}>
-                                        <span className="badge">d = {row.effectSize.toFixed(3)}</span>
-                                        <span className="badge">
-                                          {Math.abs(row.effectSize) >= 0.8
-                                            ? 'Large'
-                                            : Math.abs(row.effectSize) >= 0.5
-                                              ? 'Medium'
-                                              : Math.abs(row.effectSize) >= 0.2
-                                                ? 'Small'
-                                                : 'Trivial'}
-                                        </span>
-                                      </div>
-                                    ) : (
-                                      '—'
-                                    )}
-                                  </td>
-                                  <td>
-                                    {typeof row.pValue === 'number' ? (
-                                      <span className="tag">{row.pValue < 0.05 ? 'Significant' : 'Not significant'}</span>
-                                    ) : (
-                                      <span className="tag">Exploratory</span>
-                                    )}
-                                  </td>
+                    <div className="xl:col-span-3 grid grid-cols-1 gap-6 lg:grid-cols-2">
+                      <div className={`rounded-2xl border p-5 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                          <FileText size={16} className="text-indigo-400" />
+                          Statistical signals
+                        </div>
+                        {statsRows.length ? (
+                          <div className="overflow-x-auto rounded-xl border border-slate-800/60">
+                            <table className="w-full text-sm">
+                              <thead className="bg-slate-900/60 text-left text-xs uppercase text-slate-500">
+                                <tr>
+                                  <th className="px-4 py-3">Metric</th>
+                                  <th className="px-4 py-3">P-value</th>
+                                  <th className="px-4 py-3">Effect size</th>
+                                  <th className="px-4 py-3">Callout</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/70">
+                                {statsRows.map((row) => (
+                                  <tr key={row.name} className="hover:bg-white/5">
+                                    <td className="px-4 py-3 font-semibold text-slate-100">{row.name}</td>
+                                    <td className="px-4 py-3 font-mono text-xs">{typeof row.pValue === 'number' ? row.pValue.toFixed(4) : '—'}</td>
+                                    <td className="px-4 py-3">
+                                      {typeof row.effectSize === 'number' ? (
+                                        <span className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200">
+                                          {row.effectSize.toFixed(3)}
+                                        </span>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3 text-xs text-slate-400">
+                                      {typeof row.pValue === 'number' ? (row.pValue < 0.05 ? 'Significant' : 'Not significant') : 'Exploratory'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-slate-800/70 bg-slate-900/50 p-6 text-sm text-slate-400">
+                            Run an analysis to view probabilities and effect sizes.
+                          </div>
+                        )}
+                      </div>
 
-                      {plots.length > 0 && (
-                        <div className="plot-panel">
-                          <div className="plot-grid">
+                      <div className={`rounded-2xl border p-5 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                          <Activity size={16} className="text-cyan-400" />
+                          Plots
+                        </div>
+                        {plots.length ? (
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             {plots.map((plot, idx) => (
-                              <div className="plot-card" key={`${plot.title}-${idx}`}>
-                                <img src={`data:image/png;base64,${plot.image_base64}`} alt={plot.title} />
-                                <div className="plot-meta">
-                                  <div className="plot-title">{plot.title}</div>
-                                  {plot.description && <p className="muted">{plot.description}</p>}
-                                  <div className="pill-row" style={{ gap: 6 }}>
-                                    {plot.column && <span className="tag">Column: {plot.column}</span>}
-                                    {plot.type && <span className="tag">{plot.type}</span>}
-                                  </div>
+                              <div key={idx} className="overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/60">
+                                <div className="border-b border-slate-800/70 px-3 py-2 text-xs font-semibold text-slate-200">
+                                  {plot.title}
                                 </div>
+                                <img
+                                  src={`data:image/png;base64,${plot.image_base64}`}
+                                  alt={plot.title}
+                                  className="h-48 w-full object-cover"
+                                />
+                                {plot.description && <div className="px-3 py-2 text-xs text-slate-400">{plot.description}</div>}
                               </div>
                             ))}
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-slate-800/70 bg-slate-900/50 p-6 text-sm text-slate-400">
+                            Visuals will appear after the next run.
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
+              </div>
+            )}
 
-                {agentMessages.length > 0 && (
-                  <div style={{ marginTop: 16 }}>
-                    <div className="section-title" style={{ marginTop: 0 }}>
-                      Agent messages
-                    </div>
-                    <div className="trace-messages">
-                      {agentMessages.map((msg, idx) => (
-                        <div key={idx} className="message-block">
-                          <div className="tag">Message {idx + 1}</div>
-                          <p>{msg}</p>
-                        </div>
-                      ))}
-                    </div>
+            {activeTab === 'logs' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Logs</p>
+                    <h2 className="text-3xl font-bold">System stream</h2>
+                    <p className="text-slate-400">Raw execution output from the statistical agent.</p>
                   </div>
-                )}
-
-                <div className="pill-row" style={{ marginTop: 12 }}>
-                  <button className="button" onClick={loadLog} disabled={loadingLog}>
-                    {loadingLog ? 'Loading log…' : 'Force reload log'}
+                  <button onClick={loadLog} className="rounded-full border border-slate-800 px-3 py-1 text-xs font-semibold text-cyan-300">
+                    Fetch latest
                   </button>
-                  {logContent && <span className="badge">Log loaded</span>}
                 </div>
-
-                {analysisResults.results_detail && (
-                  <details style={{ marginTop: 12 }}>
-                    <summary>Raw result payload</summary>
-                    <pre className="card" style={{ overflow: 'auto', background: 'var(--bg-input)' }}>
-{JSON.stringify(analysisResults.results_detail, null, 2)}
-                    </pre>
-                  </details>
-                )}
-              </>
+                <pre className={`h-[70vh] overflow-auto rounded-2xl border p-6 text-xs leading-relaxed ${
+                  theme === 'dark'
+                    ? 'border-slate-800 bg-slate-950 text-emerald-200'
+                    : 'border-slate-200 bg-slate-900 text-slate-50'
+                }`}>
+                  {logContent || '// Waiting for execution logs...'}
+                </pre>
+              </div>
             )}
           </div>
-        </div>
-      )}
 
-      <footer className="footer">
-        <span>StatmateAI • React + Vite • FastAPI backend</span>
-      </footer>
+          {/* Right panel */}
+          {isRightPanelOpen && (
+            <aside
+              className={`hidden w-80 border-l p-5 backdrop-blur xl:block ${
+                theme === 'dark' ? 'border-slate-800 bg-slate-950/70' : 'border-slate-200 bg-white/70'
+              }`}
+            >
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.28em] text-slate-500">Agent decisions</p>
+                  <h4 className="text-lg font-bold">Live trace</h4>
+                </div>
+                <button
+                  onClick={() => setRightPanelOpen(false)}
+                  className={`rounded-full border p-2 text-slate-500 transition ${
+                    theme === 'dark' ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-100'
+                  }`}
+                  aria-label="Close panel"
+                >
+                  <LayoutDashboard size={16} />
+                </button>
+              </div>
+
+              <div className="relative space-y-4">
+                {trace.length ? (
+                  trace.map((step, idx) => {
+                    const isCurrent = idx === trace.length - 1;
+                    return (
+                      <div key={`${step.step}-${idx}`} className="relative pl-6">
+                        {idx !== trace.length - 1 && <div className="absolute left-[10px] top-5 h-full w-[1px] bg-slate-800" />}
+                        <div
+                          className={`absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-full border-2 ${
+                            isCurrent && streaming
+                              ? 'border-amber-400 bg-amber-500/10'
+                              : 'border-cyan-400 bg-cyan-500/10'
+                          }`}
+                        >
+                          <CheckCircle2 size={12} className={isCurrent && streaming ? 'text-amber-300 animate-pulse' : 'text-cyan-300'} />
+                        </div>
+                        <div className={`rounded-xl border p-3 ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-slate-100">{step.step}</span>
+                            <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                              {step.timestamp && <span>{formatTimestamp(step.timestamp)}</span>}
+                              {typeof step.p_value === 'number' && <span>p={step.p_value.toFixed(3)}</span>}
+                            </div>
+                          </div>
+                          {step.detail && <p className="mt-1 text-xs text-slate-400">{step.detail}</p>}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-800/70 bg-slate-900/60 p-6 text-center text-sm text-slate-500">
+                    Waiting for live trace…
+                  </div>
+                )}
+              </div>
+            </aside>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
+
+const NavItem = ({ icon, label, active, isOpen, onClick, theme }: NavItemProps) => (
+  <button
+    onClick={onClick}
+    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+      active
+        ? theme === 'dark'
+          ? 'bg-cyan-500/10 text-cyan-300'
+          : 'bg-cyan-50 text-cyan-600'
+        : theme === 'dark'
+          ? 'text-slate-400 hover:bg-slate-800 hover:text-white'
+          : 'text-slate-500 hover:bg-slate-100'
+    }`}
+  >
+    <span className={active ? 'scale-110' : ''}>{icon}</span>
+    {isOpen && <span>{label}</span>}
+    {active && isOpen && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]" />}
+  </button>
+);
 
 export default App;

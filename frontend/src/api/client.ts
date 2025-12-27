@@ -177,7 +177,19 @@ export class ApiClient {
   }
 
   async analysisStream(id: string, signal?: AbortSignal): Promise<Response> {
-    return fetch(`${this.baseUrl}/analysis/${id}/stream`, { headers: this.headers(false), signal });
+    const headers = { ...this.headers(false), Accept: 'text/event-stream' };
+    return fetch(`${this.baseUrl}/analysis/${id}/stream`, { headers, signal });
+  }
+
+  async analyses(params: { dataset_id?: string; skip?: number; limit?: number } = {}): Promise<AnalysisResult[]> {
+    const query = new URLSearchParams();
+    if (params.dataset_id) query.set('dataset_id', params.dataset_id);
+    if (typeof params.skip === 'number') query.set('skip', String(params.skip));
+    if (typeof params.limit === 'number') query.set('limit', String(params.limit));
+    const qs = query.toString();
+    const res = await fetch(`${this.baseUrl}/analysis/${qs ? `?${qs}` : ''}`, { headers: this.headers(false) });
+    if (!res.ok) throw await this.error(res);
+    return res.json();
   }
 
   private async error(res: Response): Promise<Error> {
