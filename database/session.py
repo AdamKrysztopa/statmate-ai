@@ -54,6 +54,14 @@ def _ensure_analysis_columns() -> None:
         statements.append('ALTER TABLE analyses ADD COLUMN decision_steps JSON')
     if 'intermediate_log' not in columns:
         statements.append('ALTER TABLE analyses ADD COLUMN intermediate_log TEXT')
+    if 'assumption_log' not in columns:
+        statements.append('ALTER TABLE analyses ADD COLUMN assumption_log JSON')
+    if 'result_path' not in columns:
+        statements.append('ALTER TABLE analyses ADD COLUMN result_path VARCHAR(500)')
+    if 'log_path' not in columns:
+        statements.append('ALTER TABLE analyses ADD COLUMN log_path VARCHAR(500)')
+    if 'probabilities' not in columns:
+        statements.append('ALTER TABLE analyses ADD COLUMN probabilities JSON')
 
     if not statements:
         return

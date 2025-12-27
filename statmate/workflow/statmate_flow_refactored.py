@@ -106,26 +106,41 @@ class StatMateWorkflow:
 
         # Run workflow
         try:
-            final_state_result = None
             stream_config: dict[str, Any] = {}
             if thread_id:
                 stream_config['configurable'] = {'thread_id': thread_id}
 
-            for state_update in self.graph.stream(initial_state, config=stream_config or None):
-                # The final state is the value of the last dictionary emitted
-                final_state_result = state_update
-                if on_update:
-                    try:
-                        on_update(state_update)
-                    except Exception as callback_error:
-                        logger.warning('Streaming callback failed: %s', callback_error)
+            def _run_graph(state: WorkflowState) -> WorkflowState:
+                """Execute the compiled graph and return the final state."""
+                final_state_result = None
+                for state_update in self.graph.stream(state, config=stream_config or None):
+                    final_state_result = state_update
+                    if on_update:
+                        try:
+                            on_update(state_update)
+                        except Exception as callback_error:
+                            logger.warning('Streaming callback failed: %s', callback_error)
 
-            if final_state_result is None or not isinstance(final_state_result, dict):
-                logger.warning('Workflow did not produce a final state dictionary. Returning initial state.')
-                return initial_state
+                if final_state_result is None or not isinstance(final_state_result, dict):
+                    logger.warning('Workflow did not produce a final state dictionary. Returning initial state.')
+                    return state
 
-            # The actual final state is the value associated with the last node
-            final_state = list(final_state_result.values())[0]
+                return list(final_state_result.values())[0]
+
+            try:
+                final_state = _run_graph(initial_state)
+            except Exception as exc:
+                # LangGraph's SqliteSaver uses msgpack, which cannot serialize WorkflowState/DataFrames.
+                # If checkpoint serialization fails, fall back to an in-memory graph without a checkpointer.
+                message = str(exc).lower()
+                if 'msgpack' in message and 'serializable' in message:
+                    logger.warning('Checkpoint serialization failed (%s); retrying without a checkpointer', exc)
+                    self.checkpointer = None
+                    self.graph = build_workflow_graph(checkpointer=None)
+                    fresh_state = initial_state.model_copy(deep=True)
+                    final_state = _run_graph(fresh_state)
+                else:
+                    raise
 
             logger.info('Workflow execution completed successfully')
             return final_state

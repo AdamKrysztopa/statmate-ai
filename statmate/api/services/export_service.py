@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import csv
 import io
 import json
@@ -20,6 +21,28 @@ class ExportService:
     @staticmethod
     def _html_safe(text: str | None) -> str:
         return (text or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+    @staticmethod
+    def _latex_escape(text: str | None) -> str:
+        """Escape LaTeX-reserved characters to avoid compilation failures."""
+        if text is None:
+            return ''
+        replacements = {
+            '\\': r'\textbackslash{}',
+            '&': r'\&',
+            '%': r'\%',
+            '$': r'\$',
+            '#': r'\#',
+            '_': r'\_',
+            '{': r'\{',
+            '}': r'\}',
+            '~': r'\textasciitilde{}',
+            '^': r'\textasciicircum{}',
+        }
+        escaped = str(text)
+        for target, replacement in replacements.items():
+            escaped = escaped.replace(target, replacement)
+        return escaped
 
     @classmethod
     def render_html_report(cls, analysis: dict[str, Any]) -> str:
@@ -65,15 +88,17 @@ class ExportService:
         <html>
           <head>
             <style>
+              @page {{ size: A4; margin: 24px; }}
               body {{ font-family: Arial, sans-serif; color: #0f172a; padding: 24px; }}
               h1 {{ margin-bottom: 6px; }}
               .muted {{ color: #475569; }}
+              img {{ max-width: 100%; height: auto; }}
               table {{ width: 100%; border-collapse: collapse; margin: 12px 0; }}
               th, td {{ border: 1px solid #e2e8f0; padding: 8px; text-align: left; }}
               th {{ background: #f8fafc; }}
               .plot-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }}
-              .plot {{ border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }}
-              .plot img {{ width: 100%; display: block; }}
+              .plot {{ border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; page-break-inside: avoid; break-inside: avoid; }}
+              .plot img {{ width: 100%; height: auto; display: block; page-break-inside: avoid; break-inside: avoid; }}
               .plot-title {{ font-weight: 700; padding: 8px; background: #f8fafc; }}
               .plot-meta {{ padding: 8px; color: #475569; }}
             </style>
@@ -119,23 +144,57 @@ class ExportService:
     @classmethod
     def render_latex_report(cls, analysis: dict[str, Any]) -> bytes:
         """Render a minimal LaTeX report for offline use."""
-        summary = cls._html_safe(analysis.get('summary') or analysis.get('results_detail', {}).get('summary'))
-        body = f"""
-\\documentclass{{article}}
-\\usepackage[margin=1in]{{geometry}}
-\\usepackage{{longtable}}
-\\begin{document}
-\\section*{{StatMate Analysis Report}}
-\\subsection*{{Summary}}
-{summary or 'No summary available.'}
-\\subsection*{{Probabilities}}
-"""
+        summary = cls._latex_escape(analysis.get('summary') or analysis.get('results_detail', {}).get('summary'))
+        dataset_name = cls._latex_escape(analysis.get('dataset_name') or analysis.get('dataset_id') or 'Dataset')
+        generated_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
         probabilities = analysis.get('probabilities') or {}
+        effect_sizes = analysis.get('effect_sizes') or analysis.get('results_detail', {}).get('effect_sizes') or {}
+        plots = analysis.get('plots') or analysis.get('results_detail', {}).get('plots') or []
+
+        body = r"""\documentclass{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{float}
+\begin{document}
+\section*{StatMate Analysis Report}
+"""
+        body += f"\\textbf{{Dataset:}} {dataset_name}\\\\\n"
+        body += f"\\textbf{{Generated:}} {generated_at}\\\\\n"
+        body += "\\subsection*{Summary}\n"
+        body += f"{summary or 'No summary available.'}\n"
+
         if probabilities:
-            body += "\\begin{longtable}{|l|l|}\\hline\nTest & p-value\\\\ \\hline\n"
+            body += "\\subsection*{Statistical tests}\n"
+            body += "\\begin{longtable}{p{0.35\\linewidth}p{0.25\\linewidth}p{0.25\\linewidth}}\n"
+            body += "\\toprule\nTest & p-value & Callout \\\\\n\\midrule\n"
             for name, p_val in probabilities.items():
-                body += f"{name} & {p_val:.4f}\\\\ \\hline\n"
-            body += "\\end{longtable}\n"
+                escaped_name = cls._latex_escape(name)
+                callout = 'Significant' if p_val < 0.05 else 'Not significant'
+                body += f"{escaped_name} & {p_val:.4f} & {callout} \\\\\n"
+            body += "\\bottomrule\n\\end{longtable}\n"
+
+        if effect_sizes:
+            body += "\\subsection*{Effect sizes}\n"
+            body += "\\begin{longtable}{p{0.5\\linewidth}p{0.4\\linewidth}}\n"
+            body += "\\toprule\nMetric & Value \\\\\n\\midrule\n"
+            for name, val in effect_sizes.items():
+                escaped_name = cls._latex_escape(name)
+                body += f"{escaped_name} & {val:.3f} \\\\\n"
+            body += "\\bottomrule\n\\end{longtable}\n"
+
+        if plots:
+            body += "\\subsection*{Plots}\n"
+            for plot in plots:
+                title = cls._latex_escape(plot.get('title') or 'Plot')
+                description = cls._latex_escape(plot.get('description') or '')
+                body += "\\begin{figure}[H]\n\\centering\n"
+                body += f"\\fbox{{\\parbox{{0.9\\linewidth}}{{\\centering {title}\\\\[4pt]Images are included in the PDF/DOCX exports.}}}}\n"
+                if description:
+                    body += f"\\caption*{{{description}}}\n"
+                body += "\\end{figure}\n"
+
         body += "\\end{document}"
         return body.encode('utf-8')
 
@@ -144,6 +203,7 @@ class ExportService:
         """Render a small DOCX using python-docx."""
         try:
             from docx import Document
+            from docx.shared import Inches
         except Exception as exc:  # pragma: no cover - optional dependency
             raise RuntimeError('python-docx is required for DOCX export') from exc
 
@@ -181,6 +241,23 @@ class ExportService:
                 row_cells = table.add_row().cells
                 row_cells[0].text = name
                 row_cells[1].text = f'{val:.3f}'
+
+        plots = analysis.get('plots') or analysis.get('results_detail', {}).get('plots') or []
+        if plots:
+            doc.add_heading('Plots', level=1)
+            for plot in plots:
+                title = plot.get('title') or 'Plot'
+                description = plot.get('description') or ''
+                doc.add_heading(title, level=2)
+                image_b64 = plot.get('image_base64')
+                if image_b64:
+                    try:
+                        image_data = base64.b64decode(image_b64)
+                        doc.add_picture(io.BytesIO(image_data), width=Inches(6))
+                    except Exception:
+                        doc.add_paragraph('Image could not be rendered.')
+                if description:
+                    doc.add_paragraph(description)
 
         stream = io.BytesIO()
         doc.save(stream)
