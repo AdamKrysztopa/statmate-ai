@@ -163,6 +163,8 @@ class Analysis(Base):
     error_message = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
     probabilities = Column(JSON, nullable=True)  # {"test_name": p_value, ...}
+    decision_steps = Column(JSON, nullable=True)  # [{step, detail, data, p_value, timestamp}]
+    intermediate_log = Column(Text, nullable=True)  # Rolling log content while streaming
 
     # Relationships
     dataset = relationship('Dataset', back_populates='analyses')
@@ -191,6 +193,8 @@ class Analysis(Base):
             'error_message': self.error_message,
             'summary': self.summary,
             'probabilities': self.probabilities,
+            'decision_steps': self.decision_steps,
+            'intermediate_log': self.intermediate_log,
             'scheduled_task_id': self.scheduled_task_id,
             'user_id': self.user_id,
         }

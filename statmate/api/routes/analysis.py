@@ -1,6 +1,10 @@
 """Analysis execution API routes."""
 
+import asyncio
+import json
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from config.settings import settings
@@ -13,7 +17,7 @@ from statmate.api.models.analysis import (
     AnalysisStatusResponse,
 )
 from statmate.api.services.analysis_service import AnalysisService
-from database.models import User
+from database.models import AnalysisStatus, User
 
 router = APIRouter(prefix='/analysis', tags=['analysis'])
 
@@ -142,7 +146,60 @@ async def get_analysis_status(
         message=analysis.summary or analysis.error_message,
         log_available=bool(analysis.log_path),
         execution_trace=execution_trace,
+        decision_steps=analysis.decision_steps,
+        intermediate_log=analysis.intermediate_log,
     )
+
+
+@router.get('/{analysis_id}/stream')
+async def stream_analysis_events(
+    analysis_id: str,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> StreamingResponse:
+    """Server-sent events for live analysis updates."""
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    analysis = AnalysisService.get_analysis(db, analysis_id, user_id=current_user.id if current_user else None)
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Analysis not found')
+
+    async def event_generator():
+        last_step_idx = 0
+        last_log_len = 0
+
+        while True:
+            db.refresh(analysis)
+
+            steps = analysis.decision_steps or []
+            while last_step_idx < len(steps):
+                payload = dict(steps[last_step_idx])
+                payload.setdefault('analysis_id', analysis.id)
+                yield f"event: step\ndata: {json.dumps(payload, default=str)}\n\n"
+                last_step_idx += 1
+
+            log_text = analysis.intermediate_log or ''
+            if len(log_text) > last_log_len:
+                chunk = log_text[last_log_len:]
+                yield f"event: log\ndata: {json.dumps({'analysis_id': analysis.id, 'chunk': chunk})}\n\n"
+                last_log_len = len(log_text)
+
+            status_value = analysis.status.value if hasattr(analysis.status, 'value') else str(analysis.status)
+            if analysis.status in (AnalysisStatus.COMPLETED, AnalysisStatus.FAILED, AnalysisStatus.CANCELLED):
+                yield f"event: done\ndata: {json.dumps({'analysis_id': analysis.id, 'status': status_value})}\n\n"
+                break
+
+            await asyncio.sleep(1.0)
+
+        # Final flush of any remaining log content
+        db.refresh(analysis)
+        log_text = analysis.intermediate_log or ''
+        if len(log_text) > last_log_len:
+            chunk = log_text[last_log_len:]
+            yield f"event: log\ndata: {json.dumps({'analysis_id': analysis.id, 'chunk': chunk})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type='text/event-stream')
 
 
 @router.get('/{analysis_id}/results', response_model=AnalysisResultResponse)

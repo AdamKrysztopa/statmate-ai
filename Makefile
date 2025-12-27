@@ -162,8 +162,8 @@ node-install: ## Install local Node.js (no sudo) to ~/.local
 	@mv /tmp/node-v$(NODE_VERSION)-linux-$(NODE_DIST) $(NODE_HOME)
 	@echo 'export PATH=$(NODE_BIN):$$PATH' >> $(HOME)/.profile
 	@echo '$(GREEN)✓ Node installed to $(NODE_HOME) (add to PATH if not already)$(RESET)'
-	@$(NODE_BIN)/node -v
-	@$(NODE_BIN)/npm -v
+	@PATH=$(NODE_BIN):$$PATH $(NODE_BIN)/node -v
+	@PATH=$(NODE_BIN):$$PATH $(NODE_BIN)/npm -v
 
 frontend-install: ## Install frontend deps (npm)
 	@echo '$(GREEN)Installing frontend dependencies...$(RESET)'

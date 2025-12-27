@@ -10,12 +10,21 @@ export type DatasetPreview = {
 };
 export type AnalysisStatus = {
   id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   message?: string;
   log_available?: boolean;
+  decision_steps?: TraceStep[];
+  intermediate_log?: string;
   execution_trace?: TraceStep[];
 };
-export type TraceStep = { step: string; detail?: string; data?: Record<string, unknown>; p_value?: number; timestamp?: string };
+export type TraceStep = {
+  step: string;
+  detail?: string;
+  data?: Record<string, unknown>;
+  p_value?: number;
+  timestamp?: string;
+  node?: string;
+};
 export type PlotInfo = {
   title: string;
   description?: string;
@@ -42,6 +51,8 @@ export type AnalysisResult = {
   probabilities?: Record<string, number>;
   results_detail?: ResultsDetail;
   execution_trace?: TraceStep[];
+  decision_steps?: TraceStep[];
+  intermediate_log?: string;
   plots?: PlotInfo[];
   log_available?: boolean;
   model_name?: string;
@@ -155,6 +166,10 @@ export class ApiClient {
     const res = await fetch(`${this.baseUrl}/analysis/${id}/log`, { headers: this.headers(false) });
     if (!res.ok) throw await this.error(res);
     return res.json();
+  }
+
+  async analysisStream(id: string, signal?: AbortSignal): Promise<Response> {
+    return fetch(`${this.baseUrl}/analysis/${id}/stream`, { headers: this.headers(false), signal });
   }
 
   private async error(res: Response): Promise<Error> {

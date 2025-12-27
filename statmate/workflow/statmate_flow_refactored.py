@@ -6,6 +6,7 @@ statmate_flow.py with a cleaner API using the refactored modules.
 
 import os
 import sys
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -47,6 +48,7 @@ class StatMateWorkflow:
         do_association: bool = False,
         model_name: str | None = None,
         provider: str | None = None,
+        on_update: Callable[[dict[str, Any]], None] | None = None,
     ) -> WorkflowState:
         """Run the statistical test workflow on the provided data.
 
@@ -89,6 +91,11 @@ class StatMateWorkflow:
             for state_update in self.graph.stream(initial_state):
                 # The final state is the value of the last dictionary emitted
                 final_state_result = state_update
+                if on_update:
+                    try:
+                        on_update(state_update)
+                    except Exception as callback_error:
+                        logger.warning('Streaming callback failed: %s', callback_error)
 
             if final_state_result is None or not isinstance(final_state_result, dict):
                 logger.warning('Workflow did not produce a final state dictionary. Returning initial state.')

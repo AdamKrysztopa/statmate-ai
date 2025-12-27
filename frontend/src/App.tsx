@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiClient, AnalysisResult, AnalysisStatus, DatasetPreview, Dataset, TraceStep, User } from './api/client';
 import { useTheme } from './hooks/useTheme';
 
@@ -50,6 +50,10 @@ function App() {
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult | undefined>();
   const [logContent, setLogContent] = useState<string>('');
   const [loadingLog, setLoadingLog] = useState(false);
+  const [streamSteps, setStreamSteps] = useState<TraceStep[]>([]);
+  const [streaming, setStreaming] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerDismissed, setViewerDismissed] = useState(false);
   const [lastTraceUpdate, setLastTraceUpdate] = useState<string | null>(null);
@@ -160,6 +164,10 @@ function App() {
         model_name: modelName || undefined,
         provider: provider || undefined,
       });
+      streamAbortRef.current?.abort();
+      setStreamSteps([]);
+      setStreamError(null);
+      setStreaming(true);
       setAnalysisId(id);
       setAnalysisStatus({ id, status: 'pending' });
       setAnalysisResults(undefined);
@@ -177,9 +185,27 @@ function App() {
     try {
       const status = await api.analysisStatus(analysisId);
       setAnalysisStatus(status);
+      if (status.decision_steps?.length) {
+        setStreamSteps((prev) => {
+          const seen = new Set(prev.map((s) => `${s.timestamp || ''}-${s.step}`));
+          const merged = [...prev];
+          status.decision_steps?.forEach((step) => {
+            const key = `${step.timestamp || ''}-${step.step}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              merged.push(step);
+            }
+          });
+          return merged;
+        });
+      }
+      if (status.intermediate_log && status.intermediate_log.length > logContent.length) {
+        setLogContent(status.intermediate_log);
+      }
       if (status.status === 'completed') {
         const results = await api.analysisResults(analysisId);
         setAnalysisResults(results);
+        setStreaming(false);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -247,7 +273,87 @@ function App() {
     setLastTraceUpdate(null);
   }, [analysisId]);
 
+  useEffect(() => {
+    if (!analysisId) return undefined;
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    setStreamError(null);
+    setStreaming(true);
+    setStreamSteps([]);
+    setLogContent('');
+
+    const connect = async () => {
+      try {
+        const res = await api.analysisStream(analysisId, controller.signal);
+        if (!res.body) {
+          setStreaming(false);
+          setStreamError('Streaming not supported by the server response');
+          return;
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          let idx = buffer.indexOf('\n\n');
+          while (idx !== -1) {
+            const raw = buffer.slice(0, idx).trim();
+            buffer = buffer.slice(idx + 2);
+            if (!raw) {
+              idx = buffer.indexOf('\n\n');
+              continue;
+            }
+
+            const lines = raw.split('\n');
+            const eventLine = lines.find((line) => line.startsWith('event:'));
+            const dataLine = lines.find((line) => line.startsWith('data:'));
+            const eventName = eventLine ? eventLine.replace('event:', '').trim() : 'message';
+            const dataText = dataLine ? dataLine.replace('data:', '').trim() : '';
+
+            let payload: any = {};
+            try {
+              payload = dataText ? JSON.parse(dataText) : {};
+            } catch {
+              payload = { raw: dataText };
+            }
+
+            if (eventName === 'step') {
+              setStreamSteps((prev) => {
+                const seen = new Set(prev.map((s) => `${s.timestamp || ''}-${s.step}`));
+                const key = `${payload.timestamp || ''}-${payload.step}`;
+                if (seen.has(key)) return prev;
+                return [...prev, payload as TraceStep];
+              });
+              setLastTraceUpdate(new Date().toLocaleTimeString());
+            } else if (eventName === 'log') {
+              setLogContent((prev) => `${prev}${payload.chunk || ''}`);
+            } else if (eventName === 'done') {
+              setStreaming(false);
+              refreshStatus();
+            }
+
+            idx = buffer.indexOf('\n\n');
+          }
+        }
+      } catch (e) {
+        if (!controller.signal.aborted) {
+          setStreamError((e as Error).message);
+          setStreaming(false);
+        }
+      }
+    };
+
+    connect();
+    return () => controller.abort();
+  }, [analysisId, api]);
+
   const resultTrace: TraceStep[] = useMemo(() => {
+    if (analysisResults?.decision_steps?.length) return analysisResults.decision_steps;
     if (analysisResults?.execution_trace?.length) return analysisResults.execution_trace;
     if (analysisResults?.results_detail?.execution_trace?.length) return analysisResults.results_detail.execution_trace;
     if (analysisResults?.results_detail?.messages?.length) {
@@ -272,7 +378,7 @@ function App() {
     });
   }, [logContent]);
 
-  const statusTrace = analysisStatus?.execution_trace || [];
+  const statusTrace = analysisStatus?.decision_steps || analysisStatus?.execution_trace || [];
 
   const liveTrace: TraceStep[] = useMemo(() => {
     const merged: TraceStep[] = [];
@@ -280,7 +386,7 @@ function App() {
 
     const addSteps = (steps: TraceStep[]) => {
       steps.forEach((item, idx) => {
-        const key = `${item.step}-${item.detail}`;
+        const key = `${item.timestamp || ''}-${item.step}-${item.detail}`;
         if (seen.has(key)) return;
         seen.add(key);
         merged.push({
@@ -291,12 +397,13 @@ function App() {
       });
     };
 
+    addSteps(streamSteps);
     addSteps(statusTrace);
     addSteps(logTrace);
     addSteps(resultTrace);
 
     return merged;
-  }, [statusTrace, logTrace, resultTrace]);
+  }, [streamSteps, statusTrace, logTrace, resultTrace]);
 
   const plots = useMemo(() => {
     if (!analysisResults) return [];
@@ -635,6 +742,8 @@ function App() {
               <div className="pill-row" style={{ marginBottom: 8 }}>
                 <span className="badge">Live trace</span>
                 {analysisStatus?.status === 'running' && <span className="badge">Status: running</span>}
+                {streaming && <span className="badge">Streaming…</span>}
+                {streamError && <span className="badge">Stream error: {streamError}</span>}
                 {lastTraceUpdate && <span className="badge">Updated: {lastTraceUpdate}</span>}
               </div>
               {liveTrace.length > 0 ? (

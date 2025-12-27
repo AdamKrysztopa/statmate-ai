@@ -36,6 +36,12 @@ class AnalysisResponse(BaseModel):
     summary: str | None = Field(description='Brief summary of results')
     error_message: str | None = Field(description='Error details if failed')
     probabilities: dict[str, float] | None = Field(description='Test p-values')
+    decision_steps: list[dict[str, Any]] | None = Field(
+        default=None, description='Intermediate decision steps captured while streaming'
+    )
+    intermediate_log: str | None = Field(
+        default=None, description='Rolling workflow log captured during streaming execution'
+    )
     scheduled_task_id: str | None = Field(description='Related scheduled task if any')
 
     class Config:
@@ -52,6 +58,12 @@ class AnalysisStatusResponse(BaseModel):
     progress: float | None = Field(default=None, description='Progress percentage (0-100)', ge=0, le=100)
     message: str | None = Field(default=None, description='Status message')
     log_available: bool | None = Field(default=None, description='Whether a live execution log is available')
+    decision_steps: list[dict[str, Any]] | None = Field(
+        default=None, description='Ordered list of streamed node/agent decisions'
+    )
+    intermediate_log: str | None = Field(
+        default=None, description='Rolling log output persisted during streaming'
+    )
     execution_trace: list[dict[str, Any]] | None = Field(
         default=None, description='Live step-by-step trace (may be partial while running)'
     )
@@ -75,6 +87,12 @@ class AnalysisResultResponse(BaseModel):
     results_detail: dict[str, Any] | None = Field(description='Detailed results and statistical tree')
     execution_trace: list[dict[str, Any]] | None = Field(
         default=None, description='Ordered list of agent/node outputs for UI display'
+    )
+    decision_steps: list[dict[str, Any]] | None = Field(
+        default=None, description='Intermediate decisions collected while streaming'
+    )
+    intermediate_log: str | None = Field(
+        default=None, description='Rolling workflow log captured during streaming execution'
     )
     plots: list[dict[str, Any]] | None = Field(default=None, description='Base64-encoded diagnostic plots')
     log_available: bool = Field(description='Whether execution log is available')

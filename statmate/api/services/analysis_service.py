@@ -62,6 +62,7 @@ class AnalysisService:
         """
         # Ownership check when applicable
         from config.settings import settings
+
         ds = DatasetService.get_dataset(db, dataset_id, user_id=user_id if settings.AUTH_REQUIRED else None)
         if settings.AUTH_REQUIRED and not ds:
             raise ValueError('Dataset not found or not owned by user')
@@ -160,6 +161,8 @@ class AnalysisService:
 
         analysis.status = AnalysisStatus.RUNNING
         analysis.start_time = datetime.utcnow()
+        analysis.decision_steps = []
+        analysis.intermediate_log = ''
         db.commit()
 
         log_stream = StringIO()
@@ -183,10 +186,64 @@ class AnalysisService:
         analysis.log_path = str(log_file)
         db.commit()
 
+        seen_step_ids: set[str] = set()
+
+        def _persist_decision_steps(new_steps: list[dict[str, Any]], *, node: str | None = None) -> None:
+            """Append streamed decision steps and flush to the database."""
+            if not new_steps:
+                return
+            stored = analysis.decision_steps or []
+            for step in new_steps:
+                if not isinstance(step, dict):
+                    continue
+                entry = dict(step)
+                if node and 'node' not in entry:
+                    entry['node'] = node
+                step_id = str(entry.get('timestamp') or entry.get('step') or f'{node}-{len(stored)}')
+                if step_id in seen_step_ids:
+                    continue
+                seen_step_ids.add(step_id)
+                stored.append(entry)
+            analysis.decision_steps = stored
+
+        def _persist_intermediate_log() -> None:
+            """Write the rolling in-memory log to the analysis row."""
+            analysis.intermediate_log = log_stream.getvalue()
+
+        def _on_state_update(state_update: Any) -> None:
+            """Handle LangGraph stream updates as they arrive."""
+            if not isinstance(state_update, dict) or not state_update:
+                return
+            node, state_val = next(iter(state_update.items()))
+            trace_entries = _state_value(state_val, 'execution_trace', []) or []
+            if isinstance(trace_entries, list):
+                _persist_decision_steps(trace_entries, node=str(node))
+            _persist_intermediate_log()
+            db.commit()
+            try:
+                file_handler.flush()
+                log_handler.flush()
+            except Exception:
+                pass
+
+        def _record_system_step(step: str, detail: str) -> None:
+            """Persist non-agent steps (fallbacks, retries) for clients."""
+            payload = {'step': step, 'detail': detail, 'timestamp': datetime.utcnow().isoformat()}
+            _persist_decision_steps([payload])
+            _persist_intermediate_log()
+            db.commit()
+
         try:
             df = DatasetService.load_dataset_dataframe(db, analysis.dataset_id, user_id=user_id or analysis.user_id)
             if df is None:
                 raise ValueError(f'Dataset not found for analysis: {analysis.dataset_id}')
+
+            logger.info('=' * 80)
+            logger.info('🚀 STARTING ANALYSIS: %s', analysis_id)
+            logger.info('   Model: %s', analysis.model_name or 'default')
+            logger.info('   Dataset ID: %s', analysis.dataset_id)
+            logger.info('   Rows: %d, Columns: %d', len(df), len(df.columns))
+            logger.info('=' * 80)
 
             fallback_attempted = False
 
@@ -199,6 +256,7 @@ class AnalysisService:
                     do_association=analysis.configuration.get('do_association', False),
                     model_name=model_override or analysis.model_name,
                     provider=analysis.provider,
+                    on_update=_on_state_update,
                 )
 
             try:
@@ -214,7 +272,9 @@ class AnalysisService:
                 ):
                     fallback_attempted = True
                     fallback_model = settings.OPENAI_FALLBACK_MODEL
-                    log_stream.write(f'\nRate limit hit for {analysis.model_name}, retrying with fallback {fallback_model}\n')
+                    log_stream.write(
+                        f'\nRate limit hit for {analysis.model_name}, retrying with fallback {fallback_model}\n'
+                    )
                     logger.warning(
                         'Rate limit for %s, retrying analysis %s with fallback model %s',
                         analysis.model_name,
@@ -224,20 +284,20 @@ class AnalysisService:
                     # Switch to fallback model for this run and future retrievals
                     analysis.model_name = fallback_model
                     db.commit()
+                    _record_system_step(
+                        'Model fallback',
+                        f'Rate limit detected for {analysis.model_name or "default"}, retrying with {fallback_model}',
+                    )
                     result_state = _run_workflow(model_override=fallback_model)
                 else:
                     raise
 
-            logger.info('=' * 80)
-            logger.info('🚀 STARTING ANALYSIS: %s', analysis_id)
-            logger.info('   Model: %s', analysis.model_name or 'default')
-            logger.info('   Dataset ID: %s', analysis.dataset_id)
-            logger.info('   Rows: %d, Columns: %d', len(df), len(df.columns))
-            logger.info('=' * 80)
-
             messages = _state_value(result_state, 'results', [])
             probabilities = _state_value(result_state, 'probabilities', {})
             execution_trace = _state_value(result_state, 'execution_trace', [])
+            if not analysis.decision_steps and execution_trace:
+                analysis.decision_steps = execution_trace
+            _persist_intermediate_log()
             summary = messages[-1].content if messages else 'Analysis completed without a summary.'
             full_output = '\n\n'.join(msg.content for msg in messages)
             plots = VisualizationService.generate_visualizations(
@@ -255,6 +315,8 @@ class AnalysisService:
                 'probabilities': probabilities,
                 'summary': summary,
                 'execution_trace': execution_trace,
+                'decision_steps': analysis.decision_steps,
+                'intermediate_log': analysis.intermediate_log,
                 'plots': plots,
                 'timestamp': datetime.utcnow().isoformat(),
             }
@@ -280,6 +342,7 @@ class AnalysisService:
             raise
         finally:
             log_content = log_stream.getvalue()
+            analysis.intermediate_log = log_content
             analysis.log_path = str(StorageService.save_log(analysis_id, log_content))
             db.commit()
             workflow_logger.removeHandler(log_handler)
@@ -328,6 +391,8 @@ class AnalysisService:
             'probabilities': analysis.probabilities,
             'results_detail': results_data,
             'execution_trace': results_data.get('execution_trace'),
+            'decision_steps': analysis.decision_steps or results_data.get('decision_steps'),
+            'intermediate_log': analysis.intermediate_log,
             'plots': results_data.get('plots'),
             'log_available': bool(analysis.log_path),
         }

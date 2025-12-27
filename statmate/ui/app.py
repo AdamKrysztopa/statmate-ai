@@ -424,9 +424,25 @@ with tab3:
             st.subheader(f'{status_emoji.get(status["status"], "❓")} Status: {status["status"].upper()}')
 
             if status['status'] == 'running':
-                st.info('🔄 Analysis is running... Refresh to check status.')
-                if st.button('🔄 Refresh Status'):
-                    st.rerun()
+                st.info('🔄 Analysis is running. This view auto-refreshes every ~3s.')
+
+                live_steps = status.get('decision_steps') or []
+                if live_steps:
+                    st.subheader('Live decisions')
+                    for step in live_steps:
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.markdown(f"- **{step.get('step', 'Step')}**: {step.get('detail') or 'In progress'}")
+                        with col2:
+                            if step.get('p_value') is not None:
+                                st.caption(f"p = {step['p_value']:.4f}")
+                elif status.get('intermediate_log'):
+                    st.text_area('Live log', status.get('intermediate_log') or '', height=180)
+                else:
+                    st.write('Waiting for the first agent decision…')
+
+                time.sleep(3)
+                st.experimental_rerun()
 
             elif status['status'] == 'completed':
                 # Get results
@@ -472,6 +488,15 @@ with tab3:
                     if results.get('results_detail'):
                         with st.expander('📋 Detailed Results'):
                             st.json(results['results_detail'])
+
+                    if results.get('decision_steps'):
+                        st.subheader('🛤️ Decision path')
+                        for step in results['decision_steps']:
+                            st.markdown(f"- **{step.get('step', 'Step')}** — {step.get('detail') or ''}")
+
+                    if results.get('intermediate_log'):
+                        with st.expander('📜 Live log'):
+                            st.text_area('Log', results.get('intermediate_log') or '', height=220)
 
                     # Log
                     if results.get('log_available'):
