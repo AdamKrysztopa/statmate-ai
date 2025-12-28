@@ -416,10 +416,7 @@ def validate_statistical_design(
     numeric_dep_values = [
         col
         for col in dep_values
-        if col in frame.columns
-        and pd.api.types.is_numeric_dtype(frame[col])
-        and col != group_var
-        and col != subject_id
+        if col in frame.columns and pd.api.types.is_numeric_dtype(frame[col]) and col != group_var and col != subject_id
     ]
 
     def _is_id_like(col: str) -> bool:
@@ -451,8 +448,7 @@ def validate_statistical_design(
         temporal_like = [
             col
             for col in frame.columns
-            if any(tok in str(col).lower() for tok in paired_keywords)
-            and pd.api.types.is_numeric_dtype(frame[col])
+            if any(tok in str(col).lower() for tok in paired_keywords) and pd.api.types.is_numeric_dtype(frame[col])
         ]
         if len(temporal_like) >= 2:
             return StatisticalDesign(
@@ -461,7 +457,7 @@ def validate_statistical_design(
                 grouping_variable=None,
                 subject_id_column=subject_id,
                 dependent_variable=', '.join(temporal_like[:2]),
-                rationale=f"Found temporal column pair {temporal_like[:2]}; treating layout as paired.",
+                rationale=f'Found temporal column pair {temporal_like[:2]}; treating layout as paired.',
                 suggested_groups=[],
                 keyword_cues=keyword_cues,
             )
