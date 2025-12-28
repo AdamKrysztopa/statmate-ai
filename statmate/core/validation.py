@@ -537,6 +537,23 @@ def validate_statistical_design(
             keyword_cues=keyword_cues,
         )
 
+    # 3b. Pre/post style grouping labels imply repeated measures even without subject IDs.
+    temporal_group_tokens = ('before', 'after', 'pre', 'post', 'baseline', 'followup', 'follow-up')
+    if groups:
+        temporal_hits = [g for g in groups if any(tok in g.lower() for tok in temporal_group_tokens)]
+        if len(set(temporal_hits)) >= 2:
+            return StatisticalDesign(
+                design_type='paired',
+                is_paired=True,
+                grouping_variable=group_var,
+                subject_id_column=subject_id,
+                dependent_variable=dep_label,
+                rationale='Grouping labels suggest pre/post repeated measures; defaulting to paired design.',
+                suggested_groups=groups,
+                overlap_summary={'temporal_group_labels': groups},
+                keyword_cues=keyword_cues,
+            )
+
     overlap_summary: dict[str, Any] = {}
     # 4. Long-format paired: overlapping subject IDs across two groups.
     if subject_id and subject_id in frame.columns and group_var in frame.columns:
@@ -702,6 +719,10 @@ def infer_statistical_design(
     best_pair: tuple[str, str] | None = None
     best_overlap: dict[str, Any] = {}
     best_score = -1
+    temporal_group_tokens = ('before', 'after', 'pre', 'post', 'baseline', 'followup', 'follow-up')
+    paired_by_labels = False
+    paired_label_group: str | None = None
+    label_values: list[str] = []
 
     for subj in subject_cols:
         subj_series = frame[subj] if subj in frame.columns else pd.Series(frame.index, name=subj)
@@ -719,6 +740,19 @@ def infer_statistical_design(
                 best_score = score
                 best_overlap = overlap
                 best_pair = (subj, grp)
+
+    # Heuristic: pre/post style grouping labels imply pairing even without subject IDs.
+    if not best_pair:
+        for grp in group_cols:
+            values = frame[grp].dropna().unique().tolist()
+            lower_vals = [str(v).lower() for v in values]
+            hits = [val for val in lower_vals if any(tok in val for tok in temporal_group_tokens)]
+            if len(set(hits)) >= 2:
+                paired_by_labels = True
+                paired_label_group = grp
+                label_values = [str(v) for v in values]
+                best_overlap = {'temporal_group_labels': label_values}
+                break
 
     # Fallback: row-wise paired signals (wide format)
     paired_by_row = False
@@ -756,6 +790,14 @@ def infer_statistical_design(
     elif paired_by_row:
         design_type = 'paired'
         rationale_parts.append('Multiple measurement columns per row imply a paired/wide layout.')
+    elif paired_by_labels:
+        design_type = 'paired'
+        grouping_variable = grouping_variable or paired_label_group
+        rationale_parts.append(
+            'Grouping labels suggest pre/post repeated measures; defaulting to paired design despite missing IDs.'
+        )
+        if label_values:
+            rationale_parts.append(f"Detected labels: {', '.join(label_values)}.")
     else:
         rationale_parts.append('No ID/group overlap found; defaulting to independent design.')
 

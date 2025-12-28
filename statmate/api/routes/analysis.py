@@ -3,6 +3,7 @@
 import asyncio
 import io
 import json
+import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -25,6 +26,7 @@ from statmate.api.services.export_service import ExportService
 from statmate.api.services.storage_service import StorageService
 
 router = APIRouter(prefix='/analysis', tags=['analysis'])
+logger = logging.getLogger(__name__)
 
 
 @router.post('/run', response_model=AnalysisResponse, status_code=status.HTTP_201_CREATED)
@@ -139,6 +141,7 @@ async def get_analysis_status(
     analysis = AnalysisService.get_analysis(db, analysis_id, user_id=current_user.id if current_user else None)
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Analysis not found')
+    analysis = AnalysisService.sanitize_analysis(analysis)
 
     execution_trace: list[dict[str, str]] | None = None
     if analysis.log_path:
@@ -287,8 +290,14 @@ async def get_workflow_graph(
 
     analysis = AnalysisService.get_analysis(db, analysis_id, user_id=current_user.id if current_user else None)
     if not analysis:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Analysis not found')
+        logger.warning('Workflow graph requested for missing analysis_id=%s', analysis_id)
+        return {
+            **AnalysisService.build_workflow_graph_state([], None),
+            'analysis_id': analysis_id,
+            'error': 'Analysis not found',
+        }
 
+    analysis = AnalysisService.sanitize_analysis(analysis)
     return AnalysisService.workflow_graph_for_analysis(analysis)
 
 
@@ -438,7 +447,7 @@ async def list_analyses(
         user_id=current_user.id if current_user else None,
         dataset_id=dataset_id,
     )
-    return [AnalysisResponse.model_validate(a) for a in analyses]
+    return [AnalysisResponse.model_validate(AnalysisService.sanitize_analysis(a)) for a in analyses]
 
 
 @router.delete('/{analysis_id}', status_code=status.HTTP_204_NO_CONTENT)

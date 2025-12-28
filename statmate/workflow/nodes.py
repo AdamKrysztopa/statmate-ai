@@ -337,13 +337,14 @@ def design_verification_node(state: WorkflowState) -> WorkflowState:
             'structural_design': design.as_dict() if design else None,
             'agent_design': agent_design,
         }
+        if design:
+            # Keep downstream routing consistent with deterministic structural design.
+            state.paired = design.is_paired
         state.add_step(
             step='Design Verification',
             detail=detail,
             data=state.design_verification,
         )
-        if mismatch:
-            raise NodeExecutionError(node_name='design_verification', original_error=ValueError(detail))
         return state
     except Exception as e:
         logger.error(f'Error in design_verification_node: {e}')

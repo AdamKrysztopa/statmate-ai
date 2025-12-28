@@ -134,7 +134,7 @@ class StorageService:
         results_file = results_dir / 'summary.json'
 
         with open(results_file, 'w') as f:
-            json.dump(results_data, f, indent=2, default=str)
+            json.dump(results_data, f, indent=2, default=str, allow_nan=False)
 
         logger.info(f'Saved results: {results_file}')
         return results_file
