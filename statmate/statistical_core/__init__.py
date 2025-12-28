@@ -11,7 +11,9 @@ from statmate.statistical_core.anova import (
 from statmate.statistical_core.base import StatTestResult
 from statmate.statistical_core.categorical_comparison import (
     chi2_test,
+    cochran_armitage_trend_test,
     fisher_exact_test,
+    mcnemar_test,
 )
 from statmate.statistical_core.comparison import (
     mannwhitneyu_test,
@@ -56,6 +58,8 @@ __all__ = [
     'prepare_groups_from_frame',
     'chi2_test',
     'fisher_exact_test',
+    'mcnemar_test',
+    'cochran_armitage_trend_test',
     'levene_test',
     'bartlett_test',
     'spearman_corr',

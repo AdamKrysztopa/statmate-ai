@@ -13,7 +13,12 @@ from statmate.agents.anova_agents import (
     friedman_agent,
     kruskal_wallis_agent,
 )
-from statmate.agents.categorical_comparison_agent import chi2_agent, fisher_exact_agent
+from statmate.agents.categorical_comparison_agent import (
+    chi2_agent,
+    cochran_armitage_agent,
+    fisher_exact_agent,
+    mcnemar_agent,
+)
 from statmate.agents.comparison_agents import (
     mannwhitneyu_agent,
     ttest_ind_agent,
@@ -49,6 +54,8 @@ __all__ = [
     'friedman_agent',
     'chi2_agent',
     'fisher_exact_agent',
+    'mcnemar_agent',
+    'cochran_armitage_agent',
     'mannwhitneyu_agent',
     'ttest_ind_agent',
     'ttest_rel_agent',

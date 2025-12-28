@@ -323,10 +323,25 @@ def call_test_agent(
         state.add_probability(prob_key, p_float)
 
         # Record structured step for UI/clients
-        test_label = getattr(test_agent, '_statmate_test_name', None) or test_agent.name
+        test_label = (
+            getattr(result.statistical_test_result, 'test_name', None)
+            or getattr(test_agent, '_statmate_test_name', None)
+            or test_agent.name
+        )
         stats_value = result.statistical_test_result.statistics
         if isinstance(stats_value, np.ndarray):
             stats_value = stats_value.tolist()
+        specifics = result.statistical_test_result.test_specifics or {}
+        effect_entry = None
+        if isinstance(specifics, dict):
+            effect_entry = specifics.get('effect_size')
+        effect_size_value = None
+        if isinstance(effect_entry, dict):
+            effect_size_value = effect_entry.get('value')
+        elif isinstance(effect_entry, (int, float, np.floating)):
+            effect_size_value = effect_entry
+        if isinstance(effect_size_value, np.floating):
+            effect_size_value = float(effect_size_value)
         state.add_step(
             step=test_label,
             detail=result.result,
@@ -338,9 +353,11 @@ def call_test_agent(
                 'null_hypothesis': result.statistical_test_result.null_hypothesis,
                 'alternative': result.statistical_test_result.alternative,
                 'effect_size_type': result.statistical_test_result.effect_size_type,
+                'effect_size': effect_size_value,
                 'confidence_interval': result.statistical_test_result.confidence_interval,
                 'comments': result.comments,
                 'assumptions': assumption_entry,
+                'test_specifics': specifics,
             },
             p_value=p_float,
         )
@@ -1112,13 +1129,17 @@ def resolve_choice(state: WorkflowState) -> str:
 
 
 def mcnemar_node(state: WorkflowState) -> WorkflowState:
-    """Placeholder node for McNemar's test on paired categorical data."""
-    state.add_step(
-        step=NodeName.MCNEMAR,
-        detail='McNemar test placeholder (paired categorical).',
-        data={'status': 'queued'},
-    )
-    return state
+    """Execute McNemar's test on paired categorical data."""
+    try:
+        from statmate.agents import mcnemar_agent
+
+        model = create_model(model_name=state.model_name, provider=state.provider)
+        settings = create_model_settings(model_name=state.model_name)
+        agent = mcnemar_agent(model=model, model_settings=settings)
+        return call_test_agent(agent, state, probability_key='mcnemar', assess_assumptions=False)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error(f'Error in mcnemar_node: {e}')
+        raise NodeExecutionError(node_name='mcnemar_node', original_error=e) from e
 
 
 def cox_regression_node(state: WorkflowState) -> WorkflowState:

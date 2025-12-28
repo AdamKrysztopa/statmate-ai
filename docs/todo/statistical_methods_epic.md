@@ -10,11 +10,11 @@ The current implementation favors parametric tests (ANOVA, t-test). Add robust f
 - [x] Implement Dunn's post-hoc test for Kruskal-Wallis results.
 
 ## Core: Categorical & Contingency Analysis
-- [ ] Create `statmate/statistical_core/categorical.py` to house categorical helpers.
-- [ ] Add Fisher’s Exact Test for 2x2 tables with small expected frequencies (< 5).
-- [ ] Implement McNemar’s Test for paired categorical data (e.g., pre/post treatment presence of symptoms).
-- [ ] Add Cochran-Armitage Trend Test for ordered categorical variables.
-- [ ] Report Cramer's V or Phi for chi-square style outputs.
+- [x] Create `statmate/statistical_core/categorical.py` to house categorical helpers.
+- [x] Add Fisher’s Exact Test for 2x2 tables with small expected frequencies (< 5).
+- [x] Implement McNemar’s Test for paired categorical data (e.g., pre/post treatment presence of symptoms).
+- [x] Add Cochran-Armitage Trend Test for ordered categorical variables.
+- [x] Report Cramer's V or Phi for chi-square style outputs.
 
 ## Core: Effect Size & Power
 Current results provide p-values but lack magnitude context.

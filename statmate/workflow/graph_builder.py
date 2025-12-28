@@ -8,10 +8,12 @@ from langgraph.graph import END, StateGraph
 
 from statmate.agents import (
     chi2_agent,
+    cochran_armitage_agent,
     fisher_exact_agent,
     mannwhitneyu_agent,
     normality_of_difference_agent,
     get_reviewer_agent,
+    mcnemar_agent,
     ttest_ind_agent,
     ttest_rel_agent,
     wilcoxon_agent,
@@ -38,7 +40,6 @@ from statmate.workflow.nodes import (
     design_reconciliation_node,
     intent_discovery_node,
     methodology_auditor_node,
-    mcnemar_node,
     nonparametric_node,
     anova_assumptions_node,
     anova_one_way_node,
@@ -92,6 +93,7 @@ class WorkflowGraphBuilder:
                 NodeName.ASSESS_STUDY_DESIGN: NodeName.ASSESS_STUDY_DESIGN,
                 NodeName.CHI2: NodeName.CHI2,
                 NodeName.FISHER: NodeName.FISHER,
+                NodeName.COCHRAN_ARMITAGE: NodeName.COCHRAN_ARMITAGE,
                 NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
                 NodeName.MCNEMAR: NodeName.MCNEMAR,
                 NodeName.ANOVA_ASSUMPTIONS: NodeName.ANOVA_ASSUMPTIONS,
@@ -113,6 +115,7 @@ class WorkflowGraphBuilder:
                 NodeName.ASSESS_STUDY_DESIGN: NodeName.ASSESS_STUDY_DESIGN,
                 NodeName.CHI2: NodeName.CHI2,
                 NodeName.FISHER: NodeName.FISHER,
+                NodeName.COCHRAN_ARMITAGE: NodeName.COCHRAN_ARMITAGE,
                 NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
                 NodeName.MCNEMAR: NodeName.MCNEMAR,
                 NodeName.ANOVA_ASSUMPTIONS: NodeName.ANOVA_ASSUMPTIONS,
@@ -313,7 +316,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = chi2_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='chi_square')
+            return call_test_agent(agent, state, probability_key='chi_square', assess_assumptions=False)
 
         self.graph.add_node(NodeName.CHI2, chi2_wrapper)
 
@@ -322,10 +325,25 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = fisher_exact_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='fisher_exact')
+            return call_test_agent(agent, state, probability_key='fisher_exact', assess_assumptions=False)
 
         self.graph.add_node(NodeName.FISHER, fisher_wrapper)
-        self.graph.add_node(NodeName.MCNEMAR, mcnemar_node)
+
+        def mcnemar_wrapper(state: WorkflowState) -> WorkflowState:
+            model = create_model(model_name=state.model_name, provider=state.provider)
+            settings = create_model_settings(model_name=state.model_name)
+            agent = mcnemar_agent(model=model, model_settings=settings)
+            return call_test_agent(agent, state, probability_key='mcnemar', assess_assumptions=False)
+
+        self.graph.add_node(NodeName.MCNEMAR, mcnemar_wrapper)
+
+        def trend_wrapper(state: WorkflowState) -> WorkflowState:
+            model = create_model(model_name=state.model_name, provider=state.provider)
+            settings = create_model_settings(model_name=state.model_name)
+            agent = cochran_armitage_agent(model=model, model_settings=settings)
+            return call_test_agent(agent, state, probability_key='cochran_armitage_trend', assess_assumptions=False)
+
+        self.graph.add_node(NodeName.COCHRAN_ARMITAGE, trend_wrapper)
 
         return self
 
@@ -356,6 +374,7 @@ class WorkflowGraphBuilder:
             NodeName.CHI2,
             NodeName.FISHER,
             NodeName.MCNEMAR,
+            NodeName.COCHRAN_ARMITAGE,
             NodeName.COX_REGRESSION,
         ]
         for node in terminal_nodes:

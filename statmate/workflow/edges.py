@@ -80,7 +80,7 @@ def _build_default_registry() -> MethodRegistry:
     )
     registry.register(
         MethodProfile('categorical', None, None, False),
-        MethodSuggestion(NodeName.CHI2, [NodeName.FISHER], weight=1.0, reason='Categorical'),
+        MethodSuggestion(NodeName.CHI2, [NodeName.FISHER, NodeName.COCHRAN_ARMITAGE], weight=1.0, reason='Categorical'),
     )
     registry.register(
         MethodProfile('categorical', None, None, True),
@@ -108,6 +108,7 @@ NODE_METADATA: dict[str, NodeMetadata] = {
     NodeName.CHI2: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, None)),
     NodeName.FISHER: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, None)),
     NodeName.MCNEMAR: NodeMetadata(is_paired=True, min_sample_size=2, group_count_range=(2, None)),
+    NodeName.COCHRAN_ARMITAGE: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(3, None)),
     NodeName.COX_REGRESSION: NodeMetadata(is_paired=None, min_sample_size=1, group_count_range=None),
     NodeName.DESCRIPTIVE_SUMMARY: NodeMetadata(is_paired=None, min_sample_size=0, group_count_range=None),
     NodeName.USER_INTERVENTION: NodeMetadata(is_paired=None, min_sample_size=0, group_count_range=None),

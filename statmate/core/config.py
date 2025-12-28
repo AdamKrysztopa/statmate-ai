@@ -138,6 +138,7 @@ class NodeName:
     KRUSKAL_WALLIS = 'Kruskal-Wallis H-test'
     FRIEDMAN = 'Friedman test'
     MCNEMAR = 'McNemar test'
+    COCHRAN_ARMITAGE = 'Cochran-Armitage trend test'
     COX_REGRESSION = 'Cox regression (placeholder)'
     CHOICE = 'Choice Node'
     INTENT = 'Intent Agent'

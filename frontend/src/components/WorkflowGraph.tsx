@@ -24,6 +24,8 @@ const levelForNode = (id: string) => {
     anova_assumptions: 3,
     chi_square_test: 3,
     fisher_exact_test: 3,
+    mcnemar_test: 4,
+    cochran_armitage_trend_test: 4,
     paired_t_test: 4,
     wilcoxon_signed_rank_test: 4,
     independent_t_test: 4,
