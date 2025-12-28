@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from scipy import stats
 
 from statmate.core import get_logger
+from statmate.core.validation import detect_wide_format_pairing
 
 logger = get_logger(__name__)
 
@@ -189,6 +190,15 @@ def build_data_blueprint(
             paired_flag = True
         elif design_hint == 'independent':
             paired_flag = False
+    if paired_flag is None:
+        wide_detection = detect_wide_format_pairing(df.columns)
+        if wide_detection.get('detected'):
+            paired_flag = True
+            if wide_detection.get('pairs'):
+                first_pair = wide_detection['pairs'][0]
+                if first_pair[0] in df.columns and first_pair[1] in df.columns:
+                    aligned = df[list(first_pair)].dropna()
+                    group_samples = {str(first_pair[0]): len(aligned), str(first_pair[1]): len(aligned)}
     idx_col = index_column or (raw_payload or {}).get('index_column') or df.index.name
     tgt_col = target_column or (raw_payload or {}).get('target_column')
 

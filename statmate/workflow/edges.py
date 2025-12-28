@@ -271,6 +271,15 @@ class DecisionEngine:
             }
             return NodeName.DESCRIPTIVE_SUMMARY
 
+        verification = getattr(state, 'design_verification', None)
+        if verification and verification.get('mismatch'):
+            state.pending_routing_decision = {
+                'reason': 'design_mismatch',
+                'structural_design': verification.get('structural_design'),
+                'agent_design': verification.get('agent_design'),
+            }
+            return NodeName.DESIGN_RECONCILIATION
+
         normal_flag = self._normal_flag(state, blueprint)
         group_count = self._group_count(state, blueprint)
         paired = self._paired_flag(state, blueprint)
@@ -303,7 +312,7 @@ class DecisionEngine:
                 'alternatives': suggestion.alternatives,
                 'reason': 'paired_data_requires_paired_node',
             }
-            raise RoutingError(f'Independent-only node {suggestion.primary} suggested for paired data.')
+            return NodeName.DESIGN_RECONCILIATION
 
         candidates: list[str] = []
         if assumption_status and assumption_status.get('status') == 'fail' and suggestion.alternatives:

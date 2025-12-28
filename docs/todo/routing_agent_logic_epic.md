@@ -9,6 +9,7 @@ Make the registry the enforcer of structural constraints so the router cannot "f
 - [x] Data topology detection:
   - Update `initial_insights_agent.py` to lock `is_paired=True` when IDs overlap across groups; emit a `partition_report` with group names, Ns, and overlap percent.
   - Ensure blueprint records `index_column` (pairing id) and `target_column`.
+  - [x] Fix Wide-Format detection: Explicitly check for column name patterns (pre/post, before/after, T1/T2) during structural validation to prevent the "Independent" misclassification seen in bad.pdf.
 - [x] Pre-flight sufficiency:
   - Add a `SufficiencyValidator` that runs before routing; if any group has `n < 2`, route directly to `DescriptiveSummaryNode`.
 - [x] Path locking in router:

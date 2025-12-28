@@ -140,6 +140,7 @@ class NodeName:
     METHODOLOGY_AUDITOR = 'Methodology Auditor'
     REVIEWER = 'Reviewer Agent'
     DESIGN_VERIFICATION = 'Design Verification'
+    DESIGN_RECONCILIATION = 'Design Reconciliation'
     DESCRIPTIVE_SUMMARY = 'Descriptive Summary'
     USER_INTERVENTION = 'User Intervention Needed'
 

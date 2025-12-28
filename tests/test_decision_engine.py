@@ -3,7 +3,7 @@ import pytest
 
 from statmate.core.config import DataType, NodeName
 from statmate.core.exceptions import StatisticalAssumptionError
-from statmate.core.validation import requires_assumptions
+from statmate.core.validation import requires_assumptions, validate_statistical_design
 from statmate.workflow.blueprint import build_data_blueprint
 from statmate.workflow.edges import decision_engine
 from statmate.workflow.methodology_auditor import MethodologyAuditor, StructureAuditor
@@ -106,3 +106,23 @@ def test_choice_node_respects_user_selection():
     updated = choice_node(state)
     assert updated.pending_routing_decision['selected'] == NodeName.WELCH
     assert resolve_choice(updated) == NodeName.WELCH
+
+
+def test_validate_statistical_design_detects_wide_format_pairs():
+    df = pd.DataFrame({'pre_score': [1, 2, 3], 'post_score': [2, 3, 4]})
+    design = validate_statistical_design(df, dependent_var=['pre_score', 'post_score'])
+    assert design.is_paired
+    assert 'wide_format_pairs' in design.overlap_summary
+
+
+def test_decision_engine_routes_to_design_reconciliation_on_mismatch():
+    df = pd.DataFrame({'pre': [1, 2, 3], 'post': [2, 3, 4]})
+    state = create_initial_state(df=df)
+    state.data_type = DataType.CONTINUOUS
+    state.attach_blueprint(build_data_blueprint(df, dependent_vars=['pre', 'post'], is_paired=True))
+    state.design_verification = {
+        'mismatch': True,
+        'structural_design': {'design_type': 'paired'},
+        'agent_design': 'independent',
+    }
+    assert decision_engine.evaluate_routing(state) == NodeName.DESIGN_RECONCILIATION

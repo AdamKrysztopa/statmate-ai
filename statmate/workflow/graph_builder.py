@@ -34,6 +34,7 @@ from statmate.workflow.nodes import (
     cox_regression_node,
     descriptive_summary_node,
     design_verification_node,
+    design_reconciliation_node,
     intent_discovery_node,
     methodology_auditor_node,
     mcnemar_node,
@@ -91,6 +92,23 @@ class WorkflowGraphBuilder:
                 NodeName.COX_REGRESSION: NodeName.COX_REGRESSION,
                 NodeName.DESCRIPTIVE_SUMMARY: NodeName.DESCRIPTIVE_SUMMARY,
                 NodeName.USER_INTERVENTION: NodeName.USER_INTERVENTION,
+                NodeName.DESIGN_RECONCILIATION: NodeName.DESIGN_RECONCILIATION,
+            },
+        )
+        self.graph.add_conditional_edges(
+            NodeName.DESIGN_RECONCILIATION,
+            decide_outcome,
+            {
+                NodeName.ASSESS_STUDY_DESIGN: NodeName.ASSESS_STUDY_DESIGN,
+                NodeName.CHI2: NodeName.CHI2,
+                NodeName.FISHER: NodeName.FISHER,
+                NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
+                NodeName.MCNEMAR: NodeName.MCNEMAR,
+                NodeName.CHOICE: NodeName.CHOICE,
+                NodeName.COX_REGRESSION: NodeName.COX_REGRESSION,
+                NodeName.DESCRIPTIVE_SUMMARY: NodeName.DESCRIPTIVE_SUMMARY,
+                NodeName.USER_INTERVENTION: NodeName.USER_INTERVENTION,
+                NodeName.DESIGN_RECONCILIATION: NodeName.DESIGN_RECONCILIATION,
             },
         )
         return self
@@ -128,6 +146,7 @@ class WorkflowGraphBuilder:
     def add_design_verification(self) -> 'WorkflowGraphBuilder':
         """Add a post-initialization design checkpoint."""
         self.graph.add_node(NodeName.DESIGN_VERIFICATION, design_verification_node)
+        self.graph.add_node(NodeName.DESIGN_RECONCILIATION, design_reconciliation_node)
         # Run sequentially: Initialization -> Intent -> Design Verification
         # Avoids concurrent writes to shared state keys (e.g., df) that LangGraph forbids.
         self.graph.add_edge(NodeName.INTENT, NodeName.DESIGN_VERIFICATION)

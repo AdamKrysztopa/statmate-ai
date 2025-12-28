@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Literal
+import re
 
 import numpy as np
 import pandas as pd
@@ -459,6 +460,7 @@ def validate_statistical_design(
     """Deterministically classify dataset design as paired or independent."""
     frame = df if isinstance(df, pd.DataFrame) else df.to_frame()
     keyword_cues = _keyword_cues(frame.columns)
+    wide_detection = detect_wide_format_pairing(frame.columns)
 
     dep_values: list[str] = []
     if isinstance(dependent_var, Sequence) and not isinstance(dependent_var, str):
@@ -490,6 +492,22 @@ def validate_statistical_design(
         return any(tok in low for tok in id_tokens)
 
     measurement_cols = [col for col in numeric_dep_values if not _is_id_like(col)]
+
+    wide_pairs = wide_detection.get('pairs', [])
+    if wide_detection.get('detected'):
+        dep_label = dep_label or ', '.join([pair for cols in wide_pairs for pair in cols][:2])
+        return StatisticalDesign(
+            design_type='paired',
+            is_paired=True,
+            grouping_variable=group_var if group_var in frame.columns else None,
+            subject_id_column=subject_id,
+            dependent_variable=dep_label,
+            rationale=wide_detection.get('reason')
+            or 'Detected pre/post or timepoint column patterns indicating paired wide-format measurements.',
+            suggested_groups=[p for cols in wide_pairs for p in cols][:2],
+            overlap_summary={'wide_format_pairs': wide_pairs},
+            keyword_cues=keyword_cues,
+        )
 
     # 1. Wide-format paired: multiple numeric measurement columns imply row-wise pairing.
     if len(measurement_cols) >= 2 and potential_group is None and (group_var is None or group_var in frame.columns):
@@ -623,6 +641,54 @@ def _keyword_cues(columns: Sequence[str]) -> dict[str, list[str]]:
     return {'temporal_like': temporal_like, 'group_like': group_like}
 
 
+def detect_wide_format_pairing(columns: Sequence[str]) -> dict[str, Any]:
+    """Detect common wide-format pairing patterns from column names."""
+    lower = {str(col): str(col).lower() for col in columns}
+    token_pairs = [
+        ('pre', 'post'),
+        ('before', 'after'),
+        ('baseline', 'followup'),
+        ('baseline', 'follow_up'),
+    ]
+    pairs: list[tuple[str, str]] = []
+
+    def _base(name: str, token: str) -> str:
+        cleaned = re.sub(rf'(^|[_\\-\\s]){token}([_\\-\\s]|$)', '_', name)
+        return re.sub(r'_+', '_', cleaned).strip('_- ')
+
+    for pre, post in token_pairs:
+        pre_hits = [col for col, low in lower.items() if re.search(rf'(^|[^a-z0-9]){pre}([^a-z0-9]|$)', low)]
+        post_hits = [col for col, low in lower.items() if re.search(rf'(^|[^a-z0-9]){post}([^a-z0-9]|$)', low)]
+        for pre_col in pre_hits:
+            for post_col in post_hits:
+                if _base(lower[pre_col], pre) == _base(lower[post_col], post) and _base(lower[pre_col], pre):
+                    pairs.append((pre_col, post_col))
+
+    timepoint_regex = re.compile(r'(.+?)(?:[_\\-\\s]?)(t|tp|timepoint|visit)(\\d+)$', re.IGNORECASE)
+    timepoint_buckets: dict[str, list[tuple[str, int]]] = {}
+    for col, low in lower.items():
+        match = timepoint_regex.match(low)
+        if not match:
+            continue
+        base = match.group(1)
+        tp_num = int(match.group(3))
+        timepoint_buckets.setdefault(base, []).append((col, tp_num))
+
+    for base, cols in timepoint_buckets.items():
+        if len(cols) < 2:
+            continue
+        sorted_cols = sorted(cols, key=lambda item: item[1])
+        pairs.append((sorted_cols[0][0], sorted_cols[1][0]))
+
+    detected = len(pairs) > 0
+    reason = None
+    if detected:
+        pair_labels = ['/'.join(p) for p in pairs]
+        reason = f'Wide-format pairing detected via columns: {", ".join(pair_labels)}.'
+
+    return {'detected': detected, 'pairs': pairs, 'reason': reason}
+
+
 def _candidate_subject_columns(df: pd.DataFrame, provided: Sequence[str] | None = None) -> list[str]:
     """Identify plausible subject ID columns."""
     if provided:
@@ -710,6 +776,8 @@ def infer_statistical_design(
         'nunique_by_column': {col: int(frame[col].nunique(dropna=True)) for col in frame.columns},
     }
     summary['keyword_cues'] = _keyword_cues(frame.columns)
+    wide_detection = detect_wide_format_pairing(frame.columns)
+    summary['wide_format_detection'] = wide_detection
 
     subject_cols = _candidate_subject_columns(frame, subject_id_candidates)
     group_cols = _candidate_group_columns(frame, group_candidates)
@@ -723,6 +791,9 @@ def infer_statistical_design(
     paired_by_labels = False
     paired_label_group: str | None = None
     label_values: list[str] = []
+
+    if wide_detection.get('detected'):
+        best_overlap = {'wide_format_pairs': wide_detection.get('pairs', [])}
 
     for subj in subject_cols:
         subj_series = frame[subj] if subj in frame.columns else pd.Series(frame.index, name=subj)
@@ -758,9 +829,14 @@ def infer_statistical_design(
     paired_by_row = False
     if best_pair is None:
         numeric_cols = frame.select_dtypes(include=[np.number]).columns
-        paired_by_row = len(numeric_cols) >= 2 and len(frame) > 1
+        paired_by_row = (len(numeric_cols) >= 2 and len(frame) > 1) or wide_detection.get('detected')
         if paired_by_row:
-            best_overlap = {'paired_by_row': True, 'shared_ids_across_groups': 0, 'repeated_within_group': 0}
+            best_overlap = {
+                'paired_by_row': True,
+                'shared_ids_across_groups': 0,
+                'repeated_within_group': 0,
+                'wide_format_pairs': wide_detection.get('pairs', []),
+            }
 
     design_type: Literal['independent', 'paired', 'mixed'] = 'independent'
     grouping_variable: str | None = None
@@ -790,6 +866,8 @@ def infer_statistical_design(
     elif paired_by_row:
         design_type = 'paired'
         rationale_parts.append('Multiple measurement columns per row imply a paired/wide layout.')
+        if wide_detection.get('reason'):
+            rationale_parts.append(wide_detection['reason'])
     elif paired_by_labels:
         design_type = 'paired'
         grouping_variable = grouping_variable or paired_label_group

@@ -18,6 +18,7 @@ def _last_executed_test(state: WorkflowState) -> str | None:
             NodeName.SUMMARY,
             NodeName.REVIEWER,
             NodeName.DESIGN_VERIFICATION,
+            NodeName.DESIGN_RECONCILIATION,
             NodeName.INITIALIZATION,
             NodeName.CHOICE,
             NodeName.INTENT,
