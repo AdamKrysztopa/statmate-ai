@@ -4,6 +4,7 @@ This service wraps the existing LangGraph workflow and manages analysis executio
 """
 
 import logging
+import math
 from datetime import datetime
 from io import StringIO
 from typing import Any
@@ -41,6 +42,28 @@ def _state_value(state: Any, key: str, default: Any) -> Any:
     if isinstance(state, dict):
         return state.get(key, default)
     return getattr(state, key, default)
+
+
+def _sanitize_for_json(value: Any) -> Any:
+    """Recursively replace NaN/Inf floats with None for JSON compliance."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _sanitize_for_json(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_json(v) for v in value]
+    return value
+
+
+def _clean_probabilities(probabilities: Any) -> dict[str, float]:
+    """Ensure probabilities dict only contains finite numeric values."""
+    if not isinstance(probabilities, dict):
+        return {}
+    cleaned: dict[str, float] = {}
+    for key, value in probabilities.items():
+        if isinstance(value, (int, float)) and value is not None and math.isfinite(float(value)):
+            cleaned[key] = float(value)
+    return cleaned
 
 
 def _build_test_hierarchy(
@@ -94,6 +117,14 @@ class AnalysisService:
     """Service for managing statistical analysis execution."""
 
     WORKFLOW_STEP_TARGET = WORKFLOW_STEP_TARGET
+
+    @staticmethod
+    def sanitize_analysis(analysis: Analysis) -> Analysis:
+        """Normalize non-finite numeric fields to keep API responses JSON-safe."""
+        analysis.probabilities = _clean_probabilities(_sanitize_for_json(analysis.probabilities))
+        analysis.decision_steps = _sanitize_for_json(analysis.decision_steps) or []
+        analysis.assumption_log = _sanitize_for_json(analysis.assumption_log) or []
+        return analysis
 
     @staticmethod
     def build_workflow_graph_state(
@@ -473,9 +504,9 @@ class AnalysisService:
                     raise
 
             messages = _state_value(result_state, 'results', [])
-            probabilities = _state_value(result_state, 'probabilities', {})
-            execution_trace = _state_value(result_state, 'execution_trace', [])
-            reviewer_report = _state_value(result_state, 'reviewer_report', None)
+            probabilities = _clean_probabilities(_sanitize_for_json(_state_value(result_state, 'probabilities', {})))
+            execution_trace = _sanitize_for_json(_state_value(result_state, 'execution_trace', [])) or []
+            reviewer_report = _sanitize_for_json(_state_value(result_state, 'reviewer_report', None))
 
             def _normalize_steps(steps: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
                 """Ensure step metadata (ordering/progress) is populated."""
@@ -500,10 +531,13 @@ class AnalysisService:
                 analysis.decision_steps = _normalize_steps(execution_trace)
             elif analysis.decision_steps:
                 analysis.decision_steps = _normalize_steps(analysis.decision_steps)
+            analysis.decision_steps = _sanitize_for_json(analysis.decision_steps) or []
 
-            assumption_log = _state_value(result_state, 'assumption_log', []) or analysis.assumption_log or []
-            analysis.assumption_log = assumption_log
-            test_hierarchy_state = _state_value(result_state, 'test_hierarchy', None)
+            assumption_log = _sanitize_for_json(
+                _state_value(result_state, 'assumption_log', []) or analysis.assumption_log or []
+            )
+            analysis.assumption_log = assumption_log or []
+            test_hierarchy_state = _sanitize_for_json(_state_value(result_state, 'test_hierarchy', None))
             test_hierarchy = test_hierarchy_state or _build_test_hierarchy(
                 analysis.decision_steps or execution_trace, assumption_log, reviewer_report
             )
@@ -549,6 +583,7 @@ class AnalysisService:
                 'timestamp': datetime.utcnow().isoformat(),
             }
 
+            results_data = _sanitize_for_json(results_data)
             analysis.result_path = str(StorageService.save_results(analysis_id, results_data))
             analysis.summary = summary[:1000]
             analysis.probabilities = probabilities
@@ -600,7 +635,7 @@ class AnalysisService:
         if not analysis or analysis.status != AnalysisStatus.COMPLETED:
             return None
 
-        results_data = StorageService.read_results(analysis_id)
+        results_data = _sanitize_for_json(StorageService.read_results(analysis_id))
         if not results_data:
             return None
 
@@ -628,7 +663,7 @@ class AnalysisService:
             'duration_seconds': duration,
             'summary': analysis.summary,
             'comment': analysis.comment,
-            'probabilities': analysis.probabilities,
+            'probabilities': _clean_probabilities(_sanitize_for_json(analysis.probabilities)),
             'results_detail': results_data,
             'execution_trace': results_data.get('execution_trace'),
             'decision_steps': analysis.decision_steps or results_data.get('decision_steps'),
@@ -681,6 +716,8 @@ class AnalysisService:
         if not analysis:
             return None
         analysis.comment = comment or ''
+        # Clean any legacy NaN/Inf fields to avoid JSON serialization errors on return.
+        analysis = AnalysisService.sanitize_analysis(analysis)
         db.commit()
         db.refresh(analysis)
-        return analysis
+        return AnalysisService.sanitize_analysis(analysis)

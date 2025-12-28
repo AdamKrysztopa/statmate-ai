@@ -133,8 +133,16 @@ class NodeName:
     FISHER = 'Fisher exact test'
     NORMALITY_OF_DIFFERENCE = 'Parametric assumptions hold?'
     ANOVA_RM = 'ANOVA repeated measures'
+    MCNEMAR = 'McNemar test'
+    COX_REGRESSION = 'Cox regression (placeholder)'
+    CHOICE = 'Choice Node'
+    INTENT = 'Intent Agent'
+    METHODOLOGY_AUDITOR = 'Methodology Auditor'
     REVIEWER = 'Reviewer Agent'
     DESIGN_VERIFICATION = 'Design Verification'
+    DESIGN_RECONCILIATION = 'Design Reconciliation'
+    DESCRIPTIVE_SUMMARY = 'Descriptive Summary'
+    USER_INTERVENTION = 'User Intervention Needed'
 
 
 class DataType:
@@ -142,6 +150,7 @@ class DataType:
 
     CONTINUOUS = 'CONTINUOUS'
     CATEGORICAL = 'CATEGORICAL'
+    SURVIVAL = 'SURVIVAL'
 
 
 class TransformationType:

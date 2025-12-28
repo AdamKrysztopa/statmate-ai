@@ -17,6 +17,8 @@ const levelForNode = (id: string) => {
     start: 0,
     initialization_agent: 1,
     assess_study_design: 2,
+    design_verification: 2,
+    design_reconciliation: 2,
     parametric_assumptions_hold: 3,
     two_independent_groups: 3,
     chi_square_test: 3,

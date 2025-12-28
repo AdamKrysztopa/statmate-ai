@@ -23,21 +23,27 @@ from statmate.agents.initial_insights_agent import (
     TOOL_FUNCS,
     InitialInsightsAgentDeps,
     build_initial_insights_agent,
+    build_partition_report,
     format_data_by_recommendation,
     validate_tool_args,
 )
 from statmate.agents.reviewer_agent import ReviewerDeps, get_reviewer_agent
 from statmate.agents.summarizer_agent import SummariserDeps, get_summariser_agent
 from statmate.core import NodeExecutionError, get_logger
-from statmate.core.config import default_config
+from statmate.core.config import NodeName, default_config
+from statmate.core.exceptions import RoutingError
 from statmate.core.model_provider import execute_with_backoff
 from statmate.core.validation import (
+    StatisticalDesign,
+    detect_wide_format_pairing,
     get_structural_summary,
     infer_statistical_design,
     validate_assumptions,
     validate_statistical_design,
 )
+from statmate.workflow.blueprint import build_data_blueprint
 from statmate.workflow.model_factory import create_model, create_model_settings
+from statmate.workflow.methodology_auditor import MethodologyAuditor, StructureAuditor
 from statmate.workflow.state import WorkflowState
 
 logger = get_logger(__name__)
@@ -48,6 +54,50 @@ ENHANCED_INITIAL_INSIGHTS_PROMPT = (
     INITIAL_INSIGHTS_PROMPT
     + "\nData Validation:\n  - Always include a non-null 'tool_arguments' dict (empty if no transform)."
 )
+
+
+def _guard_grouping_column(df: pd.DataFrame, group_col: str | None) -> tuple[str | None, str | None]:
+    """Block ID-like grouping suggestions while allowing recovery."""
+    if not group_col or group_col not in df.columns:
+        return group_col, None
+
+    total = len(df)
+    nunique = int(df[group_col].nunique(dropna=False))
+    if nunique >= max(int(total * 0.6), 25):
+        warning = (
+            f'Grouping column "{group_col}" is high-cardinality ({nunique} unique of {total}); '
+            'treating it as an identifier and dropping it from grouping.'
+        )
+        return None, warning
+
+    counts = df[group_col].value_counts(dropna=False)
+    if total >= 10 and all(count < 2 for count in counts):
+        raise RoutingError(
+            f'Grouping column "{group_col}" yields singleton groups across {total} rows; cannot route analysis.'
+        )
+
+    return group_col, None
+
+
+def _force_pairing_transform(state: WorkflowState, df: pd.DataFrame, pair_cols: list[tuple[str, str]]) -> WorkflowState:
+    """Align data into paired series when wide-format pairing is detected."""
+    if not pair_cols:
+        return state
+    first_pair = pair_cols[0]
+    col_a, col_b = first_pair
+    if col_a not in df.columns or col_b not in df.columns:
+        return state
+
+    aligned = df[[col_a, col_b]].dropna()
+    state.df = aligned[col_a]
+    state.secondary_df = aligned[col_b]
+
+    if state.data_blueprint:
+        samples = {str(col_a): int(len(aligned)), str(col_b): int(len(aligned))}
+        updated = state.data_blueprint.model_copy(update={'is_paired': True, 'group_samples': samples})
+        state.attach_blueprint(updated)
+
+    return state
 
 
 def call_test_agent(
@@ -234,6 +284,21 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
             ),
         )
 
+        frame_for_grouping = state.df if isinstance(state.df, pd.DataFrame) else pd.DataFrame(state.df)
+        sanitized_group, grouping_warning = _guard_grouping_column(frame_for_grouping, results.data.group_column)
+        dropped_group = None
+        if sanitized_group != results.data.group_column:
+            dropped_group = results.data.group_column
+            results.data.group_column = sanitized_group
+            if not results.data.index_column and dropped_group:
+                results.data.index_column = dropped_group
+            if grouping_warning:
+                state.add_step(
+                    step='Grouping Guardrail',
+                    detail=grouping_warning,
+                    data={'dropped_group_column': dropped_group},
+                )
+
         # Update sample count
         state.number_of_samples = int(results.data.data_size)
 
@@ -258,6 +323,41 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         state.paired = validated_design.is_paired
         state.comparison_matrix = validated_design.comparison_matrix or state.comparison_matrix
 
+        index_column = (
+            validated_design.subject_id_column
+            or design.subject_id_column
+            or results.data.index_column
+            or inp_df.index.name
+        )
+        target_column = (results.data.analysis_columns or [validated_design.dependent_variable or None])[0]
+        partition_report = build_partition_report(
+            inp_df, results.data.group_column or validated_design.grouping_variable, index_column
+        )
+        if partition_report and partition_report.get('overlap', {}).get('overlap_count'):
+            state.paired = True
+            validated_design.is_paired = True
+            validated_design.design_type = 'paired'
+            results.data.data_design = 'paired'
+        if not validated_design.subject_id_column and index_column:
+            validated_design.subject_id_column = index_column
+
+        results.data.partition_report = partition_report
+        results.data.index_column = index_column
+        results.data.target_column = target_column
+
+        blueprint = build_data_blueprint(
+            inp_df,
+            dependent_vars=results.data.analysis_columns or list(inp_df.columns),
+            group_var=results.data.group_column or validated_design.grouping_variable,
+            covariates=[],
+            is_paired=validated_design.is_paired,
+            index_column=index_column,
+            target_column=target_column,
+            partition_report=partition_report,
+            raw_payload=results.data.model_dump() if hasattr(results, 'data') else {},
+        )
+        state.attach_blueprint(blueprint)
+
         structural_text = (
             get_structural_summary(inp_df, results.data.group_column)
             if results.data.group_column
@@ -270,6 +370,7 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
                 'statistical_design': validated_design.as_dict(),
                 'structural_summary': structural_summary,
                 'structural_text': structural_text,
+                'data_blueprint': blueprint.model_dump(),
             },
         )
 
@@ -302,6 +403,9 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
 
         logger.info(f'Data type set: {state.data_type}')
         return state
+    except RoutingError as e:
+        logger.error('Routing error in initialization: %s', e)
+        raise
     except Exception as e:
         logger.error(f'Error in call_initialization_agent: {e}')
         raise NodeExecutionError(node_name='call_initialization_agent', original_error=e) from e
@@ -318,24 +422,103 @@ def design_verification_node(state: WorkflowState) -> WorkflowState:
         if mismatch:
             detail = (
                 f'Design mismatch: validator={design.design_type} vs agent={agent_design}. '
-                'Halting until clarified.'
+                'Routing to reconciliation.'
             )
         state.design_verification = {
             'mismatch': mismatch,
             'structural_design': design.as_dict() if design else None,
             'agent_design': agent_design,
         }
+        if design:
+            # Keep downstream routing consistent with deterministic structural design.
+            state.paired = design.is_paired
         state.add_step(
             step='Design Verification',
             detail=detail,
             data=state.design_verification,
         )
-        if mismatch:
-            raise NodeExecutionError(node_name='design_verification', original_error=ValueError(detail))
         return state
     except Exception as e:
         logger.error(f'Error in design_verification_node: {e}')
         raise NodeExecutionError(node_name='design_verification', original_error=e) from e
+
+
+def design_reconciliation_node(state: WorkflowState) -> WorkflowState:
+    """Resolve structural mismatches, prioritizing wide-format pairing cues."""
+    try:
+        df = state.df if isinstance(state.df, pd.DataFrame) else pd.DataFrame(state.df)
+        blueprint = state.data_blueprint
+        verification = state.design_verification or {}
+        wide_detection = detect_wide_format_pairing(df.columns)
+        partition = blueprint.partition_report if blueprint else None
+        overlap = (partition or {}).get('overlap', {})
+        overlap_detected = bool(overlap.get('overlap_count'))
+
+        # Prefer agent-specified grouping role when available
+        group_col = None
+        if blueprint and blueprint.variable_roles:
+            for role in blueprint.variable_roles:
+                if getattr(role, 'role', '') == 'group':
+                    group_col = role.name
+                    break
+        if state.statistical_design and state.statistical_design.grouping_variable:
+            group_col = group_col or state.statistical_design.grouping_variable
+
+        resolved_design = state.statistical_design
+        detail_parts: list[str] = []
+        if wide_detection.get('detected'):
+            detail_parts.append('Wide-format pairing detected from column names.')
+            resolved_design = resolved_design or StatisticalDesign(
+                design_type='paired',
+                is_paired=True,
+                grouping_variable=group_col,
+                subject_id_column=getattr(state.statistical_design, 'subject_id_column', None),
+                rationale='',
+                keyword_cues=state.statistical_design.keyword_cues if state.statistical_design else {},
+            )
+            resolved_design.design_type = 'paired'
+            resolved_design.is_paired = True
+            resolved_design.rationale = (
+                wide_detection.get('reason')
+                or 'Detected paired measurement columns; coercing to paired design.'
+            )
+            resolved_design.overlap_summary = resolved_design.overlap_summary or {}
+            resolved_design.overlap_summary['wide_format_pairs'] = wide_detection.get('pairs', [])
+            state = _force_pairing_transform(state, df, wide_detection.get('pairs', []))
+        elif overlap_detected and resolved_design and not resolved_design.is_paired:
+            detail_parts.append('Subject overlap across groups indicates paired/mixed design.')
+            resolved_design.design_type = 'paired'
+            resolved_design.is_paired = True
+            resolved_design.overlap_summary = resolved_design.overlap_summary or {}
+            resolved_design.overlap_summary['partition_overlap'] = overlap
+
+        if resolved_design:
+            state.statistical_design = resolved_design
+            state.paired = resolved_design.is_paired
+            if blueprint:
+                updates = {'is_paired': resolved_design.is_paired}
+                if wide_detection.get('pairs') and state.secondary_df is not None:
+                    samples = {
+                        str(wide_detection['pairs'][0][0]): int(len(state.df)),
+                        str(wide_detection['pairs'][0][1]): int(len(state.secondary_df)),
+                    }
+                    updates['group_samples'] = samples
+                state.attach_blueprint(blueprint.model_copy(update=updates))
+
+        state.design_verification = (verification or {}) | {'mismatch': False, 'resolved': True}
+        state.add_step(
+            step=NodeName.DESIGN_RECONCILIATION,
+            detail='; '.join(detail_parts) or 'Design reconciliation completed.',
+            data={
+                'wide_format_detection': wide_detection,
+                'partition_overlap': overlap,
+                'resolved_design': resolved_design.as_dict() if resolved_design else None,
+            },
+        )
+        return state
+    except Exception as e:
+        logger.error(f'Error in design_reconciliation_node: {e}')
+        raise NodeExecutionError(node_name='design_reconciliation_node', original_error=e) from e
 
 
 def assess_study_design_node(state: WorkflowState) -> WorkflowState:
@@ -586,3 +769,128 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
     except Exception as e:
         logger.error(f'Error in reviewer_node: {e}')
         raise NodeExecutionError(node_name='reviewer_node', original_error=e) from e
+
+
+def intent_discovery_node(state: WorkflowState) -> WorkflowState:
+    """Lightweight intent check to trigger ambiguity modal when confidence is low."""
+    try:
+        confidence = 0.5
+        if state.target_columns:
+            confidence = 0.9
+        elif state.statistical_design:
+            confidence = 0.8
+
+        summary = state.intent_summary or 'Explore relationships in the provided data.'
+        trigger_modal = confidence < 0.8
+        state.intent_confidence = confidence
+        state.intent_summary = summary
+        state.add_step(
+            step=NodeName.INTENT,
+            detail=summary,
+            data={
+                'confidence': confidence,
+                'trigger_ambiguity_modal': trigger_modal,
+            },
+        )
+        return state
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error(f'Error in intent_discovery_node: {e}')
+        raise NodeExecutionError(node_name='intent_discovery_node', original_error=e) from e
+
+
+def choice_node(state: WorkflowState) -> WorkflowState:
+    """Expose routing options to allow user or UI to decide."""
+    try:
+        decision = state.pending_routing_decision or {}
+        primary = decision.get('primary')
+        alternatives = decision.get('alternatives') or []
+        selected = state.user_selected_option or decision.get('selected') or primary
+
+        entry = {
+            'primary': primary,
+            'alternatives': alternatives,
+            'selected': selected,
+            'reason': decision.get('reason'),
+        }
+        state.choice_log.append(entry)
+        state.pending_routing_decision = {**decision, 'selected': selected}
+        state.add_step(step=NodeName.CHOICE, detail=f'Chosen {selected or primary}', data=entry)
+        return state
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error(f'Error in choice_node: %s', e)
+        raise NodeExecutionError(node_name='choice_node', original_error=e) from e
+
+
+def resolve_choice(state: WorkflowState) -> str:
+    """Resolve the chosen next node after presenting options."""
+    decision = state.pending_routing_decision or {}
+    return decision.get('selected') or decision.get('primary') or NodeName.ASSESS_STUDY_DESIGN
+
+
+def mcnemar_node(state: WorkflowState) -> WorkflowState:
+    """Placeholder node for McNemar's test on paired categorical data."""
+    state.add_step(
+        step=NodeName.MCNEMAR,
+        detail='McNemar test placeholder (paired categorical).',
+        data={'status': 'queued'},
+    )
+    return state
+
+
+def cox_regression_node(state: WorkflowState) -> WorkflowState:
+    """Placeholder node for Cox regression on survival data."""
+    state.add_step(
+        step=NodeName.COX_REGRESSION,
+        detail='Cox regression placeholder node (survival analysis).',
+        data={'status': 'queued'},
+    )
+    return state
+
+
+def descriptive_summary_node(state: WorkflowState) -> WorkflowState:
+    """Fallback node that returns descriptive statistics when inferential tests are blocked."""
+    frame = state.df if isinstance(state.df, pd.DataFrame) else state.df.to_frame()
+    summary = frame.describe(include='all').to_dict()
+    group_samples = state.data_blueprint.group_samples if state.data_blueprint else None
+    payload = {'summary': summary, 'group_samples': group_samples}
+    state.add_result(AIMessage(content=json.dumps(payload, default=str)))
+    state.add_step(
+        step=NodeName.DESCRIPTIVE_SUMMARY,
+        detail='Insufficient sample size for inferential testing; returning descriptive summary.',
+        data=payload,
+    )
+    return state
+
+
+def user_intervention_node(state: WorkflowState) -> WorkflowState:
+    """Stop the graph and surface a user-facing intervention request."""
+    state.add_step(
+        step=NodeName.USER_INTERVENTION,
+        detail='Routing blocked by guardrails; manual choice required.',
+        data={
+            'pending_decision': state.pending_routing_decision,
+            'blueprint': state.data_blueprint.model_dump() if state.data_blueprint else None,
+        },
+    )
+    return state
+
+
+def methodology_auditor_node(state: WorkflowState) -> WorkflowState:
+    """Audit executed tests and propose corrections when assumptions fail."""
+    structure_auditor = StructureAuditor()
+    structural = structure_auditor.audit(state)
+    auditor = MethodologyAuditor()
+    result = auditor.audit(state)
+    payload = {
+        'executed': result.executed,
+        'recommended': result.recommended,
+        'correction_step': result.correction_step,
+        'conflicts': result.conflicts,
+    }
+    if structural:
+        payload['structural_recommended'] = structural.recommended
+        payload['structural_correction'] = structural.correction_step
+    state.test_hierarchy = state.test_hierarchy or {}
+    state.test_hierarchy['auditor'] = payload
+    state.add_step(step=NodeName.METHODOLOGY_AUDITOR, detail='Auditor review complete', data=payload)
+    return state

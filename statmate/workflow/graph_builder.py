@@ -9,11 +9,13 @@ from langgraph.graph import END, StateGraph
 from statmate.agents import (
     chi2_agent,
     fisher_exact_agent,
+    mannwhitneyu_agent,
     normality_of_difference_agent,
     get_reviewer_agent,
     ttest_ind_agent,
     ttest_rel_agent,
     wilcoxon_agent,
+    welch_t_agent,
 )
 from statmate.core import get_logger
 from statmate.core.config import NodeName
@@ -28,11 +30,20 @@ from statmate.workflow.nodes import (
     assess_study_design_node,
     call_initialization_agent,
     call_test_agent,
+    choice_node,
+    cox_regression_node,
+    descriptive_summary_node,
     design_verification_node,
+    design_reconciliation_node,
+    intent_discovery_node,
+    methodology_auditor_node,
+    mcnemar_node,
     nonparametric_node,
+    resolve_choice,
     reviewer_node,
     summariser_node,
     two_independent_node,
+    user_intervention_node,
 )
 from statmate.workflow.state import WorkflowState
 
@@ -56,6 +67,12 @@ class WorkflowGraphBuilder:
         self.graph.set_entry_point(NodeName.INITIALIZATION)
         return self
 
+    def add_intent_node(self) -> 'WorkflowGraphBuilder':
+        """Add intent discovery node between initialization and verification."""
+        self.graph.add_node(NodeName.INTENT, intent_discovery_node)
+        self.graph.add_edge(NodeName.INITIALIZATION, NodeName.INTENT)
+        return self
+
     def add_initial_routing(self) -> 'WorkflowGraphBuilder':
         """Add conditional routing from initialization to test selection.
 
@@ -69,6 +86,59 @@ class WorkflowGraphBuilder:
                 NodeName.ASSESS_STUDY_DESIGN: NodeName.ASSESS_STUDY_DESIGN,
                 NodeName.CHI2: NodeName.CHI2,
                 NodeName.FISHER: NodeName.FISHER,
+                NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
+                NodeName.MCNEMAR: NodeName.MCNEMAR,
+                NodeName.CHOICE: NodeName.CHOICE,
+                NodeName.COX_REGRESSION: NodeName.COX_REGRESSION,
+                NodeName.DESCRIPTIVE_SUMMARY: NodeName.DESCRIPTIVE_SUMMARY,
+                NodeName.USER_INTERVENTION: NodeName.USER_INTERVENTION,
+                NodeName.DESIGN_RECONCILIATION: NodeName.DESIGN_RECONCILIATION,
+            },
+        )
+        self.graph.add_conditional_edges(
+            NodeName.DESIGN_RECONCILIATION,
+            decide_outcome,
+            {
+                NodeName.ASSESS_STUDY_DESIGN: NodeName.ASSESS_STUDY_DESIGN,
+                NodeName.CHI2: NodeName.CHI2,
+                NodeName.FISHER: NodeName.FISHER,
+                NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
+                NodeName.MCNEMAR: NodeName.MCNEMAR,
+                NodeName.CHOICE: NodeName.CHOICE,
+                NodeName.COX_REGRESSION: NodeName.COX_REGRESSION,
+                NodeName.DESCRIPTIVE_SUMMARY: NodeName.DESCRIPTIVE_SUMMARY,
+                NodeName.USER_INTERVENTION: NodeName.USER_INTERVENTION,
+                NodeName.DESIGN_RECONCILIATION: NodeName.DESIGN_RECONCILIATION,
+            },
+        )
+        return self
+
+    def add_guardrail_nodes(self) -> 'WorkflowGraphBuilder':
+        """Add guardrail nodes for insufficient data or manual intervention."""
+        self.graph.add_node(NodeName.DESCRIPTIVE_SUMMARY, descriptive_summary_node)
+        self.graph.add_node(NodeName.USER_INTERVENTION, user_intervention_node)
+        self.graph.add_edge(NodeName.DESCRIPTIVE_SUMMARY, END)
+        self.graph.add_edge(NodeName.USER_INTERVENTION, END)
+        return self
+
+    def add_choice_node(self) -> 'WorkflowGraphBuilder':
+        """Add choice node to allow elastic user-in-the-loop routing."""
+        self.graph.add_node(NodeName.CHOICE, choice_node)
+        self.graph.add_conditional_edges(
+            NodeName.CHOICE,
+            resolve_choice,
+            {
+                NodeName.PAIRED_T: NodeName.PAIRED_T,
+                NodeName.WILCOXON: NodeName.WILCOXON,
+                NodeName.INDEP_T: NodeName.INDEP_T,
+                NodeName.WELCH: NodeName.WELCH,
+                NodeName.MANN: NodeName.MANN,
+                NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
+                NodeName.CHI2: NodeName.CHI2,
+                NodeName.FISHER: NodeName.FISHER,
+                NodeName.MCNEMAR: NodeName.MCNEMAR,
+                NodeName.COX_REGRESSION: NodeName.COX_REGRESSION,
+                NodeName.ASSESS_STUDY_DESIGN: NodeName.ASSESS_STUDY_DESIGN,
             },
         )
         return self
@@ -76,7 +146,10 @@ class WorkflowGraphBuilder:
     def add_design_verification(self) -> 'WorkflowGraphBuilder':
         """Add a post-initialization design checkpoint."""
         self.graph.add_node(NodeName.DESIGN_VERIFICATION, design_verification_node)
-        self.graph.add_edge(NodeName.INITIALIZATION, NodeName.DESIGN_VERIFICATION)
+        self.graph.add_node(NodeName.DESIGN_RECONCILIATION, design_reconciliation_node)
+        # Run sequentially: Initialization -> Intent -> Design Verification
+        # Avoids concurrent writes to shared state keys (e.g., df) that LangGraph forbids.
+        self.graph.add_edge(NodeName.INTENT, NodeName.DESIGN_VERIFICATION)
         return self
 
     def add_study_design_assessment(self) -> 'WorkflowGraphBuilder':
@@ -168,6 +241,21 @@ class WorkflowGraphBuilder:
             return call_test_agent(agent, state, probability_key='independent_t_test')
 
         self.graph.add_node(NodeName.INDEP_T, indep_t_wrapper)
+        def welch_wrapper(state: WorkflowState) -> WorkflowState:
+            model = create_model(model_name=state.model_name, provider=state.provider)
+            settings = create_model_settings(model_name=state.model_name)
+            agent = welch_t_agent(model=model, model_settings=settings)
+            return call_test_agent(agent, state, probability_key='welch_t_test')
+
+        self.graph.add_node(NodeName.WELCH, welch_wrapper)
+
+        def mann_wrapper(state: WorkflowState) -> WorkflowState:
+            model = create_model(model_name=state.model_name, provider=state.provider)
+            settings = create_model_settings(model_name=state.model_name)
+            agent = mannwhitneyu_agent(model=model, model_settings=settings)
+            return call_test_agent(agent, state, probability_key='mann_whitney_u')
+
+        self.graph.add_node(NodeName.MANN, mann_wrapper)
 
         # Nonparametric node (Welch + Mann-Whitney)
         self.graph.add_node(NodeName.NONPARAMETRIC, nonparametric_node)
@@ -198,7 +286,13 @@ class WorkflowGraphBuilder:
             return call_test_agent(agent, state, probability_key='fisher_exact')
 
         self.graph.add_node(NodeName.FISHER, fisher_wrapper)
+        self.graph.add_node(NodeName.MCNEMAR, mcnemar_node)
 
+        return self
+
+    def add_survival_tests(self) -> 'WorkflowGraphBuilder':
+        """Add survival-analysis placeholders."""
+        self.graph.add_node(NodeName.COX_REGRESSION, cox_regression_node)
         return self
 
     def add_summary_node(self) -> 'WorkflowGraphBuilder':
@@ -214,8 +308,12 @@ class WorkflowGraphBuilder:
             NodeName.PAIRED_T,
             NodeName.WILCOXON,
             NodeName.INDEP_T,
+            NodeName.WELCH,
+            NodeName.MANN,
             NodeName.CHI2,
             NodeName.FISHER,
+            NodeName.MCNEMAR,
+            NodeName.COX_REGRESSION,
         ]
         for node in terminal_nodes:
             self.graph.add_edge(node, NodeName.SUMMARY)
@@ -228,8 +326,14 @@ class WorkflowGraphBuilder:
     def add_reviewer_node(self) -> 'WorkflowGraphBuilder':
         """Add the reviewer/consensus node after summary."""
         self.graph.add_node(NodeName.REVIEWER, reviewer_node)
-        self.graph.add_edge(NodeName.SUMMARY, NodeName.REVIEWER)
+        self.graph.add_edge(NodeName.METHODOLOGY_AUDITOR, NodeName.REVIEWER)
         self.graph.add_edge(NodeName.REVIEWER, END)
+        return self
+
+    def add_methodology_auditor_node(self) -> 'WorkflowGraphBuilder':
+        """Add the methodology auditor node before reviewer."""
+        self.graph.add_node(NodeName.METHODOLOGY_AUDITOR, methodology_auditor_node)
+        self.graph.add_edge(NodeName.SUMMARY, NodeName.METHODOLOGY_AUDITOR)
         return self
 
     def build(self, checkpointer=None):
@@ -254,13 +358,18 @@ def build_workflow_graph(checkpointer=None):
     builder = WorkflowGraphBuilder()
     graph = (
         builder.add_initialization_node()
+        .add_intent_node()
         .add_design_verification()
+        .add_guardrail_nodes()
         .add_initial_routing()
+        .add_choice_node()
         .add_study_design_assessment()
         .add_paired_test_path()
         .add_independent_test_path()
         .add_categorical_tests()
+        .add_survival_tests()
         .add_summary_node()
+        .add_methodology_auditor_node()
         .add_reviewer_node()
         .build(checkpointer=checkpointer)
     )

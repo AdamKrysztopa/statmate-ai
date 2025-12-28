@@ -6,7 +6,9 @@ and workflows.
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from functools import wraps
 from typing import Any, Literal
+import re
 
 import numpy as np
 import pandas as pd
@@ -18,6 +20,7 @@ from statmate.core.exceptions import (
     InvalidDataShapeError,
     InvalidDataTypeError,
     MissingDataError,
+    StatisticalAssumptionError,
 )
 
 
@@ -350,7 +353,67 @@ def validate_assumptions(
         'sparsity': sparsity,
         'thresholds': thresholds,
         'failures': failures,
+        'status': 'fail' if failures else 'pass',
     }
+
+
+def _assumption_failed(
+    state: Any,
+    *,
+    assumption: Literal['normality', 'variance'],
+    assumptions: dict[str, Any],
+) -> bool:
+    """Check whether a required assumption is violated using blueprint or logged diagnostics."""
+    explicit = assumptions.get(assumption)
+    if explicit is False:
+        return True
+    if explicit is True:
+        return False
+
+    # Blueprint-derived diagnostics
+    blueprint = getattr(state, 'data_blueprint', None)
+    if blueprint and assumption == 'normality':
+        threshold = default_config.statistical.normality_threshold
+        for metric in (blueprint.distribution_metrics or {}).values():
+            if metric.normality_p_value is not None and metric.normality_p_value < threshold:
+                return True
+
+    # Assumption logs
+    for entry in reversed(getattr(state, 'assumption_log', []) or []):
+        failures = ' '.join(entry.get('failures') or []).lower()
+        if assumption == 'normality' and any(tok in failures for tok in ('skew', 'normal', 'kurt')):
+            return True
+        if assumption == 'variance':
+            ratio = entry.get('variance_ratio')
+            if ratio and ratio > default_config.statistical.variance_ratio_threshold:
+                return True
+            if 'variance' in failures or 'heteroscedastic' in failures:
+                return True
+    return False
+
+
+def requires_assumptions(normality: bool = False, variance: bool = False):
+    """Decorator to guard statistical functions behind assumption checks."""
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            state = kwargs.get('state')
+            if state is None and args:
+                state = args[0]
+
+            assumptions = kwargs.get('assumptions') or {}
+
+            if normality and _assumption_failed(state, assumption='normality', assumptions=assumptions):
+                raise StatisticalAssumptionError('Normality assumption not met for this operation.')
+            if variance and _assumption_failed(state, assumption='variance', assumptions=assumptions):
+                raise StatisticalAssumptionError('Variance equality assumption not met for this operation.')
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 @dataclass
@@ -397,6 +460,7 @@ def validate_statistical_design(
     """Deterministically classify dataset design as paired or independent."""
     frame = df if isinstance(df, pd.DataFrame) else df.to_frame()
     keyword_cues = _keyword_cues(frame.columns)
+    wide_detection = detect_wide_format_pairing(frame.columns)
 
     dep_values: list[str] = []
     if isinstance(dependent_var, Sequence) and not isinstance(dependent_var, str):
@@ -429,8 +493,24 @@ def validate_statistical_design(
 
     measurement_cols = [col for col in numeric_dep_values if not _is_id_like(col)]
 
-    # 1. Wide-format paired: multiple numeric measurement columns without grouping imply row-wise pairing.
-    if group_var is None and len(measurement_cols) >= 2 and potential_group is None:
+    wide_pairs = wide_detection.get('pairs', [])
+    if wide_detection.get('detected'):
+        dep_label = dep_label or ', '.join([pair for cols in wide_pairs for pair in cols][:2])
+        return StatisticalDesign(
+            design_type='paired',
+            is_paired=True,
+            grouping_variable=group_var if group_var in frame.columns else None,
+            subject_id_column=subject_id,
+            dependent_variable=dep_label,
+            rationale=wide_detection.get('reason')
+            or 'Detected pre/post or timepoint column patterns indicating paired wide-format measurements.',
+            suggested_groups=[p for cols in wide_pairs for p in cols][:2],
+            overlap_summary={'wide_format_pairs': wide_pairs},
+            keyword_cues=keyword_cues,
+        )
+
+    # 1. Wide-format paired: multiple numeric measurement columns imply row-wise pairing.
+    if len(measurement_cols) >= 2 and potential_group is None and (group_var is None or group_var in frame.columns):
         return StatisticalDesign(
             design_type='paired',
             is_paired=True,
@@ -474,6 +554,23 @@ def validate_statistical_design(
             suggested_groups=[],
             keyword_cues=keyword_cues,
         )
+
+    # 3b. Pre/post style grouping labels imply repeated measures even without subject IDs.
+    temporal_group_tokens = ('before', 'after', 'pre', 'post', 'baseline', 'followup', 'follow-up')
+    if groups:
+        temporal_hits = [g for g in groups if any(tok in g.lower() for tok in temporal_group_tokens)]
+        if len(set(temporal_hits)) >= 2:
+            return StatisticalDesign(
+                design_type='paired',
+                is_paired=True,
+                grouping_variable=group_var,
+                subject_id_column=subject_id,
+                dependent_variable=dep_label,
+                rationale='Grouping labels suggest pre/post repeated measures; defaulting to paired design.',
+                suggested_groups=groups,
+                overlap_summary={'temporal_group_labels': groups},
+                keyword_cues=keyword_cues,
+            )
 
     overlap_summary: dict[str, Any] = {}
     # 4. Long-format paired: overlapping subject IDs across two groups.
@@ -542,6 +639,54 @@ def _keyword_cues(columns: Sequence[str]) -> dict[str, list[str]]:
     temporal_like = [col for col, low in lower.items() if any(tok in low for tok in temporal_tokens)]
     group_like = [col for col, low in lower.items() if any(tok in low for tok in grouping_tokens)]
     return {'temporal_like': temporal_like, 'group_like': group_like}
+
+
+def detect_wide_format_pairing(columns: Sequence[str]) -> dict[str, Any]:
+    """Detect common wide-format pairing patterns from column names."""
+    lower = {str(col): str(col).lower() for col in columns}
+    token_pairs = [
+        ('pre', 'post'),
+        ('before', 'after'),
+        ('baseline', 'followup'),
+        ('baseline', 'follow_up'),
+    ]
+    pairs: list[tuple[str, str]] = []
+
+    def _base(name: str, token: str) -> str:
+        cleaned = re.sub(rf'(^|[_\\-\\s]){token}([_\\-\\s]|$)', '_', name)
+        return re.sub(r'_+', '_', cleaned).strip('_- ')
+
+    for pre, post in token_pairs:
+        pre_hits = [col for col, low in lower.items() if re.search(rf'(^|[^a-z0-9]){pre}([^a-z0-9]|$)', low)]
+        post_hits = [col for col, low in lower.items() if re.search(rf'(^|[^a-z0-9]){post}([^a-z0-9]|$)', low)]
+        for pre_col in pre_hits:
+            for post_col in post_hits:
+                if _base(lower[pre_col], pre) == _base(lower[post_col], post) and _base(lower[pre_col], pre):
+                    pairs.append((pre_col, post_col))
+
+    timepoint_regex = re.compile(r'(.+?)(?:[_\\-\\s]?)(t|tp|timepoint|visit)(\\d+)$', re.IGNORECASE)
+    timepoint_buckets: dict[str, list[tuple[str, int]]] = {}
+    for col, low in lower.items():
+        match = timepoint_regex.match(low)
+        if not match:
+            continue
+        base = match.group(1)
+        tp_num = int(match.group(3))
+        timepoint_buckets.setdefault(base, []).append((col, tp_num))
+
+    for base, cols in timepoint_buckets.items():
+        if len(cols) < 2:
+            continue
+        sorted_cols = sorted(cols, key=lambda item: item[1])
+        pairs.append((sorted_cols[0][0], sorted_cols[1][0]))
+
+    detected = len(pairs) > 0
+    reason = None
+    if detected:
+        pair_labels = ['/'.join(p) for p in pairs]
+        reason = f'Wide-format pairing detected via columns: {", ".join(pair_labels)}.'
+
+    return {'detected': detected, 'pairs': pairs, 'reason': reason}
 
 
 def _candidate_subject_columns(df: pd.DataFrame, provided: Sequence[str] | None = None) -> list[str]:
@@ -631,6 +776,8 @@ def infer_statistical_design(
         'nunique_by_column': {col: int(frame[col].nunique(dropna=True)) for col in frame.columns},
     }
     summary['keyword_cues'] = _keyword_cues(frame.columns)
+    wide_detection = detect_wide_format_pairing(frame.columns)
+    summary['wide_format_detection'] = wide_detection
 
     subject_cols = _candidate_subject_columns(frame, subject_id_candidates)
     group_cols = _candidate_group_columns(frame, group_candidates)
@@ -640,6 +787,13 @@ def infer_statistical_design(
     best_pair: tuple[str, str] | None = None
     best_overlap: dict[str, Any] = {}
     best_score = -1
+    temporal_group_tokens = ('before', 'after', 'pre', 'post', 'baseline', 'followup', 'follow-up')
+    paired_by_labels = False
+    paired_label_group: str | None = None
+    label_values: list[str] = []
+
+    if wide_detection.get('detected'):
+        best_overlap = {'wide_format_pairs': wide_detection.get('pairs', [])}
 
     for subj in subject_cols:
         subj_series = frame[subj] if subj in frame.columns else pd.Series(frame.index, name=subj)
@@ -658,13 +812,31 @@ def infer_statistical_design(
                 best_overlap = overlap
                 best_pair = (subj, grp)
 
+    # Heuristic: pre/post style grouping labels imply pairing even without subject IDs.
+    if not best_pair:
+        for grp in group_cols:
+            values = frame[grp].dropna().unique().tolist()
+            lower_vals = [str(v).lower() for v in values]
+            hits = [val for val in lower_vals if any(tok in val for tok in temporal_group_tokens)]
+            if len(set(hits)) >= 2:
+                paired_by_labels = True
+                paired_label_group = grp
+                label_values = [str(v) for v in values]
+                best_overlap = {'temporal_group_labels': label_values}
+                break
+
     # Fallback: row-wise paired signals (wide format)
     paired_by_row = False
     if best_pair is None:
         numeric_cols = frame.select_dtypes(include=[np.number]).columns
-        paired_by_row = len(numeric_cols) >= 2 and len(frame) > 1
+        paired_by_row = (len(numeric_cols) >= 2 and len(frame) > 1) or wide_detection.get('detected')
         if paired_by_row:
-            best_overlap = {'paired_by_row': True, 'shared_ids_across_groups': 0, 'repeated_within_group': 0}
+            best_overlap = {
+                'paired_by_row': True,
+                'shared_ids_across_groups': 0,
+                'repeated_within_group': 0,
+                'wide_format_pairs': wide_detection.get('pairs', []),
+            }
 
     design_type: Literal['independent', 'paired', 'mixed'] = 'independent'
     grouping_variable: str | None = None
@@ -694,6 +866,16 @@ def infer_statistical_design(
     elif paired_by_row:
         design_type = 'paired'
         rationale_parts.append('Multiple measurement columns per row imply a paired/wide layout.')
+        if wide_detection.get('reason'):
+            rationale_parts.append(wide_detection['reason'])
+    elif paired_by_labels:
+        design_type = 'paired'
+        grouping_variable = grouping_variable or paired_label_group
+        rationale_parts.append(
+            'Grouping labels suggest pre/post repeated measures; defaulting to paired design despite missing IDs.'
+        )
+        if label_values:
+            rationale_parts.append(f"Detected labels: {', '.join(label_values)}.")
     else:
         rationale_parts.append('No ID/group overlap found; defaulting to independent design.')
 
