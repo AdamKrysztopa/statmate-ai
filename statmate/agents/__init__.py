@@ -6,7 +6,13 @@ from statmate.agents.agent_builder import (
     run_async_agent,
     run_sync_agent,
 )
-from statmate.agents.anova_agents import anova_rm_agent, anova_rm_test
+from statmate.agents.anova_agents import (
+    anova_one_way_agent,
+    anova_rm_agent,
+    anova_rm_test,
+    friedman_agent,
+    kruskal_wallis_agent,
+)
 from statmate.agents.categorical_comparison_agent import chi2_agent, fisher_exact_agent
 from statmate.agents.comparison_agents import (
     mannwhitneyu_agent,
@@ -38,6 +44,9 @@ __all__ = [
     'create_agent_model_and_settings',
     'anova_rm_agent',
     'anova_rm_test',
+    'anova_one_way_agent',
+    'kruskal_wallis_agent',
+    'friedman_agent',
     'chi2_agent',
     'fisher_exact_agent',
     'mannwhitneyu_agent',

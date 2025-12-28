@@ -4,10 +4,10 @@ Goal: Expand the core statistical capabilities to cover advanced research requir
 
 ## Core: Non-Parametric Expansion
 The current implementation favors parametric tests (ANOVA, t-test). Add robust fallbacks for non-normal or small-sample data.
-- [ ] Implement Wilcoxon Signed-Rank Test as an alternative to paired t-tests in `comparison.py`.
-- [ ] Implement Kruskal-Wallis H-test as a non-parametric alternative to one-way ANOVA in `anova.py` and wire it as the automatic fallback when Levene's test fails.
-- [ ] Implement Friedman Test for repeated measures with non-normal distributions; expose post-hoc guidance.
-- [ ] Implement Dunn's post-hoc test for Kruskal-Wallis results.
+- [x] Implement Wilcoxon Signed-Rank Test as an alternative to paired t-tests in `comparison.py`.
+- [x] Implement Kruskal-Wallis H-test as a non-parametric alternative to one-way ANOVA in `anova.py` and wire it as the automatic fallback when Levene's test fails.
+- [x] Implement Friedman Test for repeated measures with non-normal distributions; expose post-hoc guidance.
+- [x] Implement Dunn's post-hoc test for Kruskal-Wallis results.
 
 ## Core: Categorical & Contingency Analysis
 - [ ] Create `statmate/statistical_core/categorical.py` to house categorical helpers.

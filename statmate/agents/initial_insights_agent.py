@@ -95,6 +95,8 @@ Follow these numbered instructions exactly—do not add or omit steps:
         L --> M[Option A: Welch’s t-test]
         L --> N[Option B: Mann-Whitney U test]
     ```
+    - For >2 independent groups, use ANOVA assumptions → One-way ANOVA; if assumptions fail, fall back to Kruskal-Wallis (with Dunn post-hoc).
+    - For repeated measures with >2 conditions, route to ANOVA repeated measures or the Friedman test when non-normal.
 4.5 Blueprint metadata:
     - Emit `variable_roles` as a list of {name, role} items (Independent, Dependent, Covariate, Group).
     - Emit `distribution_metrics` with skewness, kurtosis, and normality_p_value per variable.
@@ -119,6 +121,10 @@ class NodeName(str, Enum):
     INDEP_T = 'Independent t-test'
     WELCH = 'Welch’s t-test'
     MANN = 'Mann-Whitney U'
+    ANOVA_ASSUMPTIONS = 'ANOVA assumptions'
+    ANOVA_ONE_WAY = 'One-way ANOVA'
+    KRUSKAL_WALLIS = 'Kruskal-Wallis H-test'
+    FRIEDMAN = 'Friedman test'
     CHI2 = 'Chi-square test'
     FISHER = 'Fisher exact test'
     NORMALITY_OF_DIFFERENCE = 'Parametric assumptions hold?'
@@ -421,10 +427,22 @@ def format_data_by_recommendation(
                 design_dep_cols.append(cleaned)
 
     # 3) Only these tests get a DataFrame back
-    df_tests = {NodeName.CHI2, NodeName.FISHER, NodeName.ANOVA_RM}
+    df_tests = {
+        NodeName.CHI2,
+        NodeName.FISHER,
+        NodeName.ANOVA_RM,
+        NodeName.ANOVA_ONE_WAY,
+        NodeName.KRUSKAL_WALLIS,
+        NodeName.ANOVA_ASSUMPTIONS,
+        NodeName.FRIEDMAN,
+    }
 
     if route & df_tests:
-        return data[rec.analysis_columns] if set(rec.analysis_columns).issubset(set(data.columns)) else data
+        preferred_cols = list(rec.analysis_columns)
+        if rec.group_column:
+            preferred_cols.append(rec.group_column)
+        preferred_cols = [col for col in preferred_cols if col in data.columns]
+        return data[preferred_cols] if preferred_cols else data
 
     # 4) Independent groups in long format: split by grouping variable instead of pairing rows.
     if (
@@ -451,6 +469,9 @@ def format_data_by_recommendation(
             raise ValueError('Need at least two groups for independent comparison.')
 
         value_col = value_cols[0]
+        if len(group_levels) > 2:
+            cols_to_keep = [col for col in [value_col, rec.group_column] if col in data.columns]
+            return data[cols_to_keep]
         group_a, group_b = group_levels[:2]
         s1 = data[data[rec.group_column] == group_a][value_col].dropna()
         s2 = data[data[rec.group_column] == group_b][value_col].dropna()

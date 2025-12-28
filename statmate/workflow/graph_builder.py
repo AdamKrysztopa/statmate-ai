@@ -22,6 +22,7 @@ from statmate.core.config import NodeName
 from statmate.workflow.edges import (
     assess_study_design,
     decide_outcome,
+    decide_anova_path,
     decide_two_independent,
     parametric_assumptions,
 )
@@ -39,6 +40,11 @@ from statmate.workflow.nodes import (
     methodology_auditor_node,
     mcnemar_node,
     nonparametric_node,
+    anova_assumptions_node,
+    anova_one_way_node,
+    anova_rm_node,
+    friedman_node,
+    kruskal_wallis_node,
     resolve_choice,
     reviewer_node,
     summariser_node,
@@ -88,6 +94,11 @@ class WorkflowGraphBuilder:
                 NodeName.FISHER: NodeName.FISHER,
                 NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
                 NodeName.MCNEMAR: NodeName.MCNEMAR,
+                NodeName.ANOVA_ASSUMPTIONS: NodeName.ANOVA_ASSUMPTIONS,
+                NodeName.ANOVA_ONE_WAY: NodeName.ANOVA_ONE_WAY,
+                NodeName.KRUSKAL_WALLIS: NodeName.KRUSKAL_WALLIS,
+                NodeName.ANOVA_RM: NodeName.ANOVA_RM,
+                NodeName.FRIEDMAN: NodeName.FRIEDMAN,
                 NodeName.CHOICE: NodeName.CHOICE,
                 NodeName.COX_REGRESSION: NodeName.COX_REGRESSION,
                 NodeName.DESCRIPTIVE_SUMMARY: NodeName.DESCRIPTIVE_SUMMARY,
@@ -104,6 +115,11 @@ class WorkflowGraphBuilder:
                 NodeName.FISHER: NodeName.FISHER,
                 NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
                 NodeName.MCNEMAR: NodeName.MCNEMAR,
+                NodeName.ANOVA_ASSUMPTIONS: NodeName.ANOVA_ASSUMPTIONS,
+                NodeName.ANOVA_ONE_WAY: NodeName.ANOVA_ONE_WAY,
+                NodeName.KRUSKAL_WALLIS: NodeName.KRUSKAL_WALLIS,
+                NodeName.ANOVA_RM: NodeName.ANOVA_RM,
+                NodeName.FRIEDMAN: NodeName.FRIEDMAN,
                 NodeName.CHOICE: NodeName.CHOICE,
                 NodeName.COX_REGRESSION: NodeName.COX_REGRESSION,
                 NodeName.DESCRIPTIVE_SUMMARY: NodeName.DESCRIPTIVE_SUMMARY,
@@ -133,6 +149,10 @@ class WorkflowGraphBuilder:
                 NodeName.INDEP_T: NodeName.INDEP_T,
                 NodeName.WELCH: NodeName.WELCH,
                 NodeName.MANN: NodeName.MANN,
+                NodeName.ANOVA_ONE_WAY: NodeName.ANOVA_ONE_WAY,
+                NodeName.KRUSKAL_WALLIS: NodeName.KRUSKAL_WALLIS,
+                NodeName.FRIEDMAN: NodeName.FRIEDMAN,
+                NodeName.ANOVA_RM: NodeName.ANOVA_RM,
                 NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
                 NodeName.CHI2: NodeName.CHI2,
                 NodeName.FISHER: NodeName.FISHER,
@@ -262,6 +282,25 @@ class WorkflowGraphBuilder:
 
         return self
 
+    def add_anova_paths(self) -> 'WorkflowGraphBuilder':
+        """Add nodes for multi-group ANOVA/Kruskal and repeated measures."""
+        self.graph.add_node(NodeName.ANOVA_ASSUMPTIONS, anova_assumptions_node)
+        self.graph.add_conditional_edges(
+            NodeName.ANOVA_ASSUMPTIONS,
+            decide_anova_path,
+            {
+                NodeName.ANOVA_ONE_WAY: NodeName.ANOVA_ONE_WAY,
+                NodeName.KRUSKAL_WALLIS: NodeName.KRUSKAL_WALLIS,
+                END: END,
+            },
+        )
+
+        self.graph.add_node(NodeName.ANOVA_ONE_WAY, anova_one_way_node)
+        self.graph.add_node(NodeName.KRUSKAL_WALLIS, kruskal_wallis_node)
+        self.graph.add_node(NodeName.ANOVA_RM, anova_rm_node)
+        self.graph.add_node(NodeName.FRIEDMAN, friedman_node)
+        return self
+
     def add_categorical_tests(self) -> 'WorkflowGraphBuilder':
         """Add categorical test nodes.
 
@@ -310,6 +349,10 @@ class WorkflowGraphBuilder:
             NodeName.INDEP_T,
             NodeName.WELCH,
             NodeName.MANN,
+            NodeName.ANOVA_ONE_WAY,
+            NodeName.KRUSKAL_WALLIS,
+            NodeName.FRIEDMAN,
+            NodeName.ANOVA_RM,
             NodeName.CHI2,
             NodeName.FISHER,
             NodeName.MCNEMAR,
@@ -366,6 +409,7 @@ def build_workflow_graph(checkpointer=None):
         .add_study_design_assessment()
         .add_paired_test_path()
         .add_independent_test_path()
+        .add_anova_paths()
         .add_categorical_tests()
         .add_survival_tests()
         .add_summary_node()

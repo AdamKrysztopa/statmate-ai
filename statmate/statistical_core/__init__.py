@@ -3,6 +3,10 @@
 from statmate.statistical_core.anova import (
     anova_one_way_test,
     anova_rm_test,
+    dunn_posthoc_test,
+    friedman_test,
+    kruskal_wallis_test,
+    prepare_groups_from_frame,
 )
 from statmate.statistical_core.base import StatTestResult
 from statmate.statistical_core.categorical_comparison import (
@@ -46,6 +50,10 @@ __all__ = [
     'cramer_von_mises_test',
     'anova_one_way_test',
     'anova_rm_test',
+    'kruskal_wallis_test',
+    'friedman_test',
+    'dunn_posthoc_test',
+    'prepare_groups_from_frame',
     'chi2_test',
     'fisher_exact_test',
     'levene_test',
