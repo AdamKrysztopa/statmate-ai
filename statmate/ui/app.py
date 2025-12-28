@@ -441,6 +441,11 @@ with tab3:
                 else:
                     st.write('Waiting for the first agent decision…')
 
+                graph_state = status.get('workflow_graph') or {}
+                visited = graph_state.get('visited_nodes') or []
+                if visited:
+                    st.caption(f"Path so far: {', '.join(visited)}")
+
                 time.sleep(3)
                 st.experimental_rerun()
 
@@ -466,6 +471,15 @@ with tab3:
                     if results.get('summary'):
                         st.subheader('📝 Summary')
                         st.write(results['summary'])
+
+                    workflow_graph = results.get('workflow_graph') or (results.get('results_detail') or {}).get('workflow_graph') or {}
+                    graph_assets = (workflow_graph.get('assets') if workflow_graph else {}) or {}
+                    if graph_assets.get('svg_base64'):
+                        st.subheader('🗺️ Workflow graph')
+                        st.image(
+                            f"data:image/svg+xml;base64,{graph_assets.get('svg_base64')}",
+                            caption=graph_assets.get('alt') or workflow_graph.get('active_node') or 'Decision path',
+                        )
 
                     effect_sizes = results.get('effect_sizes') or (results.get('results_detail') or {}).get('effect_sizes')
 

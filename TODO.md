@@ -25,6 +25,14 @@
 - [x] Safety | Scoped credentials and quotas: Extend `statmate/api/services/credential_service.py` to store optional per-provider usage limits/quotas per user; before invoking a provider, check remaining quota and short-circuit with a clear error streamed to clients.
 - [x] Safety | Data masking: Add a lightweight PII detector/masker service that runs before LLM calls (column names/summaries) to redact obvious identifiers; integrate into `StatMateWorkflow` input sanitization and note masked columns in the `assumption_log`.
 
+## P0 – Workflow Graph Visualization (new for V1.0.0)
+- [x] Canonical graph definition: Derive a single source of truth for the workflow graph from `WorkflowGraphBuilder`/`NodeName` (include Reviewer/Nonparametric paths) and update `workflow_graph.md` to match; expose nodes/edges as machine-readable metadata (id, label, type, transitions).
+- [x] Backend | Graph + state mapping: Add an API payload (`GET /analysis/workflow-graph` and embed in `/analysis/{id}` + SSE `step` events) that returns the graph plus `visited_nodes`, `active_node`, and `selected_path` derived from `decision_steps`/`test_hierarchy`; normalize step labels to node ids so streaming can highlight the current node.
+- [x] Backend | Exportable graphic: Build a helper to render the graph with a highlighted path (SVG/PNG via graphviz/mermaid) and attach base64 + alt text into analysis results; embed the image in HTML/PDF/DOCX/LaTeX exports and drop the SVG/PNG into the repro bundle.
+- [x] Frontend | Live graph in analysis tab: Create a React graph component (Mermaid/ReactFlow/D3) fed by the graph API; animate the `active_node` during streaming, show `visited_nodes` progress, and lock the `selected_path` once completed; keep styling consistent with dark/light themes and allow download of the SVG/PNG.
+- [x] Frontend | Streamlit/fallback view: Add the same graph (static SVG) to the Streamlit UI or a lightweight fallback so non-React users see the decision path.
+- [x] QA + docs: Add unit tests for node-id mapping and graph rendering helper, verify SSE carries `active_node`, and update docs/screenshots to show the new graph; document any new deps (graphviz/mermaid) in setup/CI.
+
 ## P1 – Security & Reliability for V1.0.0
 - [ ] Authn/Authz | Backend/UI: Gate all routes/pages with auth; enforce dataset/analysis ownership checks; implement registration + email verification; store tokens securely; add logout; align Streamlit/React with protected APIs.
 - [ ] Error Handling | Backend: Normalize LLM/workflow errors and timeouts into user-friendly responses; validate uploads (type/size) with clear feedback; add retry/backoff around stream consumers to avoid rate-limit storms.
@@ -36,3 +44,11 @@
 - [x] Data Viz | Results: Auto-generate plots (distribution/box/scatter) for selected columns; ship in results payload and render in UI next to p-values/effect sizes.
 - [x] Export/Docs | Product: Add exports (PDF/Word via WeasyPrint, CSV) and docs for the step-by-step view with screenshots; include seeded example datasets plus in-app tooltips/guided tour.
 - [x] Release Prep | Ops: Run load/perf tests on realistic datasets; define SLAs/alerts; set up backups/retention; document rollback/runbook for V1.0.0; clarify pricing/usage limits if applicable.
+
+## P0 – Statistical Design Classification (Paired vs. Independent)
+- [x] Structural Validator | Core: Add a deterministic design check in `statmate/core/validation.py` that inspects ID/group overlaps (duplicate IDs across groups, 1:1 row mappings, repeated IDs within groups) and emits a `statistical_design` object (is_paired, grouping_variable, subject_id_column, rationale).
+- [x] Workflow State | Metadata propagation: Extend `statmate/workflow/state.py` to carry the `statistical_design` metadata and ensure it is set by the validator before agent reasoning; persist into streamed `decision_steps`/results so UI can surface the design decision.
+- [x] InitialInsightsAgent | Prompt + pre-flight: Update the agent run path to execute the structural validator (nunique/groupby summaries and ID overlap checks) and feed the structural summary plus temporal vs. group keyword cues into the prompt; require explicit `data_design` output (`independent`, `paired`, `mixed`).
+- [x] ComparisonAgent | Constraint enforcement: Gate tool selection in `statmate/statistical_core/comparison.py` by the detected design (e.g., forbid `ttest_ind` when `is_paired=True`, require paired tests when overlap exists); add a `design_type` parameter to comparison helpers to force explicit choice.
+- [x] Reviewer/Checkpoint | Red-flag step: Insert a verification node after InitialInsights that must restate the detected relationship (e.g., repeated IDs imply paired) and flag contradictions between agent hypothesis and validator output; block or request clarification when mismatched.
+- [x] Mixed Designs | Comparison matrix: For datasets with both longitudinal and arm-level groups, build a helper to enumerate valid comparisons (primary vs. subgroup analyses) and let agents prioritize; include detection logic for crossover/longitudinal patterns.

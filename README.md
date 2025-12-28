@@ -92,6 +92,7 @@ StatmateAI combines the power of LLM agents with traditional statistical methods
 - 📦 **File Handling**: Efficient parquet-based storage
 - ⚡ **Background Jobs**: Non-blocking analysis execution
 - 🗃️ **SQLite/PostgreSQL**: Flexible database backend
+- 🛰️ **Workflow Graph API**: `GET /analysis/workflow-graph` returns machine-readable nodes/edges plus live state; SVG/PNG assets are embedded in exports and UI for active-path highlighting.
 
 ## 🗝️ Accounts & Data Storage
 
@@ -188,6 +189,8 @@ architecture-beta
 ---
 
 ## 🚀 Quick Start
+
+> Workflow graph exports use `cairosvg` (installed via `make install`) to convert SVGs to PNGs—no separate Graphviz binary required.
 
 ### Option 1: Use Ollama (FREE & Local - Recommended!)
 

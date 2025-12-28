@@ -134,6 +134,7 @@ class NodeName:
     NORMALITY_OF_DIFFERENCE = 'Parametric assumptions hold?'
     ANOVA_RM = 'ANOVA repeated measures'
     REVIEWER = 'Reviewer Agent'
+    DESIGN_VERIFICATION = 'Design Verification'
 
 
 class DataType:

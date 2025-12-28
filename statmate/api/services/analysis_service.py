@@ -16,9 +16,14 @@ from statmate.api.services.credential_service import CredentialService, QuotaExc
 from statmate.api.services.dataset_service import DatasetService
 from statmate.api.services.storage_service import StorageService
 from statmate.api.services.visualization_service import VisualizationService
+from statmate.api.services.workflow_graph_service import render_workflow_graph
 from statmate.core.config import Config
 from statmate.core.model_config import ModelProvider, ModelProviderConfig
 from statmate.workflow.graph_builder import create_default_checkpointer
+from statmate.workflow.graph_metadata import (
+    map_step_to_node_id,
+    workflow_payload,
+)
 from statmate.workflow.statmate_flow_refactored import StatMateWorkflow
 
 logger = logging.getLogger(__name__)
@@ -89,6 +94,31 @@ class AnalysisService:
     """Service for managing statistical analysis execution."""
 
     WORKFLOW_STEP_TARGET = WORKFLOW_STEP_TARGET
+
+    @staticmethod
+    def build_workflow_graph_state(
+        decision_steps: list[dict[str, Any]] | None,
+        test_hierarchy: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Expose workflow metadata + progress for API consumers."""
+        return workflow_payload(decision_steps or [], test_hierarchy)
+
+    @staticmethod
+    def workflow_graph_for_analysis(analysis: Analysis) -> dict[str, Any]:
+        """Load graph metadata + state for a persisted analysis."""
+        test_hierarchy: dict[str, Any] | None = None
+        try:
+            stored_results = StorageService.read_results(analysis.id)
+            if stored_results:
+                if stored_results.get('workflow_graph'):
+                    return stored_results['workflow_graph']
+                # results_detail may be nested
+                detail = stored_results.get('results_detail') or stored_results
+                test_hierarchy = detail.get('test_hierarchy') or stored_results.get('test_hierarchy')
+        except Exception:
+            test_hierarchy = None
+
+        return AnalysisService.build_workflow_graph_state(analysis.decision_steps or [], test_hierarchy)
 
     @staticmethod
     def create_analysis(
@@ -308,6 +338,9 @@ class AnalysisService:
                 entry = dict(step)
                 if node and 'node' not in entry:
                     entry['node'] = node
+                node_id = entry.get('node_id') or map_step_to_node_id(entry.get('node') or entry.get('step'))
+                if node_id:
+                    entry['node_id'] = node_id
                 step_id = str(entry.get('timestamp') or entry.get('step') or f'{node}-{len(stored)}')
                 if step_id in seen_step_ids:
                     continue
@@ -452,6 +485,9 @@ class AnalysisService:
                     if not isinstance(raw, dict):
                         continue
                     entry = dict(raw)
+                    node_id = entry.get('node_id') or map_step_to_node_id(entry.get('node') or entry.get('step'))
+                    if node_id:
+                        entry['node_id'] = node_id
                     entry.setdefault('step_index', idx)
                     entry.setdefault('total_steps', total)
                     progress = min(1.0, entry['step_index'] / total)
@@ -485,6 +521,11 @@ class AnalysisService:
             )
             plots = viz_payload.get('plots', [])
             effect_sizes = viz_payload.get('effect_sizes', {})
+            workflow_graph_state = AnalysisService.build_workflow_graph_state(analysis.decision_steps, test_hierarchy)
+            workflow_graph_payload = {
+                **workflow_graph_state,
+                'assets': render_workflow_graph(workflow_graph_state),
+            }
 
             results_data = {
                 'analysis_id': analysis_id,
@@ -504,6 +545,7 @@ class AnalysisService:
                 'reviewer_report': reviewer_report,
                 'plots': plots,
                 'effect_sizes': effect_sizes,
+                'workflow_graph': workflow_graph_payload,
                 'timestamp': datetime.utcnow().isoformat(),
             }
 
@@ -567,6 +609,12 @@ class AnalysisService:
         if analysis.start_time and analysis.end_time:
             duration = (analysis.end_time - analysis.start_time).total_seconds()
 
+        workflow_graph_state = results_data.get('workflow_graph') or AnalysisService.build_workflow_graph_state(
+            analysis.decision_steps, results_data.get('test_hierarchy')
+        )
+        if isinstance(workflow_graph_state, dict) and 'assets' not in workflow_graph_state:
+            workflow_graph_state = {**workflow_graph_state, 'assets': render_workflow_graph(workflow_graph_state)}
+
         return {
             'id': analysis.id,
             'status': analysis.status.value,
@@ -593,6 +641,7 @@ class AnalysisService:
             'log_available': bool(analysis.log_path),
             'version': analysis.version,
             'superseded_at': analysis.superseded_at,
+            'workflow_graph': workflow_graph_state,
         }
 
     @staticmethod

@@ -30,6 +30,7 @@ export type AnalysisStatus = {
   execution_trace?: TraceStep[];
   assumption_log?: Record<string, unknown>[];
   progress?: number;
+  workflow_graph?: WorkflowGraph;
 };
 export type TraceStep = {
   step: string;
@@ -38,6 +39,7 @@ export type TraceStep = {
   p_value?: number;
   timestamp?: string;
   node?: string;
+  node_id?: string;
   progress_pct?: number;
   step_index?: number;
   total_steps?: number;
@@ -66,6 +68,21 @@ export type PlotInfo = {
   type?: string;
   content_type?: string;
 };
+export type WorkflowGraphAssets = {
+  svg?: string;
+  svg_base64?: string;
+  png_base64?: string;
+  alt?: string;
+};
+export type WorkflowGraph = {
+  nodes: { id: string; label: string; kind: string; transitions: string[] }[];
+  edges: { source: string; target: string; kind?: string }[];
+  visited_nodes?: string[];
+  selected_path?: string[];
+  active_node?: string | null;
+  chosen_test?: string | null;
+  assets?: WorkflowGraphAssets;
+};
 export type ResultsDetail = {
   messages?: string[];
   probabilities?: Record<string, number>;
@@ -80,6 +97,7 @@ export type ResultsDetail = {
   test_hierarchy?: TestHierarchy;
   reviewer_report?: Record<string, unknown>;
   assumption_log?: Record<string, unknown>[];
+  workflow_graph?: WorkflowGraph;
 };
 export type AnalysisResult = {
   id: string;
@@ -105,6 +123,7 @@ export type AnalysisResult = {
   test_hierarchy?: TestHierarchy;
   reviewer_report?: Record<string, unknown>;
   assumption_log?: Record<string, unknown>[];
+  workflow_graph?: WorkflowGraph;
 };
 export type AnalysisLog = { analysis_id: string; log_content: string; log_lines: string };
 export type AnalysisListItem = {
@@ -260,6 +279,15 @@ export class ApiClient {
   async analysisStream(id: string, signal?: AbortSignal): Promise<Response> {
     const headers = { ...this.headers(false), Accept: 'text/event-stream' };
     return fetch(`${this.baseUrl}/analysis/${id}/stream`, { headers, signal });
+  }
+
+  async workflowGraph(analysisId?: string): Promise<WorkflowGraph> {
+    const url = analysisId
+      ? `${this.baseUrl}/analysis/workflow-graph?analysis_id=${analysisId}`
+      : `${this.baseUrl}/analysis/workflow-graph`;
+    const res = await fetch(url, { headers: this.headers(false) });
+    if (!res.ok) throw await this.error(res);
+    return res.json();
   }
 
   async analyses(params: { dataset_id?: string; skip?: number; limit?: number } = {}): Promise<AnalysisListItem[]> {

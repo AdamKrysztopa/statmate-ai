@@ -83,6 +83,9 @@ class AnalysisStatusResponse(BaseModel):
     assumption_log: list[dict[str, Any]] | None = Field(
         default=None, description='Assumption diagnostics captured so far'
     )
+    workflow_graph: dict[str, Any] | None = Field(
+        default=None, description='Workflow graph metadata plus visited/active nodes'
+    )
 
 
 class AnalysisResultResponse(BaseModel):
@@ -123,6 +126,9 @@ class AnalysisResultResponse(BaseModel):
     )
     assumption_log: list[dict[str, Any]] | None = Field(
         default=None, description='All assumption diagnostics captured during the workflow'
+    )
+    workflow_graph: dict[str, Any] | None = Field(
+        default=None, description='Workflow graph metadata plus visited/active nodes'
     )
     log_available: bool = Field(description='Whether execution log is available')
     version: int = Field(description='Monotonic version number scoped to dataset/user')

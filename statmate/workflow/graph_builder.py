@@ -28,6 +28,7 @@ from statmate.workflow.nodes import (
     assess_study_design_node,
     call_initialization_agent,
     call_test_agent,
+    design_verification_node,
     nonparametric_node,
     reviewer_node,
     summariser_node,
@@ -51,8 +52,8 @@ class WorkflowGraphBuilder:
         Returns:
             Self for method chaining.
         """
-        self.graph.add_node('Initialization Agent', call_initialization_agent)
-        self.graph.set_entry_point('Initialization Agent')
+        self.graph.add_node(NodeName.INITIALIZATION, call_initialization_agent)
+        self.graph.set_entry_point(NodeName.INITIALIZATION)
         return self
 
     def add_initial_routing(self) -> 'WorkflowGraphBuilder':
@@ -62,7 +63,7 @@ class WorkflowGraphBuilder:
             Self for method chaining.
         """
         self.graph.add_conditional_edges(
-            'Initialization Agent',
+            NodeName.DESIGN_VERIFICATION,
             decide_outcome,
             {
                 NodeName.ASSESS_STUDY_DESIGN: NodeName.ASSESS_STUDY_DESIGN,
@@ -70,6 +71,12 @@ class WorkflowGraphBuilder:
                 NodeName.FISHER: NodeName.FISHER,
             },
         )
+        return self
+
+    def add_design_verification(self) -> 'WorkflowGraphBuilder':
+        """Add a post-initialization design checkpoint."""
+        self.graph.add_node(NodeName.DESIGN_VERIFICATION, design_verification_node)
+        self.graph.add_edge(NodeName.INITIALIZATION, NodeName.DESIGN_VERIFICATION)
         return self
 
     def add_study_design_assessment(self) -> 'WorkflowGraphBuilder':
@@ -247,6 +254,7 @@ def build_workflow_graph(checkpointer=None):
     builder = WorkflowGraphBuilder()
     graph = (
         builder.add_initialization_node()
+        .add_design_verification()
         .add_initial_routing()
         .add_study_design_assessment()
         .add_paired_test_path()
