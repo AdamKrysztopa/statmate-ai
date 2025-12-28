@@ -35,7 +35,7 @@ Instead of hardcoding `if/else` blocks in `edges.py`, move to a registry-based `
     - categorical + paired → `mcnemar_node`
     - survival_data → `cox_regression_node` (placeholder for future)
 - [ ] Assumption-Triggered Rerouting:
-  - If a test node runs and finds a violation (e.g., Levene's test fails for ANOVA), it should return a `fail` status that the `DecisionEngine` uses to reroute to a Robust or Non-parametric alternative.
+  - If a test node runs and finds a violation (e.g., Levene's test fails for ANOVA), it should return a `fail` status that the `DecisionEngine` uses to reroute to a Robust or Non-parametric alternative (e.g., auto-switch one-way ANOVA → Kruskal-Wallis).
 
 ## Agents: Data Blueprint & Deep Metadata
 The `InitialInsightsAgent` must be the brain of the operation, providing a machine-readable roadmap.
@@ -62,7 +62,7 @@ Make the graph suspendable for human-in-the-loop decisions.
   - Add `IntentAgent` to check if the user prompt specifies a goal (e.g., "Prove my drug works" vs "Explore differences").
   - Trigger an Ambiguity Modal in the UI if the agent is < 80% confident in the research question.
 - [x] Elastic Choice Points:
-  - Implement a `ChoiceNode` where the AI presents options like "Standard Analysis (ANOVA)" vs "Conservative Analysis (Kruskal-Wallis)" and lets the user click to decide.
+  - Implement a `ChoiceNode` where the AI presents options like "Standard Analysis (ANOVA)" vs "Conservative Analysis (Kruskal-Wallis)" and lets the user click to decide; suspend graph execution until the UI responds.
 
 ## Validation: Constraint Guardrails
 - [x] ConstraintValidator Middleware:
