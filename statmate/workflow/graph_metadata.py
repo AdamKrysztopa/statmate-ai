@@ -70,6 +70,14 @@ _NODE_ALIAS: dict[str, str] = {
     'reviewer': NodeName.REVIEWER,
     'reviewer agent': NodeName.REVIEWER,
     'design verification': NodeName.DESIGN_VERIFICATION,
+    'descriptive summary': NodeName.DESCRIPTIVE_SUMMARY,
+    'user intervention needed': NodeName.USER_INTERVENTION,
+    'choice node': NodeName.CHOICE,
+    'mcnemar test': NodeName.MCNEMAR,
+    "welch's t-test": NodeName.WELCH,
+    'welch t-test': NodeName.WELCH,
+    'mann-whitney u test': NodeName.MANN,
+    'cox regression': NodeName.COX_REGRESSION,
 }
 
 
@@ -91,6 +99,12 @@ _NODES: list[WorkflowNode] = [
             normalize_node_id(NodeName.ASSESS_STUDY_DESIGN),
             normalize_node_id(NodeName.CHI2),
             normalize_node_id(NodeName.FISHER),
+            normalize_node_id(NodeName.NONPARAMETRIC),
+            normalize_node_id(NodeName.MCNEMAR),
+            normalize_node_id(NodeName.CHOICE),
+            normalize_node_id(NodeName.COX_REGRESSION),
+            normalize_node_id(NodeName.DESCRIPTIVE_SUMMARY),
+            normalize_node_id(NodeName.USER_INTERVENTION),
         ],
     ),
     WorkflowNode(
@@ -148,6 +162,24 @@ _NODES: list[WorkflowNode] = [
         transitions=[normalize_node_id(NodeName.SUMMARY)],
     ),
     WorkflowNode(
+        id=normalize_node_id(NodeName.WELCH),
+        label=NodeName.WELCH,
+        kind='test',
+        transitions=[normalize_node_id(NodeName.SUMMARY)],
+    ),
+    WorkflowNode(
+        id=normalize_node_id(NodeName.MANN),
+        label=NodeName.MANN,
+        kind='test',
+        transitions=[normalize_node_id(NodeName.SUMMARY)],
+    ),
+    WorkflowNode(
+        id=normalize_node_id(NodeName.MCNEMAR),
+        label=NodeName.MCNEMAR,
+        kind='test',
+        transitions=[normalize_node_id(NodeName.SUMMARY)],
+    ),
+    WorkflowNode(
         id=normalize_node_id(NodeName.CHI2),
         label=NodeName.CHI2,
         kind='test',
@@ -158,6 +190,30 @@ _NODES: list[WorkflowNode] = [
         label=NodeName.FISHER,
         kind='test',
         transitions=[normalize_node_id(NodeName.SUMMARY)],
+    ),
+    WorkflowNode(
+        id=normalize_node_id(NodeName.CHOICE),
+        label=NodeName.CHOICE,
+        kind='decision',
+        transitions=[normalize_node_id(NodeName.ASSESS_STUDY_DESIGN)],
+    ),
+    WorkflowNode(
+        id=normalize_node_id(NodeName.COX_REGRESSION),
+        label=NodeName.COX_REGRESSION,
+        kind='test',
+        transitions=['end'],
+    ),
+    WorkflowNode(
+        id=normalize_node_id(NodeName.DESCRIPTIVE_SUMMARY),
+        label=NodeName.DESCRIPTIVE_SUMMARY,
+        kind='report',
+        transitions=['end'],
+    ),
+    WorkflowNode(
+        id=normalize_node_id(NodeName.USER_INTERVENTION),
+        label=NodeName.USER_INTERVENTION,
+        kind='checkpoint',
+        transitions=['end'],
     ),
     WorkflowNode(
         id=normalize_node_id(NodeName.SUMMARY),

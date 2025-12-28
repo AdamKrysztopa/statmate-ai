@@ -140,6 +140,8 @@ class NodeName:
     METHODOLOGY_AUDITOR = 'Methodology Auditor'
     REVIEWER = 'Reviewer Agent'
     DESIGN_VERIFICATION = 'Design Verification'
+    DESCRIPTIVE_SUMMARY = 'Descriptive Summary'
+    USER_INTERVENTION = 'User Intervention Needed'
 
 
 class DataType:

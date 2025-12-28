@@ -51,6 +51,25 @@ class DataBlueprint(BaseModel):
     distribution_metrics: dict[str, DistributionMetric] = Field(default_factory=dict)
     sample_balance: SampleBalance | None = None
     survival_data: bool = False
+    is_paired: bool | None = Field(
+        default=None,
+        description='Whether the data layout is paired/repeated based on structural detection.',
+    )
+    group_samples: dict[str, int] = Field(
+        default_factory=dict, description='Per-group sample counts for routing/sufficiency checks.'
+    )
+    index_column: str | None = Field(
+        default=None,
+        description='Column or index name representing the pairing identifier (subject ID).',
+    )
+    target_column: str | None = Field(
+        default=None,
+        description='Primary dependent/target column captured during initialization.',
+    )
+    partition_report: dict[str, Any] | None = Field(
+        default=None,
+        description='Structured overlap report across groups/IDs emitted by initialization.',
+    )
     raw: dict[str, Any] = Field(default_factory=dict, description='Original payload from agents if provided')
 
 
@@ -99,12 +118,17 @@ def build_data_blueprint(
     dependent_vars: list[str] | None = None,
     group_var: str | None = None,
     covariates: list[str] | None = None,
+    is_paired: bool | None = None,
+    index_column: str | None = None,
+    target_column: str | None = None,
+    partition_report: dict[str, Any] | None = None,
     raw_payload: dict[str, Any] | None = None,
 ) -> DataBlueprint:
     """Create a DataBlueprint with deterministic, typed metadata."""
     df = data.copy()
     if isinstance(df, pd.Series):
         df = df.to_frame()
+    total_n = len(df)
 
     dep_vars = dependent_vars or []
     covariate_vars = covariates or []
@@ -149,10 +173,34 @@ def build_data_blueprint(
         sample_balance = SampleBalance(**sample_balance_payload)
     sample_balance = sample_balance or _compute_sample_balance(df, group_var)
 
+    # Group sample counts for sufficiency checks
+    group_samples: dict[str, int] = {}
+    if group_var and group_var in df.columns:
+        counts = df[group_var].value_counts(dropna=False).to_dict()
+        group_samples = {str(k): int(v) for k, v in counts.items()}
+    elif total_n:
+        group_samples = {'__all__': int(total_n)}
+
+    # Resolve pairing + identifier/target metadata
+    paired_flag = is_paired
+    if paired_flag is None and raw_payload:
+        design_hint = raw_payload.get('data_design')
+        if design_hint == 'paired':
+            paired_flag = True
+        elif design_hint == 'independent':
+            paired_flag = False
+    idx_col = index_column or (raw_payload or {}).get('index_column') or df.index.name
+    tgt_col = target_column or (raw_payload or {}).get('target_column')
+
     return DataBlueprint(
         variable_roles=roles,
         distribution_metrics=distribution_metrics,
         sample_balance=sample_balance,
         survival_data=_detect_survival_columns(df),
+        is_paired=paired_flag,
+        group_samples=group_samples,
+        index_column=idx_col,
+        target_column=tgt_col,
+        partition_report=partition_report or (raw_payload or {}).get('partition_report'),
         raw=raw_payload or {},
     )

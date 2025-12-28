@@ -32,6 +32,7 @@ from statmate.workflow.nodes import (
     call_test_agent,
     choice_node,
     cox_regression_node,
+    descriptive_summary_node,
     design_verification_node,
     intent_discovery_node,
     methodology_auditor_node,
@@ -41,6 +42,7 @@ from statmate.workflow.nodes import (
     reviewer_node,
     summariser_node,
     two_independent_node,
+    user_intervention_node,
 )
 from statmate.workflow.state import WorkflowState
 
@@ -87,8 +89,18 @@ class WorkflowGraphBuilder:
                 NodeName.MCNEMAR: NodeName.MCNEMAR,
                 NodeName.CHOICE: NodeName.CHOICE,
                 NodeName.COX_REGRESSION: NodeName.COX_REGRESSION,
+                NodeName.DESCRIPTIVE_SUMMARY: NodeName.DESCRIPTIVE_SUMMARY,
+                NodeName.USER_INTERVENTION: NodeName.USER_INTERVENTION,
             },
         )
+        return self
+
+    def add_guardrail_nodes(self) -> 'WorkflowGraphBuilder':
+        """Add guardrail nodes for insufficient data or manual intervention."""
+        self.graph.add_node(NodeName.DESCRIPTIVE_SUMMARY, descriptive_summary_node)
+        self.graph.add_node(NodeName.USER_INTERVENTION, user_intervention_node)
+        self.graph.add_edge(NodeName.DESCRIPTIVE_SUMMARY, END)
+        self.graph.add_edge(NodeName.USER_INTERVENTION, END)
         return self
 
     def add_choice_node(self) -> 'WorkflowGraphBuilder':
@@ -329,6 +341,7 @@ def build_workflow_graph(checkpointer=None):
         builder.add_initialization_node()
         .add_intent_node()
         .add_design_verification()
+        .add_guardrail_nodes()
         .add_initial_routing()
         .add_choice_node()
         .add_study_design_assessment()

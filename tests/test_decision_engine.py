@@ -6,7 +6,7 @@ from statmate.core.exceptions import StatisticalAssumptionError
 from statmate.core.validation import requires_assumptions
 from statmate.workflow.blueprint import build_data_blueprint
 from statmate.workflow.edges import decision_engine
-from statmate.workflow.methodology_auditor import MethodologyAuditor
+from statmate.workflow.methodology_auditor import MethodologyAuditor, StructureAuditor
 from statmate.workflow.nodes import choice_node, resolve_choice
 from statmate.workflow.state import WorkflowState, create_initial_state
 
@@ -22,6 +22,7 @@ def test_build_data_blueprint_uses_roles_and_balance():
 
     assert blueprint.sample_balance is not None
     assert blueprint.sample_balance.balance_ratio == pytest.approx(1.0)
+    assert blueprint.group_samples == {'a': 2, 'b': 2}
     roles = {r.name: r.role for r in blueprint.variable_roles}
     assert roles['group'] == 'group'
     assert 'value' in blueprint.distribution_metrics
@@ -38,6 +39,14 @@ def test_decision_engine_survival_and_mcnemar_routing():
     paired_state.paired = True
     paired_state.attach_blueprint(build_data_blueprint(paired_state.df))
     assert decision_engine.evaluate_routing(paired_state) == NodeName.MCNEMAR
+
+
+def test_sufficiency_validator_routes_to_descriptive_summary():
+    df = pd.DataFrame({'value': [1], 'group': ['solo']})
+    state = create_initial_state(df=df)
+    state.data_type = DataType.CONTINUOUS
+    state.attach_blueprint(build_data_blueprint(df, dependent_vars=['value'], group_var='group'))
+    assert decision_engine.evaluate_routing(state) == NodeName.DESCRIPTIVE_SUMMARY
 
 
 def test_methodology_auditor_requests_welch_on_variance_failure():
@@ -57,6 +66,20 @@ def test_methodology_auditor_requests_welch_on_variance_failure():
     assert result.correction_step
     assert result.correction_step['suggested_node'] == NodeName.WELCH
     assert state.correction_steps
+
+
+def test_structure_auditor_enforces_paired_tests():
+    df = pd.DataFrame({'value': [1, 2, 3, 4], 'group': ['a', 'a', 'b', 'b'], 'id': [1, 2, 1, 2]})
+    state = create_initial_state(df=df)
+    blueprint = build_data_blueprint(df, dependent_vars=['value'], group_var='group', is_paired=True, index_column='id')
+    state.attach_blueprint(blueprint)
+    state.execution_trace.append({'step': NodeName.INDEP_T})
+
+    auditor = StructureAuditor()
+    result = auditor.audit(state)
+    assert result is not None
+    assert result.recommended == NodeName.PAIRED_T
+    assert state.pending_routing_decision['selected'] == NodeName.PAIRED_T
 
 
 def test_requires_assumptions_blocks_when_blueprint_non_normal():

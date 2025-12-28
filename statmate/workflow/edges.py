@@ -9,6 +9,7 @@ from langgraph.graph import END
 
 from statmate.core import get_logger
 from statmate.core.config import DataType, NodeName, default_config
+from statmate.core.exceptions import RoutingError
 from statmate.workflow.blueprint import DataBlueprint
 from statmate.workflow.state import WorkflowState
 
@@ -33,6 +34,15 @@ class MethodSuggestion:
     alternatives: list[str]
     weight: float = 1.0
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class NodeMetadata:
+    """Hard constraints for routing candidates."""
+
+    is_paired: bool | None = None
+    min_sample_size: int = 0
+    group_count_range: tuple[int | None, int | None] | None = None
 
 
 class MethodRegistry:
@@ -83,14 +93,63 @@ def _build_default_registry() -> MethodRegistry:
     return registry
 
 
+NODE_METADATA: dict[str, NodeMetadata] = {
+    NodeName.PAIRED_T: NodeMetadata(is_paired=True, min_sample_size=2, group_count_range=(1, 2)),
+    NodeName.WILCOXON: NodeMetadata(is_paired=True, min_sample_size=2, group_count_range=(1, 2)),
+    NodeName.INDEP_T: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, 2)),
+    NodeName.WELCH: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, 2)),
+    NodeName.MANN: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, 2)),
+    NodeName.NONPARAMETRIC: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, 2)),
+    NodeName.CHI2: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, None)),
+    NodeName.FISHER: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, None)),
+    NodeName.MCNEMAR: NodeMetadata(is_paired=True, min_sample_size=2, group_count_range=(2, None)),
+    NodeName.COX_REGRESSION: NodeMetadata(is_paired=None, min_sample_size=1, group_count_range=None),
+    NodeName.DESCRIPTIVE_SUMMARY: NodeMetadata(is_paired=None, min_sample_size=0, group_count_range=None),
+    NodeName.USER_INTERVENTION: NodeMetadata(is_paired=None, min_sample_size=0, group_count_range=None),
+}
+
+
+class SufficiencyValidator:
+    """Pre-flight guardrail for minimum per-group sample sizes."""
+
+    def __init__(self, min_group_size: int = 2):
+        self.min_group_size = min_group_size
+
+    def check(self, blueprint: DataBlueprint | None) -> tuple[bool, dict[str, int]]:
+        if not blueprint:
+            return True, {}
+        counts: dict[str, int] = {}
+        if blueprint.group_samples:
+            counts = blueprint.group_samples
+        elif blueprint.sample_balance and blueprint.sample_balance.group_sizes:
+            counts = blueprint.sample_balance.group_sizes
+
+        if not counts:
+            return True, {}
+
+        insufficient = {group: n for group, n in counts.items() if n < self.min_group_size}
+        return len(insufficient) == 0, insufficient
+
+
 class DecisionEngine:
     """Deterministic, registry-driven routing engine."""
 
     def __init__(self, registry: MethodRegistry | None = None):
         self.registry = registry or _build_default_registry()
+        self.metadata = NODE_METADATA
+        self.sufficiency_validator = SufficiencyValidator()
 
     def _blueprint(self, state: WorkflowState) -> DataBlueprint | None:
         return getattr(state, 'data_blueprint', None)
+
+    def _paired_flag(self, state: WorkflowState, blueprint: DataBlueprint | None) -> bool | None:
+        if blueprint and blueprint.is_paired is not None:
+            return blueprint.is_paired
+        if state.paired is not None:
+            return state.paired
+        if state.statistical_design:
+            return state.statistical_design.is_paired
+        return None
 
     def _normal_flag(self, state: WorkflowState, blueprint: DataBlueprint | None) -> bool | None:
         if blueprint:
@@ -105,12 +164,26 @@ class DecisionEngine:
             return p_normality >= default_config.statistical.normality_threshold
         return None
 
-    def _group_count(self, state: WorkflowState, blueprint: DataBlueprint | None) -> int | None:
+    def _group_samples(self, blueprint: DataBlueprint | None) -> dict[str, int]:
+        if blueprint and blueprint.group_samples:
+            return blueprint.group_samples
         if blueprint and blueprint.sample_balance and blueprint.sample_balance.group_sizes:
-            return len(blueprint.sample_balance.group_sizes)
+            return {str(k): int(v) for k, v in blueprint.sample_balance.group_sizes.items()}
+        return {}
+
+    def _group_count(self, state: WorkflowState, blueprint: DataBlueprint | None) -> int | None:
+        if blueprint:
+            if blueprint.group_samples and set(blueprint.group_samples) != {'__all__'}:
+                return len(blueprint.group_samples)
+            if blueprint.sample_balance and blueprint.sample_balance.group_sizes:
+                return len(blueprint.sample_balance.group_sizes)
         if state.secondary_df is not None:
             return 2
         return None
+
+    def _min_group_size(self, blueprint: DataBlueprint | None) -> int | None:
+        counts = self._group_samples(blueprint)
+        return min(counts.values()) if counts else None
 
     def _scale(self, state: WorkflowState, blueprint: DataBlueprint | None) -> Literal['continuous', 'categorical', 'survival']:
         if blueprint and blueprint.survival_data:
@@ -122,9 +195,60 @@ class DecisionEngine:
         return 'continuous'
 
     def _effective_n(self, state: WorkflowState, blueprint: DataBlueprint | None) -> int:
-        if blueprint and blueprint.sample_balance and blueprint.sample_balance.group_sizes:
-            return sum(blueprint.sample_balance.group_sizes.values())
+        if blueprint:
+            if blueprint.group_samples:
+                return sum(blueprint.group_samples.values())
+            if blueprint.sample_balance and blueprint.sample_balance.group_sizes:
+                return sum(blueprint.sample_balance.group_sizes.values())
         return int(state.number_of_samples or 0)
+
+    def _get_metadata(self, node: str) -> NodeMetadata:
+        return self.metadata.get(node, NodeMetadata())
+
+    def _node_allowed(
+        self,
+        node: str,
+        *,
+        blueprint: DataBlueprint | None,
+        group_count: int | None,
+        min_group_size: int | None,
+        paired_flag: bool | None,
+    ) -> bool:
+        meta = self._get_metadata(node)
+        if paired_flag is True and meta.is_paired is False:
+            return False
+        if paired_flag is False and meta.is_paired is True:
+            return False
+        if meta.group_count_range and group_count is not None:
+            low, high = meta.group_count_range
+            if low is not None and group_count < low:
+                return False
+            if high is not None and group_count > high:
+                return False
+        if meta.min_sample_size and min_group_size is not None and min_group_size < meta.min_sample_size:
+            return False
+        return True
+
+    def _filter_candidates(
+        self,
+        candidates: list[str],
+        *,
+        blueprint: DataBlueprint | None,
+        group_count: int | None,
+        min_group_size: int | None,
+        paired_flag: bool | None,
+    ) -> list[str]:
+        seen: set[str] = set()
+        allowed: list[str] = []
+        for node in candidates:
+            if node in seen:
+                continue
+            seen.add(node)
+            if self._node_allowed(
+                node, blueprint=blueprint, group_count=group_count, min_group_size=min_group_size, paired_flag=paired_flag
+            ):
+                allowed.append(node)
+        return allowed
 
     def evaluate_routing(
         self,
@@ -138,17 +262,27 @@ class DecisionEngine:
             categorical_threshold = default_config.statistical.categorical_sample_size_threshold
 
         blueprint = self._blueprint(state)
+        sufficient, deficits = self.sufficiency_validator.check(blueprint)
+        if not sufficient:
+            state.pending_routing_decision = {
+                'reason': 'insufficient_samples',
+                'deficits': deficits,
+                'profile': None,
+            }
+            return NodeName.DESCRIPTIVE_SUMMARY
+
         normal_flag = self._normal_flag(state, blueprint)
         group_count = self._group_count(state, blueprint)
-        paired = state.paired if state.paired is not None else (state.statistical_design.is_paired if state.statistical_design else None)
+        paired = self._paired_flag(state, blueprint)
         scale = self._scale(state, blueprint)
+        min_group_size = self._min_group_size(blueprint)
 
         # Hard constraints
         if scale == 'survival':
             return NodeName.COX_REGRESSION
         if scale == 'categorical' and paired:
             return NodeName.MCNEMAR
-        if scale == 'continuous' and normal_flag is False and group_count == 2:
+        if scale == 'continuous' and normal_flag is False and group_count == 2 and not paired:
             return NodeName.NONPARAMETRIC
 
         if scale == 'categorical':
@@ -161,16 +295,29 @@ class DecisionEngine:
             logger.warning('No registry suggestion for profile %s; defaulting to study design assessment.', profile)
             return NodeName.ASSESS_STUDY_DESIGN
 
-        if assumption_status and assumption_status.get('status') == 'fail' and suggestion.alternatives:
+        primary_meta = self._get_metadata(suggestion.primary)
+        if paired and primary_meta.is_paired is False:
             state.pending_routing_decision = {
                 'profile': asdict(profile),
                 'primary': suggestion.primary,
                 'alternatives': suggestion.alternatives,
-                'reason': suggestion.reason,
-                'assumption_status': assumption_status,
-                'selected': suggestion.alternatives[0],
+                'reason': 'paired_data_requires_paired_node',
             }
-            return suggestion.alternatives[0]
+            raise RoutingError(f'Independent-only node {suggestion.primary} suggested for paired data.')
+
+        candidates: list[str] = []
+        if assumption_status and assumption_status.get('status') == 'fail' and suggestion.alternatives:
+            candidates.append(suggestion.alternatives[0])
+        candidates.append(suggestion.primary)
+        candidates.extend(suggestion.alternatives)
+
+        filtered = self._filter_candidates(
+            candidates,
+            blueprint=blueprint,
+            group_count=group_count,
+            min_group_size=min_group_size,
+            paired_flag=paired,
+        )
 
         pending = {
             'profile': asdict(profile),
@@ -178,20 +325,29 @@ class DecisionEngine:
             'alternatives': suggestion.alternatives,
             'reason': suggestion.reason,
             'assumption_status': assumption_status,
+            'filtered_candidates': filtered,
         }
         state.pending_routing_decision = pending
+
+        if not filtered:
+            pending['reason'] = pending.get('reason') or 'no_candidate_after_constraints'
+            pending['deficits'] = deficits
+            return NodeName.USER_INTERVENTION
+
+        selected = filtered[0]
+        state.pending_routing_decision = {**pending, 'selected': selected}
 
         if scale == 'continuous' and not prefer_terminal:
             # Preserve the existing assumption-check path while keeping registry hints attached
             return NodeName.ASSESS_STUDY_DESIGN
 
-        if suggestion.alternatives:
+        if assumption_status and assumption_status.get('status') == 'fail':
+            return selected
+
+        if len(filtered) > 1 and suggestion.alternatives:
             return NodeName.CHOICE
 
-        if assumption_status and assumption_status.get('status') == 'fail' and suggestion.alternatives:
-            return suggestion.alternatives[0]
-
-        return suggestion.primary
+        return selected
 
 
 default_registry = _build_default_registry()
@@ -202,6 +358,10 @@ def decide_outcome(state: WorkflowState, categorical_threshold: int | None = Non
     """Determine the initial routing using the registry-driven engine."""
     try:
         return decision_engine.evaluate_routing(state, categorical_threshold=categorical_threshold)
+    except RoutingError as exc:
+        logger.error('Routing error: %s', exc)
+        state.pending_routing_decision = (state.pending_routing_decision or {}) | {'error': str(exc)}
+        return NodeName.USER_INTERVENTION
     except Exception as e:  # pragma: no cover - defensive
         logger.error(f'Error in decide_outcome: {e}')
         return END

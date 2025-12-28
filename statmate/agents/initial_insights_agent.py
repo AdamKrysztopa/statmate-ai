@@ -198,6 +198,13 @@ class InitialInsightsAgentResults(BaseModel):
     sample_balance: dict[str, Any] | None = Field(
         default=None, description='Group balance diagnostics emitted by the agent.'
     )
+    index_column: str | None = Field(
+        default=None, description='Pairing/subject identifier column used for overlap detection.'
+    )
+    target_column: str | None = Field(default=None, description='Primary dependent/target column used in analysis.')
+    partition_report: dict[str, Any] | None = Field(
+        default=None, description='Structured overlap report across detected groups/IDs.'
+    )
 
     def __str__(self) -> str:
         """String representation of RouterAgentResults for easy readability."""
@@ -340,6 +347,46 @@ def build_initial_insights_agent(
         return ctx.deps
 
     return agent
+
+
+def build_partition_report(df: pd.DataFrame, group_col: str | None, index_col: str | None) -> dict[str, Any] | None:
+    """Create a structured partition/overlap report for grouping layouts."""
+    if not group_col or group_col not in df.columns:
+        return None
+
+    group_counts = df[group_col].value_counts(dropna=False)
+    report: dict[str, Any] = {
+        'group_column': group_col,
+        'pairing_id': index_col,
+        'groups': [{'name': str(level), 'n': int(count)} for level, count in group_counts.items()],
+    }
+
+    if not index_col:
+        return report
+
+    id_series = df[index_col] if index_col in df.columns else None
+    if id_series is None and df.index.name == index_col:
+        id_series = df.index.to_series()
+    if id_series is None or id_series.empty or len(report['groups']) < 2:
+        return report
+
+    try:
+        group_levels = [entry['name'] for entry in report['groups']]
+        group_a, group_b = group_levels[:2]
+        ids_a = set(id_series[df[group_col] == group_a].dropna())
+        ids_b = set(id_series[df[group_col] == group_b].dropna())
+        shared = ids_a & ids_b
+        denom = min(len(ids_a), len(ids_b)) or 1
+        report['overlap'] = {
+            'group_a': group_a,
+            'group_b': group_b,
+            'overlap_count': len(shared),
+            'overlap_percent': float(len(shared) / denom),
+        }
+    except Exception:
+        return report
+
+    return report
 
 
 def format_data_by_recommendation(

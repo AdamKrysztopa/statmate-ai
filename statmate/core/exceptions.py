@@ -75,6 +75,10 @@ class StatisticalAssumptionError(StatisticalTestError):
     """Raised when required statistical assumptions are not met for a function."""
 
 
+class RoutingError(WorkflowError):
+    """Raised when routing logic encounters an invalid path."""
+
+
 class AgentError(StatMateError):
     """Raised when an agent encounters an error."""
 

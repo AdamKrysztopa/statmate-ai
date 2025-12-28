@@ -23,6 +23,7 @@ from statmate.agents.initial_insights_agent import (
     TOOL_FUNCS,
     InitialInsightsAgentDeps,
     build_initial_insights_agent,
+    build_partition_report,
     format_data_by_recommendation,
     validate_tool_args,
 )
@@ -39,7 +40,7 @@ from statmate.core.validation import (
 )
 from statmate.workflow.blueprint import build_data_blueprint
 from statmate.workflow.model_factory import create_model, create_model_settings
-from statmate.workflow.methodology_auditor import MethodologyAuditor
+from statmate.workflow.methodology_auditor import MethodologyAuditor, StructureAuditor
 from statmate.workflow.state import WorkflowState
 
 logger = get_logger(__name__)
@@ -260,11 +261,30 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         state.paired = validated_design.is_paired
         state.comparison_matrix = validated_design.comparison_matrix or state.comparison_matrix
 
+        index_column = validated_design.subject_id_column or design.subject_id_column or inp_df.index.name
+        target_column = (results.data.analysis_columns or [validated_design.dependent_variable or None])[0]
+        partition_report = build_partition_report(
+            inp_df, results.data.group_column or validated_design.grouping_variable, index_column
+        )
+        if partition_report and partition_report.get('overlap', {}).get('overlap_count'):
+            state.paired = True
+            validated_design.is_paired = True
+            validated_design.design_type = 'paired'
+            results.data.data_design = 'paired'
+
+        results.data.partition_report = partition_report
+        results.data.index_column = index_column
+        results.data.target_column = target_column
+
         blueprint = build_data_blueprint(
             inp_df,
             dependent_vars=results.data.analysis_columns or list(inp_df.columns),
             group_var=results.data.group_column or validated_design.grouping_variable,
             covariates=[],
+            is_paired=validated_design.is_paired,
+            index_column=index_column,
+            target_column=target_column,
+            partition_report=partition_report,
             raw_payload=results.data.model_dump() if hasattr(results, 'data') else {},
         )
         state.attach_blueprint(blueprint)
@@ -677,8 +697,38 @@ def cox_regression_node(state: WorkflowState) -> WorkflowState:
     return state
 
 
+def descriptive_summary_node(state: WorkflowState) -> WorkflowState:
+    """Fallback node that returns descriptive statistics when inferential tests are blocked."""
+    frame = state.df if isinstance(state.df, pd.DataFrame) else state.df.to_frame()
+    summary = frame.describe(include='all').to_dict()
+    group_samples = state.data_blueprint.group_samples if state.data_blueprint else None
+    payload = {'summary': summary, 'group_samples': group_samples}
+    state.add_result(AIMessage(content=json.dumps(payload, default=str)))
+    state.add_step(
+        step=NodeName.DESCRIPTIVE_SUMMARY,
+        detail='Insufficient sample size for inferential testing; returning descriptive summary.',
+        data=payload,
+    )
+    return state
+
+
+def user_intervention_node(state: WorkflowState) -> WorkflowState:
+    """Stop the graph and surface a user-facing intervention request."""
+    state.add_step(
+        step=NodeName.USER_INTERVENTION,
+        detail='Routing blocked by guardrails; manual choice required.',
+        data={
+            'pending_decision': state.pending_routing_decision,
+            'blueprint': state.data_blueprint.model_dump() if state.data_blueprint else None,
+        },
+    )
+    return state
+
+
 def methodology_auditor_node(state: WorkflowState) -> WorkflowState:
     """Audit executed tests and propose corrections when assumptions fail."""
+    structure_auditor = StructureAuditor()
+    structural = structure_auditor.audit(state)
     auditor = MethodologyAuditor()
     result = auditor.audit(state)
     payload = {
@@ -687,6 +737,9 @@ def methodology_auditor_node(state: WorkflowState) -> WorkflowState:
         'correction_step': result.correction_step,
         'conflicts': result.conflicts,
     }
+    if structural:
+        payload['structural_recommended'] = structural.recommended
+        payload['structural_correction'] = structural.correction_step
     state.test_hierarchy = state.test_hierarchy or {}
     state.test_hierarchy['auditor'] = payload
     state.add_step(step=NodeName.METHODOLOGY_AUDITOR, detail='Auditor review complete', data=payload)

@@ -10,6 +10,23 @@ from statmate.workflow.edges import DecisionEngine, decision_engine
 from statmate.workflow.state import WorkflowState
 
 
+def _last_executed_test(state: WorkflowState) -> str | None:
+    """Return the last executed node that is not a meta/summary step."""
+    for entry in reversed(state.execution_trace):
+        name = entry.get('step')
+        if name and name not in (
+            NodeName.SUMMARY,
+            NodeName.REVIEWER,
+            NodeName.DESIGN_VERIFICATION,
+            NodeName.INITIALIZATION,
+            NodeName.CHOICE,
+            NodeName.INTENT,
+            'Structural Validation',
+        ):
+            return name
+    return None
+
+
 @dataclass
 class AuditResult:
     """Outcome of auditing a workflow run."""
@@ -26,28 +43,13 @@ class MethodologyAuditor:
     def __init__(self, engine: DecisionEngine | None = None):
         self.engine = engine or decision_engine
 
-    def _last_executed_test(self, state: WorkflowState) -> str | None:
-        for entry in reversed(state.execution_trace):
-            name = entry.get('step')
-            if name and name not in (
-                NodeName.SUMMARY,
-                NodeName.REVIEWER,
-                NodeName.DESIGN_VERIFICATION,
-                NodeName.INITIALIZATION,
-                NodeName.CHOICE,
-                NodeName.INTENT,
-                'Structural Validation',
-            ):
-                return name
-        return None
-
     def _latest_assumption_status(self, state: WorkflowState) -> dict[str, Any] | None:
         if not state.assumption_log:
             return None
         return state.assumption_log[-1]
 
     def audit(self, state: WorkflowState) -> AuditResult:
-        executed = self._last_executed_test(state)
+        executed = _last_executed_test(state)
         assumption_status = self._latest_assumption_status(state)
         recommended = self.engine.evaluate_routing(
             state,
@@ -81,3 +83,37 @@ class MethodologyAuditor:
             recommended = state.pending_routing_decision.get('selected') or state.pending_routing_decision.get('primary')
 
         return AuditResult(executed=executed, recommended=recommended, correction_step=correction, conflicts=conflicts)
+
+
+class StructureAuditor:
+    """Ensure the executed test aligns with detected pairing structure."""
+
+    def __init__(self, engine: DecisionEngine | None = None):
+        self.engine = engine or decision_engine
+
+    def audit(self, state: WorkflowState) -> AuditResult | None:
+        blueprint = getattr(state, 'data_blueprint', None)
+        paired_flag = None
+        if blueprint and blueprint.is_paired is not None:
+            paired_flag = blueprint.is_paired
+        elif state.paired is not None:
+            paired_flag = state.paired
+        if not paired_flag:
+            return None
+
+        executed = _last_executed_test(state)
+        if not executed or executed in (NodeName.PAIRED_T, NodeName.WILCOXON, NodeName.MCNEMAR):
+            return None
+
+        normal_flag = self.engine._normal_flag(state, blueprint)  # type: ignore[attr-defined]
+        recommended = NodeName.WILCOXON if normal_flag is False else NodeName.PAIRED_T
+        correction = {
+            'suggested_node': recommended,
+            'reason': 'Paired design detected; rerouting to paired-compatible test.',
+            'executed': executed,
+        }
+        state.correction_steps.append(correction)
+        state.pending_routing_decision = state.pending_routing_decision or {}
+        state.pending_routing_decision.update({'selected': recommended})
+
+        return AuditResult(executed=executed, recommended=recommended, correction_step=correction, conflicts=[])
