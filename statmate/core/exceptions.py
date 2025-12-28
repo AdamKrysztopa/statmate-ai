@@ -71,6 +71,9 @@ class StatisticalTestError(StatMateError):
 class TestAssumptionViolationError(StatisticalTestError):
     """Raised when statistical test assumptions are violated."""
 
+class StatisticalAssumptionError(StatisticalTestError):
+    """Raised when required statistical assumptions are not met for a function."""
+
 
 class AgentError(StatMateError):
     """Raised when an agent encounters an error."""

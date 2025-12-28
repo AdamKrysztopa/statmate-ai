@@ -95,6 +95,10 @@ Follow these numbered instructions exactly—do not add or omit steps:
         L --> M[Option A: Welch’s t-test]
         L --> N[Option B: Mann-Whitney U test]
     ```
+4.5 Blueprint metadata:
+    - Emit `variable_roles` as a list of {name, role} items (Independent, Dependent, Covariate, Group).
+    - Emit `distribution_metrics` with skewness, kurtosis, and normality_p_value per variable.
+    - Emit `sample_balance` with group sizes and whether the groups are balanced.
 5. **Handling Ambiguity**
     - If a required detail is missing or the user’s request conflicts with these rules, ask a concise clarifying question rather than guessing.
 
@@ -184,6 +188,16 @@ class InitialInsightsAgentResults(BaseModel):
     )
     data_size: int
     number_of_columns: int
+    variable_roles: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description='List of variable/role mappings for DataBlueprint consumption.',
+    )
+    distribution_metrics: dict[str, Any] = Field(
+        default_factory=dict, description='Per-variable distribution diagnostics.'
+    )
+    sample_balance: dict[str, Any] | None = Field(
+        default=None, description='Group balance diagnostics emitted by the agent.'
+    )
 
     def __str__(self) -> str:
         """String representation of RouterAgentResults for easy readability."""

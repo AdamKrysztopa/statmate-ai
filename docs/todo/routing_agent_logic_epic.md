@@ -4,10 +4,10 @@ Goal: Solve the "method selection" issue by making the router more deterministic
 
 ## Router: Deterministic & Elastic Decision Engine
 Instead of hardcoding `if/else` blocks in `edges.py`, move to a registry-based `DecisionEngine` that can scale as new tests are added.
-- [ ] Registry Pattern for Statistical Methods:
+- [x] Registry Pattern for Statistical Methods:
   - Create a `MethodRegistry` that maps data profiles (e.g., Scale=Ratio, Normal=False, Groups=2) to suggested statistical tests.
   - Implement a weighting system: if multiple tests apply, the engine selects the preferred one but keeps alternatives as backups for the Auditor Agent.
-- [ ] Refactor `edges.py` to `DecisionEngine`:
+- [x] Refactor `edges.py` to `DecisionEngine`:
   - Implement `evaluate_routing(state: StatMateState) -> str` which reads the `DataBlueprint`.
   - Handle hard constraints:
     - continuous + non-normal + 2-groups → `non_parametric_node`
@@ -18,32 +18,32 @@ Instead of hardcoding `if/else` blocks in `edges.py`, move to a registry-based `
 
 ## Agents: Data Blueprint & Deep Metadata
 The `InitialInsightsAgent` must be the brain of the operation, providing a machine-readable roadmap.
-- [ ] Enhanced `DataBlueprint` Schema:
+- [x] Enhanced `DataBlueprint` Schema:
   - Update `initial_insights_agent.py` to produce a strictly typed JSON:
     - `variable_roles`: List identifying Independent, Dependent, Covariate, Group.
     - `distribution_metrics`: Skewness, Kurtosis, and p-values for Normality tests.
     - `sample_balance`: Whether groups have similar N (affects Homoscedasticity importance).
-- [ ] State Injection:
+- [x] State Injection:
   - Ensure every node in the graph has immutable access to this blueprint to prevent hallucinated method selection.
 
 ## Agents: Methodology Auditor & Adaptive Critique
 The Auditor should not just flag errors but suggest the Next Best Action to keep the flow elastic.
-- [ ] Implement `MethodologyAuditorAgent`:
+- [x] Implement `MethodologyAuditorAgent`:
   - Logic: Compare the executed test against the registry-recommended test based on the actual results of the assumptions.
-- [ ] Adaptive Critique:
+- [x] Adaptive Critique:
   - If a t-test was run but variance was unequal, the auditor should inject a `correction_step` to run Welch's t-test instead.
 - [ ] Assumption Conflict Resolution:
   - Handle cases where Shapiro-Wilk says "Normal" but Q-Q plot (analyzed via Vision) says "Non-Normal".
 
 ## Workflow: User-in-the-Loop & Intent Clarification
 Make the graph suspendable for human-in-the-loop decisions.
-- [ ] Intent Discovery Node:
+- [x] Intent Discovery Node:
   - Add `IntentAgent` to check if the user prompt specifies a goal (e.g., "Prove my drug works" vs "Explore differences").
   - Trigger an Ambiguity Modal in the UI if the agent is < 80% confident in the research question.
-- [ ] Elastic Choice Points:
+- [x] Elastic Choice Points:
   - Implement a `ChoiceNode` where the AI presents options like "Standard Analysis (ANOVA)" vs "Conservative Analysis (Kruskal-Wallis)" and lets the user click to decide.
 
 ## Validation: Constraint Guardrails
-- [ ] ConstraintValidator Middleware:
+- [x] ConstraintValidator Middleware:
   - Create a decorator `@requires_assumptions(normality=True, variance=True)` for statistical core functions.
   - If called without these being met in the state, raise a `StatisticalAssumptionError` that the graph catches to trigger rerouting.

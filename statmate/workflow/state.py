@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from statmate.core import get_logger
 from statmate.core.validation import StatisticalDesign
+from statmate.workflow.blueprint import DataBlueprint
 
 logger = get_logger(__name__)
 
@@ -73,6 +74,21 @@ class WorkflowState(BaseModel):
         default_factory=list,
         description='Ordered record of each node/agent execution for UI display',
     )
+    data_blueprint: DataBlueprint | None = Field(
+        default=None, description='Immutable routing metadata describing variables and distributions'
+    )
+    pending_routing_decision: dict[str, Any] | None = Field(
+        default=None, description='Cached routing suggestion used by choice nodes'
+    )
+    choice_log: list[dict[str, Any]] = Field(default_factory=list, description='Recorded user/AI choices')
+    user_selected_option: str | None = Field(
+        default=None, description='Explicit user override for routing when options are presented'
+    )
+    intent_summary: str | None = Field(default=None, description='Detected research intent or goal statement')
+    intent_confidence: float | None = Field(default=None, description='Confidence score for detected intent')
+    correction_steps: list[dict[str, Any]] = Field(
+        default_factory=list, description='Suggested reroutes or corrections from the auditor'
+    )
 
     def add_result(self, message: AIMessage) -> None:
         """Add a result message to the results list.
@@ -127,6 +143,11 @@ class WorkflowState(BaseModel):
         """Append a structured assumption diagnostic entry."""
         self.assumption_log.append(entry)
 
+    def attach_blueprint(self, blueprint: DataBlueprint | None) -> None:
+        """Attach a frozen data blueprint to the state."""
+        if blueprint:
+            self.data_blueprint = blueprint
+
 
 def create_initial_state(
     df: pd.DataFrame | pd.Series,
@@ -169,4 +190,11 @@ def create_initial_state(
         model_name=model_name,
         provider=provider,
         execution_trace=[],
+        data_blueprint=None,
+        pending_routing_decision=None,
+        choice_log=[],
+        user_selected_option=None,
+        intent_summary=None,
+        intent_confidence=None,
+        correction_steps=[],
     )

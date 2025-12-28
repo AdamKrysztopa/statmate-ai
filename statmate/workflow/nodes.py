@@ -29,7 +29,7 @@ from statmate.agents.initial_insights_agent import (
 from statmate.agents.reviewer_agent import ReviewerDeps, get_reviewer_agent
 from statmate.agents.summarizer_agent import SummariserDeps, get_summariser_agent
 from statmate.core import NodeExecutionError, get_logger
-from statmate.core.config import default_config
+from statmate.core.config import NodeName, default_config
 from statmate.core.model_provider import execute_with_backoff
 from statmate.core.validation import (
     get_structural_summary,
@@ -37,7 +37,9 @@ from statmate.core.validation import (
     validate_assumptions,
     validate_statistical_design,
 )
+from statmate.workflow.blueprint import build_data_blueprint
 from statmate.workflow.model_factory import create_model, create_model_settings
+from statmate.workflow.methodology_auditor import MethodologyAuditor
 from statmate.workflow.state import WorkflowState
 
 logger = get_logger(__name__)
@@ -258,6 +260,15 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         state.paired = validated_design.is_paired
         state.comparison_matrix = validated_design.comparison_matrix or state.comparison_matrix
 
+        blueprint = build_data_blueprint(
+            inp_df,
+            dependent_vars=results.data.analysis_columns or list(inp_df.columns),
+            group_var=results.data.group_column or validated_design.grouping_variable,
+            covariates=[],
+            raw_payload=results.data.model_dump() if hasattr(results, 'data') else {},
+        )
+        state.attach_blueprint(blueprint)
+
         structural_text = (
             get_structural_summary(inp_df, results.data.group_column)
             if results.data.group_column
@@ -270,6 +281,7 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
                 'statistical_design': validated_design.as_dict(),
                 'structural_summary': structural_summary,
                 'structural_text': structural_text,
+                'data_blueprint': blueprint.model_dump(),
             },
         )
 
@@ -586,3 +598,95 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
     except Exception as e:
         logger.error(f'Error in reviewer_node: {e}')
         raise NodeExecutionError(node_name='reviewer_node', original_error=e) from e
+
+
+def intent_discovery_node(state: WorkflowState) -> WorkflowState:
+    """Lightweight intent check to trigger ambiguity modal when confidence is low."""
+    try:
+        confidence = 0.5
+        if state.target_columns:
+            confidence = 0.9
+        elif state.statistical_design:
+            confidence = 0.8
+
+        summary = state.intent_summary or 'Explore relationships in the provided data.'
+        trigger_modal = confidence < 0.8
+        state.intent_confidence = confidence
+        state.intent_summary = summary
+        state.add_step(
+            step=NodeName.INTENT,
+            detail=summary,
+            data={
+                'confidence': confidence,
+                'trigger_ambiguity_modal': trigger_modal,
+            },
+        )
+        return state
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error(f'Error in intent_discovery_node: {e}')
+        raise NodeExecutionError(node_name='intent_discovery_node', original_error=e) from e
+
+
+def choice_node(state: WorkflowState) -> WorkflowState:
+    """Expose routing options to allow user or UI to decide."""
+    try:
+        decision = state.pending_routing_decision or {}
+        primary = decision.get('primary')
+        alternatives = decision.get('alternatives') or []
+        selected = state.user_selected_option or decision.get('selected') or primary
+
+        entry = {
+            'primary': primary,
+            'alternatives': alternatives,
+            'selected': selected,
+            'reason': decision.get('reason'),
+        }
+        state.choice_log.append(entry)
+        state.pending_routing_decision = {**decision, 'selected': selected}
+        state.add_step(step=NodeName.CHOICE, detail=f'Chosen {selected or primary}', data=entry)
+        return state
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error(f'Error in choice_node: %s', e)
+        raise NodeExecutionError(node_name='choice_node', original_error=e) from e
+
+
+def resolve_choice(state: WorkflowState) -> str:
+    """Resolve the chosen next node after presenting options."""
+    decision = state.pending_routing_decision or {}
+    return decision.get('selected') or decision.get('primary') or NodeName.ASSESS_STUDY_DESIGN
+
+
+def mcnemar_node(state: WorkflowState) -> WorkflowState:
+    """Placeholder node for McNemar's test on paired categorical data."""
+    state.add_step(
+        step=NodeName.MCNEMAR,
+        detail='McNemar test placeholder (paired categorical).',
+        data={'status': 'queued'},
+    )
+    return state
+
+
+def cox_regression_node(state: WorkflowState) -> WorkflowState:
+    """Placeholder node for Cox regression on survival data."""
+    state.add_step(
+        step=NodeName.COX_REGRESSION,
+        detail='Cox regression placeholder node (survival analysis).',
+        data={'status': 'queued'},
+    )
+    return state
+
+
+def methodology_auditor_node(state: WorkflowState) -> WorkflowState:
+    """Audit executed tests and propose corrections when assumptions fail."""
+    auditor = MethodologyAuditor()
+    result = auditor.audit(state)
+    payload = {
+        'executed': result.executed,
+        'recommended': result.recommended,
+        'correction_step': result.correction_step,
+        'conflicts': result.conflicts,
+    }
+    state.test_hierarchy = state.test_hierarchy or {}
+    state.test_hierarchy['auditor'] = payload
+    state.add_step(step=NodeName.METHODOLOGY_AUDITOR, detail='Auditor review complete', data=payload)
+    return state

@@ -6,6 +6,7 @@ and workflows.
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from functools import wraps
 from typing import Any, Literal
 
 import numpy as np
@@ -18,6 +19,7 @@ from statmate.core.exceptions import (
     InvalidDataShapeError,
     InvalidDataTypeError,
     MissingDataError,
+    StatisticalAssumptionError,
 )
 
 
@@ -350,7 +352,67 @@ def validate_assumptions(
         'sparsity': sparsity,
         'thresholds': thresholds,
         'failures': failures,
+        'status': 'fail' if failures else 'pass',
     }
+
+
+def _assumption_failed(
+    state: Any,
+    *,
+    assumption: Literal['normality', 'variance'],
+    assumptions: dict[str, Any],
+) -> bool:
+    """Check whether a required assumption is violated using blueprint or logged diagnostics."""
+    explicit = assumptions.get(assumption)
+    if explicit is False:
+        return True
+    if explicit is True:
+        return False
+
+    # Blueprint-derived diagnostics
+    blueprint = getattr(state, 'data_blueprint', None)
+    if blueprint and assumption == 'normality':
+        threshold = default_config.statistical.normality_threshold
+        for metric in (blueprint.distribution_metrics or {}).values():
+            if metric.normality_p_value is not None and metric.normality_p_value < threshold:
+                return True
+
+    # Assumption logs
+    for entry in reversed(getattr(state, 'assumption_log', []) or []):
+        failures = ' '.join(entry.get('failures') or []).lower()
+        if assumption == 'normality' and any(tok in failures for tok in ('skew', 'normal', 'kurt')):
+            return True
+        if assumption == 'variance':
+            ratio = entry.get('variance_ratio')
+            if ratio and ratio > default_config.statistical.variance_ratio_threshold:
+                return True
+            if 'variance' in failures or 'heteroscedastic' in failures:
+                return True
+    return False
+
+
+def requires_assumptions(normality: bool = False, variance: bool = False):
+    """Decorator to guard statistical functions behind assumption checks."""
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            state = kwargs.get('state')
+            if state is None and args:
+                state = args[0]
+
+            assumptions = kwargs.get('assumptions') or {}
+
+            if normality and _assumption_failed(state, assumption='normality', assumptions=assumptions):
+                raise StatisticalAssumptionError('Normality assumption not met for this operation.')
+            if variance and _assumption_failed(state, assumption='variance', assumptions=assumptions):
+                raise StatisticalAssumptionError('Variance equality assumption not met for this operation.')
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 @dataclass
@@ -429,8 +491,8 @@ def validate_statistical_design(
 
     measurement_cols = [col for col in numeric_dep_values if not _is_id_like(col)]
 
-    # 1. Wide-format paired: multiple numeric measurement columns without grouping imply row-wise pairing.
-    if group_var is None and len(measurement_cols) >= 2 and potential_group is None:
+    # 1. Wide-format paired: multiple numeric measurement columns imply row-wise pairing.
+    if len(measurement_cols) >= 2 and potential_group is None and (group_var is None or group_var in frame.columns):
         return StatisticalDesign(
             design_type='paired',
             is_paired=True,
