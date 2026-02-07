@@ -7,8 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
+from config.settings import settings
 from database.models import User
 from database.session import get_db
+from statmate.api.dependencies import get_current_user_optional
 from statmate.api.models.user import TokenResponse, UserCreate, UserLogin, UserResponse
 from statmate.api.security import (
     create_access_token,
@@ -19,8 +21,6 @@ from statmate.api.security import (
     normalize_email,
     verify_password,
 )
-from statmate.api.dependencies import get_current_user_optional
-from config.settings import settings
 
 logger = logging.getLogger(__name__)
 

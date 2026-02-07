@@ -44,8 +44,8 @@ from statmate.core.validation import (
     validate_statistical_design,
 )
 from statmate.workflow.blueprint import build_data_blueprint
-from statmate.workflow.model_factory import create_model, create_model_settings
 from statmate.workflow.methodology_auditor import MethodologyAuditor, StructureAuditor
+from statmate.workflow.model_factory import create_model, create_model_settings
 from statmate.workflow.state import WorkflowState
 
 logger = get_logger(__name__)
@@ -1118,7 +1118,7 @@ def choice_node(state: WorkflowState) -> WorkflowState:
         state.add_step(step=NodeName.CHOICE, detail=f'Chosen {selected or primary}', data=entry)
         return state
     except Exception as e:  # pragma: no cover - defensive
-        logger.error(f'Error in choice_node: %s', e)
+        logger.error('Error in choice_node: %s', e)
         raise NodeExecutionError(node_name='choice_node', original_error=e) from e
 
 

@@ -6,13 +6,14 @@ statmate_flow.py with a cleaner API using the refactored modules.
 
 import os
 import sys
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 
 from statmate.core.config import Config, default_config
-from statmate.core.pii import sanitize_dataframe
 from statmate.core.logging_config import get_logger, setup_logging
+from statmate.core.pii import sanitize_dataframe
 from statmate.workflow.graph_builder import build_workflow_graph, create_default_checkpointer
 from statmate.workflow.model_factory import initialize_default_factory
 from statmate.workflow.state import WorkflowState, create_initial_state

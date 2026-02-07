@@ -4,11 +4,11 @@ This module provides functions to validate input data for statistical tests
 and workflows.
 """
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Literal
-import re
 
 import numpy as np
 import pandas as pd

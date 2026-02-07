@@ -11,41 +11,40 @@ from statmate.agents import (
     cochran_armitage_agent,
     fisher_exact_agent,
     mannwhitneyu_agent,
-    normality_of_difference_agent,
-    get_reviewer_agent,
     mcnemar_agent,
+    normality_of_difference_agent,
     ttest_ind_agent,
     ttest_rel_agent,
-    wilcoxon_agent,
     welch_t_agent,
+    wilcoxon_agent,
 )
 from statmate.core import get_logger
 from statmate.core.config import NodeName
 from statmate.workflow.edges import (
     assess_study_design,
-    decide_outcome,
     decide_anova_path,
+    decide_outcome,
     decide_two_independent,
     parametric_assumptions,
 )
 from statmate.workflow.model_factory import create_model, create_model_settings
 from statmate.workflow.nodes import (
+    anova_assumptions_node,
+    anova_one_way_node,
+    anova_rm_node,
     assess_study_design_node,
     call_initialization_agent,
     call_test_agent,
     choice_node,
     cox_regression_node,
     descriptive_summary_node,
-    design_verification_node,
     design_reconciliation_node,
+    design_verification_node,
+    friedman_node,
     intent_discovery_node,
+    kruskal_wallis_node,
     methodology_auditor_node,
     nonparametric_node,
-    anova_assumptions_node,
-    anova_one_way_node,
-    anova_rm_node,
-    friedman_node,
-    kruskal_wallis_node,
     resolve_choice,
     reviewer_node,
     summariser_node,
@@ -443,9 +442,11 @@ def build_workflow_graph(checkpointer=None):
 
 # Create default graph instance
 try:
-    from config.settings import settings
-    from langgraph.checkpoint.sqlite import SqliteSaver
     from pathlib import Path
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    from config.settings import settings
 
     def create_default_checkpointer():
         """Create a persistent checkpointer backed by SQLite."""

@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from config.settings import settings
+from database.models import User
 from database.session import get_db
 from statmate.api.dependencies import get_current_user_optional
 from statmate.api.models.result import LogResponse, ResultDetailResponse, ResultListItem, ResultListResponse
 from statmate.api.services.analysis_service import AnalysisService
 from statmate.api.services.dataset_service import DatasetService
-from database.models import User
 
 router = APIRouter(prefix='/results', tags=['results'])
 

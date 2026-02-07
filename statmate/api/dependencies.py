@@ -1,7 +1,6 @@
 """Shared dependencies for FastAPI routes."""
 
 from collections.abc import Generator
-from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -24,7 +23,7 @@ def get_database_session() -> Generator[Session, None, None]:
     yield from get_db()
 
 
-def get_current_user_optional(token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> Optional[User]:
+def get_current_user_optional(token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User | None:
     """Return the current user if a valid token is provided, otherwise None."""
     if not token:
         return None
@@ -38,7 +37,7 @@ def get_current_user_optional(token: str | None = Depends(oauth2_scheme), db: Se
     return user
 
 
-def require_authenticated_user(current_user: Optional[User] = Depends(get_current_user_optional)) -> User:
+def require_authenticated_user(current_user: User | None = Depends(get_current_user_optional)) -> User:
     """Require an authenticated user, respecting settings.AUTH_REQUIRED."""
     if current_user is None:
         if settings.AUTH_REQUIRED:

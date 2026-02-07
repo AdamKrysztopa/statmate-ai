@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import re
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 import jwt
 from cryptography.fernet import Fernet, InvalidToken
@@ -127,7 +127,7 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
-def create_access_token(data: dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Create a signed JWT access token."""
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))

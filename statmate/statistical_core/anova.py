@@ -1,7 +1,7 @@
 """ANOVA module for statistical tests."""
 
+from collections.abc import Iterable
 from itertools import combinations
-from typing import Iterable
 
 import numpy as np
 import pandas as pd

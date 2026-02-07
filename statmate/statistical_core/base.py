@@ -40,7 +40,7 @@ class StatTestResult(BaseModel):
         p_val_str = f'{self.p_value:.3f}' if isinstance(self.p_value, float) else str(self.p_value)
         alt_str = f'Alternative hypothesis: {self.alternative}\n' if self.alternative else ''
         ci_str = (
-            f"Confidence interval: {self.confidence_interval}\n" if self.confidence_interval is not None else ''
+            f'Confidence interval: {self.confidence_interval}\n' if self.confidence_interval is not None else ''
         )
         effect_str = f'Effect size: {self.effect_size_type}\n' if self.effect_size_type else ''
         return (

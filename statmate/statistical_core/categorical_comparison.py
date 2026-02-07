@@ -14,8 +14,8 @@ from statmate.statistical_core.categorical import (
     categorical_effect_size,
     has_small_expected_counts,
     is_2x2_table,
-    prepare_contingency_table,
     phi_coefficient,
+    prepare_contingency_table,
 )
 
 
@@ -37,8 +37,8 @@ def chi2_test(
             fisher_result.test_specifics = specifics
             return fisher_result
         raise DataValidationError(
-            "Chi-square test requires expected frequencies >= 5 for all cells; consider combining categories or "
-            "using an exact test."
+            'Chi-square test requires expected frequencies >= 5 for all cells; consider combining categories or '
+            'using an exact test.'
         )
 
     chi2, p_value, dof, expected = scipy.stats.chi2_contingency(table, correction=False)
@@ -96,7 +96,7 @@ def fisher_exact_test(
     odds_ratio, p_value = scipy.stats.fisher_exact(prepared)
     effect_size = phi_coefficient(prepared)
     effect_text = (
-        f" Effect size (Phi): {effect_size:.3f}." if effect_size is not None else ''
+        f' Effect size (Phi): {effect_size:.3f}.' if effect_size is not None else ''
     )
 
     if p_value < alpha:

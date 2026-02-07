@@ -7,16 +7,16 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from config.settings import settings
+from database.models import User
+from database.session import get_db
+from statmate.api.dependencies import get_current_user_optional
 from statmate.api.models.model_config import (
     AvailableModelsResponse,
     CurrentModelResponse,
     ModelInfoResponse,
 )
-from statmate.workflow.model_factory import get_default_factory, initialize_default_factory
-from statmate.api.dependencies import get_current_user_optional
-from database.models import User
-from database.session import get_db
 from statmate.api.services.credential_service import CredentialService
+from statmate.workflow.model_factory import get_default_factory, initialize_default_factory
 
 logger = logging.getLogger(__name__)
 

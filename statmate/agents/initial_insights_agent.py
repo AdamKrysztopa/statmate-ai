@@ -7,6 +7,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
+
 from statmate.core.validation import StatisticalDesign
 
 INITIAL_INSIGHTS_PROMPT = """

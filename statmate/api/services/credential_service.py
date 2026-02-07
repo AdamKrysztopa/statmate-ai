@@ -1,7 +1,6 @@
 """Service for securely storing and retrieving provider credentials."""
 
 from datetime import datetime
-from typing import Dict, List
 
 from sqlalchemy.orm import Session
 
@@ -27,10 +26,10 @@ class CredentialService:
 
     @staticmethod
     def upsert_credentials(
-        db: Session, user_id: str, credentials: Dict[str, str], quota_limits: Dict[str, int] | None = None
-    ) -> List[str]:
+        db: Session, user_id: str, credentials: dict[str, str], quota_limits: dict[str, int] | None = None
+    ) -> list[str]:
         """Encrypt and persist credentials; one per provider per user."""
-        configured: List[str] = []
+        configured: list[str] = []
         quotas = quota_limits or {}
         for provider, key in credentials.items():
             if not key:
@@ -62,7 +61,7 @@ class CredentialService:
         return configured
 
     @staticmethod
-    def update_quota_limits(db: Session, user_id: str, limits: Dict[str, int]) -> None:
+    def update_quota_limits(db: Session, user_id: str, limits: dict[str, int]) -> None:
         """Persist quota limits without changing API keys."""
         for provider, limit in limits.items():
             rec = (
@@ -100,13 +99,13 @@ class CredentialService:
         db.commit()
 
     @staticmethod
-    def load_credentials(db: Session, user_id: str) -> Dict[str, str]:
+    def load_credentials(db: Session, user_id: str) -> dict[str, str]:
         """Return decrypted credentials for a user keyed by provider."""
         records = db.query(ProviderCredential).filter(ProviderCredential.user_id == user_id).all()
         return {rec.provider: decrypt_secret(rec.encrypted_key) for rec in records}
 
     @staticmethod
-    def get_quota_limits(db: Session, user_id: str) -> Dict[str, int | None]:
+    def get_quota_limits(db: Session, user_id: str) -> dict[str, int | None]:
         """Return configured quota limits keyed by provider."""
         records = db.query(ProviderCredential).filter(ProviderCredential.user_id == user_id).all()
         return {rec.provider: rec.quota_limit for rec in records if rec.quota_limit is not None}

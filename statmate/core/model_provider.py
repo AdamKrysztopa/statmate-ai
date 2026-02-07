@@ -7,7 +7,8 @@ providers (OpenAI, Anthropic, Google, Ollama, Groq) using Pydantic AI.
 import logging
 import math
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from pydantic_ai.models import Model
 
