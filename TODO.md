@@ -1,60 +1,108 @@
-- Current gap: LangGraph supports per-node streaming (`graph.stream`/`stream_events`, see docs.langchain.com/oss/python/langgraph/use-graph-api), but `StatMateWorkflow.run` collapses the stream to a final state and the API only returns the completed payload. Frontend polling therefore shows “waiting for first agent decision” until completion. **(Done)** 
+# StatmateAI — Junior Developer Task List
 
-## P0 – Streaming & Decision Visibility
-- [x] Backend | Streaming: Switch analysis workflow to LangGraph streaming (`statmate/api/services/analysis_service.py`, `StatMateWorkflow`) using `.stream_events`/`.stream()` so each node emits an event; stop collapsing to a final state only.
-- [x] Backend | Persistence: Extend Analysis persistence to store intermediate steps (e.g., `decision_steps` JSON/`intermediate_log` text); write entries as they stream; add migration and model fields.
-- [x] Backend | Background jobs: After each node, flush DB/log so clients see progress; keep final summary/results intact; ensure model fallback (OpenAI→fallback) does not restart/lose the stream.
-- [x] Backend | API: Add a streaming endpoint (SSE or chunked `StreamingResponse`) like `GET /analysis/{id}/stream` that relays LangGraph events; keep current polling endpoints working with backoff/rate-limit handling.
-- [x] Frontend (React) | Live timeline/tree: Consume the stream via `Response.body.getReader()` or `EventSource`, append steps to a timeline, and highlight the active branch on the decision tree (Mermaid/graph data from `decision_steps`).
-- [x] Frontend (Streamlit) | Live view: Poll `intermediate_log`/`decision_steps` every 2–3s, show the first decision as soon as it arrives, and provide clear loading/error states instead of a blank “waiting” view.
+## How to work
+- Pick the first unchecked item.
+- Read the linked playbook section before coding.
+- Keep tasks small and verify with tests.
 
-## Immediate Priorities – Statistical Completeness & Medical Accuracy
-- [ ] Phase A | Statistical expansion: Ship categorical analysis module (`statmate/statistical_core/categorical.py`) with Fisher’s Exact, McNemar’s, and Cramer’s V; add Kruskal-Wallis/Friedman fallbacks plus effect sizes (Cohen’s d, partial eta squared) and 95% CIs across core tests.
-- [ ] Phase B | Medical reporting: Refactor Summarizer/Reviewer agents to enforce CONSORT/STROBE, use the “Big 3” (Finding/Evidence/Caveat), and distinguish statistical significance vs. clinical meaningfulness with p-hacking checks.
-- [ ] Phase C | Infra hardening: Move `AnalysisService` execution to Celery/Temporal workers, improve PII handling with stricter regex + automatic column dropping, and keep streaming/SSE intact.
-- [ ] Phase D | UX guidance: Build the Research Question Wizard and assumption stoplights UI; add the spreadsheet-like data grid so users can cast column types before running analyses.
+---
 
-## P0 – Analysis History, Comments, Column Rename, Provider Keys
-- [x] Backend/DB/Frontend | Versioned analysis history per dataset: Add `version` int and `superseded_at` timestamp to `database.models.Analysis` (SQL migration) and surface in `statmate/api/models/analysis.py`/SSE/status/results payloads; in `AnalysisService.create_analysis` compute next version scoped to dataset/user and honor an `overwrite` flag that archives the prior active run instead of deleting, keeping result/log paths intact; extend `GET /analysis/` to filter by `dataset_id` (ApiClient already assumes this), add `DELETE /analysis/{id}` to drop a version and delete stored result/log files via `StorageService`; React (`frontend/src/api/client.ts`, `frontend/src/App.tsx`) should load the version list when a dataset is clicked, auto-select the latest completed run, allow opening older versions, and expose “run new version” vs “overwrite latest” actions plus delete controls in the versioned history panel.
-- [x] Backend/DB/Frontend | Analysis comments: Add `comment` Text column to `Analysis` (migration/backfill empty), include it in `AnalysisResponse`/`AnalysisResultResponse` and exports; create `PATCH /analysis/{id}/comment` to upsert a comment (auth required) and return the updated analysis; React adds a textarea alongside the summary with debounced saves via the new endpoint and displays stored comments in the version list/detail view.
-- [x] Backend/DB/Frontend | Persistent column renames: Introduce `PATCH /datasets/{id}/columns` accepting a rename map/list, validate duplicates/reserved names, and implement in `DatasetService` by loading parquet via `StorageService.read_dataset`, applying `df.rename`, updating `Dataset.column_names`/`data_types`, saving back, and rewriting any `ScheduledTask.selected_columns`/pending `Analysis.selected_columns` to the new names; response should return updated preview metadata; React dataset preview (`frontend/src/App.tsx`) should allow inline multi-rename, refresh preview, and keep `selectedColumns`/analysis selections in sync after renames.
-- [x] Backend/Frontend | Per-provider API keys from users: Add `GET /models/credentials` (reusing `CredentialService`) to return configured providers for the current user and keep `POST /models/credentials` for updates; in `AnalysisService.run_analysis` load decrypted provider keys for the analysis owner, merge them into a user-scoped `MultiModelConfig` built from `settings.create_multi_model_config()`, and pass that config into `StatMateWorkflow` so runs use user-supplied keys instead of .env defaults (fallback to env when missing); React should surface a provider picker + API-key form (OpenAI/Anthropic/Groq/Gemini/Ollama) wired to `/models/available` + credentials endpoints, persist only provider choice locally, and send provider/model from UI when invoking `runAnalysis`.
+## P0 — Stabilize (do these first)
 
-## P0 – Reliability & Complementary Intelligence
-- [x] Statistical core | Assumption diagnostics: Extend `statmate/statistical_core/base.py` result objects to include `effect_size_type` and `confidence_interval`; add a shared `validate_assumptions(data, test_type)` helper in `statmate/core/validation.py` that computes standardized diagnostics (skewness/kurtosis, variance ratios, sparsity) and returns structured failures; ensure existing tests call it and propagate diagnostics into workflow state and API responses.
-- [x] Workflow | Assumption/log persistence: Add `assumption_log` field to `WorkflowState` (`statmate/workflow/state.py`) and persist diagnostics into `decision_steps`/results; update LangGraph callbacks to stream assumption failures so UI can display “why a test was rejected.”
-- [x] Workflow | Reviewer/consensus agent: Add a “Reviewer Agent” node after summary generation that compares AI narrative with raw statistical outputs and flags hallucinations; integrate into `graph_builder.py` with a branch that can veto/adjust the final summary; include its output in `results_detail.test_hierarchy`.
-- [x] Workflow | Checkpointing: Enable LangGraph checkpointers in `graph_builder.py` using a DB/FS-backed store (e.g., Postgres/SQLite) so long runs can resume after restarts; wire through `StatMateWorkflow` to accept a checkpointer and persist state.
-- [x] API/UI | Hierarchical results + progress: Enhance `AnalysisResultResponse` to include a `test_hierarchy` tree detailing attempted tests, failed assumptions, and the chosen test; augment SSE in `statmate/api/routes/analysis.py` to emit step progress percentages (node index/total) for UI progress bars; React should render the hierarchy and progress indicators alongside the existing trace.
-- [x] Exports | Reproducibility bundle: Expand `statmate/api/services/export_service.py` to support LaTeX/PDF-quality reports and a “repro bundle” download that packages raw data (or masked sample), execution log, decision/assumption logs, and code snippets for each statistical call.
-- [x] Safety | Rate limiting/backoff: Implement exponential backoff with `Retry-After` honoring inside `statmate/core/model_provider.py` and apply to provider calls used by LangGraph; surface retry events in the streamed decision/log data.
-- [x] Safety | Scoped credentials and quotas: Extend `statmate/api/services/credential_service.py` to store optional per-provider usage limits/quotas per user; before invoking a provider, check remaining quota and short-circuit with a clear error streamed to clients.
-- [x] Safety | Data masking: Add a lightweight PII detector/masker service that runs before LLM calls (column names/summaries) to redact obvious identifiers; integrate into `StatMateWorkflow` input sanitization and note masked columns in the `assumption_log`.
+- [ ] **Fix 2 failing tests**
+  - Read: `docs/todo/p0_stabilization_implementation_playbook.md` → P0-1
+  - Files: `tests/test_validation_design.py`, `tests/test_workflow_logic.py`
+  - Goal: Align tests with current design reconciliation behavior.
 
-## P0 – Workflow Graph Visualization (new for V1.0.0)
-- [x] Canonical graph definition: Derive a single source of truth for the workflow graph from `WorkflowGraphBuilder`/`NodeName` (include Reviewer/Nonparametric paths) and update `workflow_graph.md` to match; expose nodes/edges as machine-readable metadata (id, label, type, transitions).
-- [x] Backend | Graph + state mapping: Add an API payload (`GET /analysis/workflow-graph` and embed in `/analysis/{id}` + SSE `step` events) that returns the graph plus `visited_nodes`, `active_node`, and `selected_path` derived from `decision_steps`/`test_hierarchy`; normalize step labels to node ids so streaming can highlight the current node.
-- [x] Backend | Exportable graphic: Build a helper to render the graph with a highlighted path (SVG/PNG via graphviz/mermaid) and attach base64 + alt text into analysis results; embed the image in HTML/PDF/DOCX/LaTeX exports and drop the SVG/PNG into the repro bundle.
-- [x] Frontend | Live graph in analysis tab: Create a React graph component (Mermaid/ReactFlow/D3) fed by the graph API; animate the `active_node` during streaming, show `visited_nodes` progress, and lock the `selected_path` once completed; keep styling consistent with dark/light themes and allow download of the SVG/PNG.
-- [x] Frontend | Streamlit/fallback view: Add the same graph (static SVG) to the Streamlit UI or a lightweight fallback so non-React users see the decision path.
-- [x] QA + docs: Add unit tests for node-id mapping and graph rendering helper, verify SSE carries `active_node`, and update docs/screenshots to show the new graph; document any new deps (graphviz/mermaid) in setup/CI.
+- [ ] **Add CI pipeline**
+  - Read: `docs/todo/p0_stabilization_implementation_playbook.md` → P0-5
+  - File: `.github/workflows/ci.yml`
+  - Goal: `pytest` + targeted `ruff` gate.
 
-## P1 – Security & Reliability for V1.0.0
-- [ ] Authn/Authz | Backend/UI: Gate all routes/pages with auth; enforce dataset/analysis ownership checks; implement registration + email verification; store tokens securely; add logout; align Streamlit/React with protected APIs.
-- [ ] Error Handling | Backend: Normalize LLM/workflow errors and timeouts into user-friendly responses; validate uploads (type/size) with clear feedback; add retry/backoff around stream consumers to avoid rate-limit storms.
-- [ ] Observability | Platform: Add structured logs/metrics/tracing per LangGraph node and per stream delivery; capture timings and delivery failures for frontend consumption.
-- [ ] Security Hardening | Platform: Enforce HTTPS in prod; add API rate limiting; run dependency scans (`pip-audit`/Dependabot); sanitize uploads (size limits, optional AV) to reduce risk.
-- [ ] Testing | QA: Push unit/integration coverage (>80%) for streaming, decision persistence, auth guards, upload validation; add e2e flows covering major decision branches and live updates.
+- [ ] **Split initialization agent into 3 phases**
+  - Read: `docs/todo/p0_stabilization_implementation_playbook.md` → P0-2
+  - Files: `statmate/agents/initial_insights_agent.py`, `statmate/workflow/nodes.py`
+  - Goal: smaller prompt, cleaner helpers, add tests.
 
-## P2 – Product & UX Extras
-- [x] Data Viz | Results: Auto-generate plots (distribution/box/scatter) for selected columns; ship in results payload and render in UI next to p-values/effect sizes.
-- [x] Export/Docs | Product: Add exports (PDF/Word via WeasyPrint, CSV) and docs for the step-by-step view with screenshots; include seeded example datasets plus in-app tooltips/guided tour.
-- [x] Release Prep | Ops: Run load/perf tests on realistic datasets; define SLAs/alerts; set up backups/retention; document rollback/runbook for V1.0.0; clarify pricing/usage limits if applicable.
+- [ ] **Wire user-in-the-loop choice**
+  - Read: `docs/todo/p0_stabilization_implementation_playbook.md` → P0-3
+  - Files: `statmate/api/routes/analysis.py`, `statmate/api/models/analysis.py`, `frontend/src/App.tsx`
+  - Goal: user override flows end-to-end.
 
-## P0 – Statistical Design Classification (Paired vs. Independent)
-- [x] Structural Validator | Core: Add a deterministic design check in `statmate/core/validation.py` that inspects ID/group overlaps (duplicate IDs across groups, 1:1 row mappings, repeated IDs within groups) and emits a `statistical_design` object (is_paired, grouping_variable, subject_id_column, rationale).
-- [x] Workflow State | Metadata propagation: Extend `statmate/workflow/state.py` to carry the `statistical_design` metadata and ensure it is set by the validator before agent reasoning; persist into streamed `decision_steps`/results so UI can surface the design decision.
-- [x] InitialInsightsAgent | Prompt + pre-flight: Update the agent run path to execute the structural validator (nunique/groupby summaries and ID overlap checks) and feed the structural summary plus temporal vs. group keyword cues into the prompt; require explicit `data_design` output (`independent`, `paired`, `mixed`).
-- [x] ComparisonAgent | Constraint enforcement: Gate tool selection in `statmate/statistical_core/comparison.py` by the detected design (e.g., forbid `ttest_ind` when `is_paired=True`, require paired tests when overlap exists); add a `design_type` parameter to comparison helpers to force explicit choice.
-- [x] Reviewer/Checkpoint | Red-flag step: Insert a verification node after InitialInsights that must restate the detected relationship (e.g., repeated IDs imply paired) and flag contradictions between agent hypothesis and validator output; block or request clarification when mismatched.
-- [x] Mixed Designs | Comparison matrix: For datasets with both longitudinal and arm-level groups, build a helper to enumerate valid comparisons (primary vs. subgroup analyses) and let agents prioritize; include detection logic for crossover/longitudinal patterns.
+- [ ] **Apply or remove assumption guardrails**
+  - Read: `docs/todo/p0_stabilization_implementation_playbook.md` → P0-4
+  - Files: `statmate/core/validation.py`, `statmate/statistical_core/*.py`
+  - Goal: no unused guardrail abstraction remains.
+
+---
+
+## P1 — Statistical correctness
+
+- [ ] **Standardize effect sizes + CIs**
+  - Read: `docs/todo/p1_statistical_correctness_implementation_playbook.md` → P1-1
+  - Files: `statmate/statistical_core/*`
+
+- [ ] **Add power interpretation**
+  - Read: `docs/todo/p1_statistical_correctness_implementation_playbook.md` → P1-3
+
+- [ ] **Add regression module**
+  - Read: `docs/todo/p1_statistical_correctness_implementation_playbook.md` → P1-4
+
+- [ ] **Add outlier diagnostics**
+  - Read: `docs/todo/p1_statistical_correctness_implementation_playbook.md` → P1-5
+
+- [ ] **Resolve survival placeholder**
+  - Read: `docs/todo/p1_statistical_correctness_implementation_playbook.md` → P1-6
+
+---
+
+## P2 — Medical reporting quality
+
+- [ ] **Structured summaries (Finding/Evidence/Caveat)**
+  - Read: `docs/todo/p2_medical_reporting_implementation_playbook.md` → P2-1
+
+- [ ] **CI/effect-size mention enforcement**
+  - Read: `docs/todo/p2_medical_reporting_implementation_playbook.md` → P2-2
+
+- [ ] **Clinical significance block**
+  - Read: `docs/todo/p2_medical_reporting_implementation_playbook.md` → P2-3
+
+- [ ] **Reviewer multiplicity checks**
+  - Read: `docs/todo/p2_medical_reporting_implementation_playbook.md` → P2-4
+
+- [ ] **Chart narrative captions**
+  - Read: `docs/todo/p2_medical_reporting_implementation_playbook.md` → P2-5
+
+---
+
+## P3 — Production scale + UX
+
+- [ ] **Durable workers (Celery/Temporal)**
+  - Read: `docs/todo/p3_production_scale_implementation_playbook.md` → P3-1
+
+- [ ] **Real scheduled-task parsing**
+  - Read: `docs/todo/p3_production_scale_implementation_playbook.md` → P3-2
+
+- [ ] **API rate limiting**
+  - Read: `docs/todo/p3_production_scale_implementation_playbook.md` → P3-3
+
+- [ ] **PII modes + audit report**
+  - Read: `docs/todo/p3_production_scale_implementation_playbook.md` → P3-4
+
+- [ ] **Data retention/TTL**
+  - Read: `docs/todo/p3_production_scale_implementation_playbook.md` → P3-5
+
+- [ ] **Guided UX wizard + stoplights + column casting**
+  - Read: `docs/todo/p3_production_scale_implementation_playbook.md` → P3-6
+
+- [ ] **Decide primary UI (React vs Streamlit)**
+  - Read: `docs/todo/p3_production_scale_implementation_playbook.md` → P3-7
+
+---
+
+## Frontend refactor + QA (after P0)
+
+- [ ] **Split `App.tsx` into components**
+- [ ] **Add Playwright e2e tests**
+- [ ] **Reduce ruff warnings baseline**
+- [ ] **Update docs/screenshots**

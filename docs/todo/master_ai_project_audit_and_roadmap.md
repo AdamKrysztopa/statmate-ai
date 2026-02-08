@@ -262,3 +262,29 @@ From now on:
 - Keep this file as the roadmap source of truth.
 - Keep the four P0-P3 playbooks as implementation source of truth.
 - Track progress in roadmap + playbooks, then propagate to release notes/changelogs.
+
+---
+
+## 8. 2026-02-08 Update: Product Finalization Checklist
+
+### What's Completed (as of TODO.md)
+✅ Streaming + decision visibility
+✅ Analysis history, comments, column rename, provider keys
+✅ Assumption diagnostics, reviewer/consensus agent, checkpointing
+✅ Workflow graph visualization with live path highlighting
+✅ Statistical design classification (paired vs. independent)
+✅ Data viz auto-generation + export suite (HTML/PDF/DOCX/CSV/LaTeX)
+✅ MCP servers added: Playwright, Fetch, GitHub (`.kilocode/mcp.json`)
+
+### Immediate Next Actions (Start Here)
+1. Fix 2 failing tests → See `docs/todo/p0_stabilization_implementation_playbook.md` P0-1
+2. Add CI pipeline → See P0-5
+3. Decompose `initial_insights_agent.py` → See P0-2
+4. Standardize effect sizes + CIs → See `docs/todo/p1_statistical_correctness_implementation_playbook.md` P1-1
+5. Decompose `App.tsx` frontend → See section 7 Cross-cutting Technical Debt
+
+For detailed execution plans, see:
+- `docs/todo/p0_stabilization_implementation_playbook.md`
+- `docs/todo/p1_statistical_correctness_implementation_playbook.md`
+- `docs/todo/p2_medical_reporting_implementation_playbook.md`
+- `docs/todo/p3_production_scale_implementation_playbook.md`

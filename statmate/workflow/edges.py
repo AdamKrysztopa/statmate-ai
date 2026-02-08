@@ -165,7 +165,7 @@ class DecisionEngine:
                     return p_val >= default_config.statistical.normality_threshold
 
         # Fall back to logged p-values if blueprint lacks info
-        p_normality = state.get_probability('normality_of_difference', None)
+        p_normality = state.get_probability('normality_of_difference', 0.0)
         if p_normality is not None:
             return p_normality >= default_config.statistical.normality_threshold
         return None
@@ -191,7 +191,9 @@ class DecisionEngine:
         counts = self._group_samples(blueprint)
         return min(counts.values()) if counts else None
 
-    def _scale(self, state: WorkflowState, blueprint: DataBlueprint | None) -> Literal['continuous', 'categorical', 'survival']:
+    def _scale(
+        self, state: WorkflowState, blueprint: DataBlueprint | None
+    ) -> Literal['continuous', 'categorical', 'survival']:
         if blueprint and blueprint.survival_data:
             return 'survival'
         if state.data_type == DataType.SURVIVAL:
@@ -251,7 +253,11 @@ class DecisionEngine:
                 continue
             seen.add(node)
             if self._node_allowed(
-                node, blueprint=blueprint, group_count=group_count, min_group_size=min_group_size, paired_flag=paired_flag
+                node,
+                blueprint=blueprint,
+                group_count=group_count,
+                min_group_size=min_group_size,
+                paired_flag=paired_flag,
             ):
                 allowed.append(node)
         return allowed
@@ -263,7 +269,13 @@ class DecisionEngine:
         categorical_threshold: int | None = None,
         prefer_terminal: bool = False,
     ) -> str:
-        """Evaluate the next node based on blueprint + registry."""
+        """Evaluate the next node based on blueprint + registry.
+
+        Contract: if ``state.design_verification`` reports a mismatch between the
+        structural validator and the agent hypothesis, do not raise. Route to
+        ``DESIGN_RECONCILIATION`` and store a pending decision payload so the
+        reconciliation step can resolve the disagreement.
+        """
         if categorical_threshold is None:
             categorical_threshold = default_config.statistical.categorical_sample_size_threshold
 

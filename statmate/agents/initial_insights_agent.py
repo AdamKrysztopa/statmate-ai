@@ -11,103 +11,23 @@ from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
 from statmate.core.validation import StatisticalDesign
 
 INITIAL_INSIGHTS_PROMPT = """
-    You are a deterministic statistical-test routing agent.  
-Follow these numbered instructions exactly—do not add or omit steps:
+You are a statistical routing assistant. Use the provided structural summary and do not contradict it.
 
-1. **Available Tools**  
-   • analyze_data(ctx) → dict[str, Any]
-   • transform_independent_tool(ctx, value_col, group_col) → deps
-   • transform_categorical_tool(ctx, row_category, col_category) → deps
-   
-   Structural context (ID overlaps, candidate groups, temporal cues) is provided via the user prompt. Keep all
-   recommendations consistent with that structural summary.
+Tools:
+- analyze_data(ctx) -> dict[str, Any]
+- transform_independent_tool(ctx, value_col, group_col) -> deps
+- transform_categorical_tool(ctx, row_category, column_category) -> deps
 
-2. **Column Analysis**  - verify the columns names, and use take them into acount for path selection.
-   2.1 List each column with its data type and unique-value count.  
-   2.2 Classify each column as ‘continuous’ or ‘categorical’.  
-   2.3 Provide encoding or transformation recommendations.  
-   2.4 Provide a list of columns to use for the test
-       2.4.1 Make sure that not meaningful columns are NOT included in the list.
-       2.4.2 Whenever applies, give description why you decide to drop the column.
-   2.5 use data_type == CATEGORICAL only for the cases, when test is either Chi squared or Fisher. CONTINUOUS - elsewhere
-       data_type is referring to the target data.
-   2.6 group_column you deliver, will hold info on analyzed group. It will be stored as pd.Series or pd.DataFrame index
-       it is e.g. Age, sex, or anything that recognize analyzed object, but it is not the matter of test.
-       group_column cannot be a subset of analysis_columns
+Tasks:
+1) Analyze columns (type + cardinality) and propose analysis_columns plus group_column.
+2) Decide data_design (independent/paired/mixed) and data_type (CONTINUOUS/CATEGORICAL).
+3) If transformation is required, choose data_transformation and tool_arguments.
+4) Propose route_to_test using NodeName enum values, ordered, ending with a test node.
+5) Provide variable_roles, distribution_metrics, and sample_balance when possible.
 
-3. Data formatting depends on the test type:
-   3.1. Transformation requirements:
-       • **Independent-group tests** (e.g. Student’s t-test, Welch’s t-test, Mann–Whitney U):  
-         Input is often in “long” format. Apply the `transform_independent_tool` tool with  
-         `value_col` and `group_col` to pivot into wide form—producing one column per group named `<value_col>_<group>`.
-       • **Categorical tests** (e.g. Chi-square, Fisher’s exact):  
-         These require a numerical contingency table. Use the `transform_categorical_tool` tool with  
-         `row_category` and `column_category` to build a counts DataFrame suitable for 
-         `chi2_contingency` or `fisher_exact`.
-   3.2. **Table-based tests** (ANOVA, Chi-square, Fisher’s exact) must receive a DataFrame input—specify which columns
-   define rows and columns of the table.
-   3.3. **Series-based tests** (correlations, paired t-test, Wilcoxon, etc.) take one or two `pd.Series`.
-   Propose the appropriate column(s) for `x1` and `x2`, following SciPy’s convention of separate-series inputs.
-   3.4. If data are transformed give name of data transformation tool:  'transform_independent', 'transform_categorical'.
-   Give 'None' if no data transformation are needed.
-
-4. **Test-Selection Route**  
-   4.1 Use exactly the `NodeName` enum values for each decision step.  
-   4.2 Emit **each** flowchart node visited, in order, ending with the test node.  
-4.3 Format output as JSON matching RouterAgentResults (and **always** include `"tool_arguments": {...}`):
-    ```json
-    {
-        "analysis_columns": ["<col1>", "..."],
-        "group_column": "<col_or_null>",
-        "output_format": "<pd.Series|pd.DataFrame>",
-        "data_analysis_result": "<…>",
-        "route_to_test": ["<NodeName>", "...", "<FinalTest>"],
-        "comments": "<…>",
-        "data_type": "<CONTINUOUS|CATEGORICAL>",
-        "data_design": "<independent|paired|mixed>",
-        "data_transformation": "<transform_independent|transform_categorical|None>",
-        "tool_arguments": {
-                "value_col": "<col_or_null>",
-                "group_col": "<col_or_null>",
-                "row_category": "<col_or_null>",
-                "column_category": "<col_or_null>"
-            },
-        "data_size": <int>,
-        "number_of_columns": <int>
-    }
-    ```
-    Data Validation:
-       - When data are transformed - make sure the analysis_columns are after the transformation.
-       - Emit a "tool_arguments" object—even if no transform is needed, it must be {}.
-       - **Make Sure** the tool_arguments are delivered and exactly correct when data_transformation is not None.
-    4.4. Use following decision tree to select the test:
-    ```mermaid
-        flowchart TD
-        A[Start: What is your analysis objective?] --> B{Outcome Type?}
-        B -- Continuous --> C[Assess Study Design]
-        C --> E{Paired Measurements on Each Subject?}
-        E -- Yes --> F{Parametric assumptions hold?}
-        F -- Yes --> G[Paired t-test]
-        F -- No --> H[Wilcoxon Signed-Rank test]
-        E -- No --> I{Two Independent Groups?}
-        I -- Yes --> J[Are assumptions met? (normality & equal variances)]
-        J -- Yes --> K[Independent-samples t-test]
-        J -- No --> L[Consider Both Options:]
-        L --> M[Option A: Welch’s t-test]
-        L --> N[Option B: Mann-Whitney U test]
-    ```
-    - For >2 independent groups, use ANOVA assumptions → One-way ANOVA; if assumptions fail, fall back to Kruskal-Wallis (with Dunn post-hoc).
-    - For repeated measures with >2 conditions, route to ANOVA repeated measures or the Friedman test when non-normal.
-4.5 Blueprint metadata:
-    - Emit `variable_roles` as a list of {name, role} items (Independent, Dependent, Covariate, Group).
-    - Emit `distribution_metrics` with skewness, kurtosis, and normality_p_value per variable.
-    - Emit `sample_balance` with group sizes and whether the groups are balanced.
-5. **Handling Ambiguity**
-    - If a required detail is missing or the user’s request conflicts with these rules, ask a concise clarifying question rather than guessing.
-
-6. **Revisit**
-    - come back to step 2 only, and decide which columns are necessary for a given path.
-    """
+Output JSON matching InitialInsightsAgentResults. Always include tool_arguments ({} when no transform).
+group_column must not be part of analysis_columns.
+"""
 
 
 class NodeName(str, Enum):
@@ -423,7 +343,7 @@ def format_data_by_recommendation(
     design_dep_cols: list[str] = []
     if design and design.dependent_variable:
         for raw in str(design.dependent_variable).split(','):
-            cleaned = raw.strip(" []'\"")
+            cleaned = raw.strip(' []\'"')
             if cleaned and cleaned in data.columns:
                 design_dep_cols.append(cleaned)
 
@@ -486,9 +406,7 @@ def format_data_by_recommendation(
         remaining = [col for col in available_cols if col not in chosen]
         chosen.extend(remaining[: 2 - len(chosen)])
     if len(chosen) < 2:
-        raise ValueError(
-            f'Need at least two columns for independent/paired comparison, found {len(chosen)}: {chosen}'
-        )
+        raise ValueError(f'Need at least two columns for independent/paired comparison, found {len(chosen)}: {chosen}')
     col1, col2 = chosen[:2]
     s1 = data[col1].dropna()
     s2 = data[col2].dropna()

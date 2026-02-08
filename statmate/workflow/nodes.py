@@ -44,6 +44,7 @@ from statmate.core.validation import (
     validate_statistical_design,
 )
 from statmate.workflow.blueprint import build_data_blueprint
+from statmate.workflow.edges import decision_engine
 from statmate.workflow.methodology_auditor import MethodologyAuditor, StructureAuditor
 from statmate.workflow.model_factory import create_model, create_model_settings
 from statmate.workflow.state import WorkflowState
@@ -56,6 +57,178 @@ ENHANCED_INITIAL_INSIGHTS_PROMPT = (
     INITIAL_INSIGHTS_PROMPT
     + "\nData Validation:\n  - Always include a non-null 'tool_arguments' dict (empty if no transform)."
 )
+
+
+def _run_structural_precheck(state: WorkflowState) -> tuple[StatisticalDesign, dict[str, Any]]:
+    """Run deterministic schema checks before LLM reasoning."""
+    design, structural_summary = infer_statistical_design(state.df)
+    state.statistical_design = design
+    state.paired = design.is_paired
+    state.comparison_matrix = design.comparison_matrix
+    state.add_step(
+        step='Structural Validation (pre-agent)',
+        detail=design.rationale or 'Structural design check completed.',
+        data={
+            'statistical_design': design.as_dict(),
+            'structural_summary': structural_summary,
+        },
+    )
+    return design, structural_summary
+
+
+def _build_initialization_agent(state: WorkflowState) -> Agent:
+    """Create the initialization agent using configured model settings."""
+    model = create_model(model_name=state.model_name, provider=state.provider)
+    settings = create_model_settings(model_name=state.model_name)
+    return build_initial_insights_agent(
+        model=model,
+        system_prompt=ENHANCED_INITIAL_INSIGHTS_PROMPT,
+        model_settings=settings,
+    )
+
+
+def _build_structural_prompt(design: StatisticalDesign, structural_summary: dict[str, Any]) -> str:
+    """Compact structural payload for the agent prompt."""
+    payload = {
+        'design_type': design.design_type,
+        'is_paired': design.is_paired,
+        'grouping_variable': design.grouping_variable,
+        'subject_id_column': design.subject_id_column,
+        'suggested_groups': design.suggested_groups,
+        'summary': structural_summary,
+    }
+    return json.dumps(payload, default=str)
+
+
+def _run_initial_insights_agent(
+    state: WorkflowState,
+    design: StatisticalDesign,
+    structural_summary: dict[str, Any],
+) -> InitialInsightsAgentResults:
+    """Run the LLM-assisted column/role proposal phase."""
+    agent = _build_initialization_agent(state)
+    structural_prompt = _build_structural_prompt(design, structural_summary)
+    results = execute_with_backoff(
+        lambda: agent.run_sync(
+            user_prompt=(
+                'Analyze the data and suggest the appropriate test. '
+                'Use the structural summary to stay consistent with detected design. '
+                f'STRUCTURAL SUMMARY: {structural_prompt}'
+            ),
+            deps=InitialInsightsAgentDeps(
+                user_input='Perform a statistical test.',
+                input_data=state.df,
+                columns_decision=None,
+            ),
+        ),
+        on_retry=lambda attempt, delay, exc: state.add_step(
+            step='Rate limit backoff',
+            detail=f'Retrying initialization in {delay:.1f}s (attempt {attempt})',
+            data={'error': str(exc)},
+        ),
+    )
+    return results.data
+
+
+def _sanitize_grouping_column(
+    state: WorkflowState,
+    df: pd.DataFrame,
+    results: InitialInsightsAgentResults,
+) -> tuple[InitialInsightsAgentResults, str | None]:
+    """Apply grouping guardrails and record warnings when needed."""
+    sanitized_group, grouping_warning = _guard_grouping_column(df, results.group_column)
+    dropped_group = None
+    if sanitized_group != results.group_column:
+        dropped_group = results.group_column
+        results.group_column = sanitized_group
+        if not results.index_column and dropped_group:
+            results.index_column = dropped_group
+        if grouping_warning:
+            state.add_step(
+                step='Grouping Guardrail',
+                detail=grouping_warning,
+                data={'dropped_group_column': dropped_group},
+            )
+    return results, dropped_group
+
+
+def _apply_agent_transformations(
+    state: WorkflowState,
+    results: InitialInsightsAgentResults,
+) -> pd.DataFrame:
+    """Apply agent-requested data transformations and validate tool arguments."""
+    tool_args = results.tool_arguments
+    if results.data_transformation != 'None':
+        if tool_args is None:
+            raise ValueError('tool_arguments must be provided when data_transformation is set.')
+        validated = validate_tool_args(results.data_transformation, tool_args)
+        state.df = TOOL_FUNCS[results.data_transformation](state.df, **validated)
+
+    return state.df if isinstance(state.df, pd.DataFrame) else pd.DataFrame(state.df)
+
+
+def _reconcile_design_and_blueprint(
+    state: WorkflowState,
+    df: pd.DataFrame,
+    results: InitialInsightsAgentResults,
+    baseline_design: StatisticalDesign,
+) -> tuple[StatisticalDesign, dict[str, Any] | None, str | None, str | None]:
+    """Run deterministic design validation, pairing reconciliation, and blueprint assembly."""
+    validated_design = validate_statistical_design(
+        df,
+        dependent_var=results.analysis_columns or list(df.columns),
+        group_var=results.group_column or baseline_design.grouping_variable,
+        subject_id=baseline_design.subject_id_column,
+    )
+    state.statistical_design = validated_design
+    state.paired = validated_design.is_paired
+    state.comparison_matrix = validated_design.comparison_matrix or state.comparison_matrix
+
+    index_column = (
+        validated_design.subject_id_column or baseline_design.subject_id_column or results.index_column or df.index.name
+    )
+    target_column = (results.analysis_columns or [validated_design.dependent_variable or None])[0]
+    partition_report = build_partition_report(
+        df, results.group_column or validated_design.grouping_variable, index_column
+    )
+    if partition_report and partition_report.get('overlap', {}).get('overlap_count'):
+        state.paired = True
+        validated_design.is_paired = True
+        validated_design.design_type = 'paired'
+        results.data_design = 'paired'
+    if not validated_design.subject_id_column and index_column:
+        validated_design.subject_id_column = index_column
+
+    results.partition_report = partition_report
+    results.index_column = index_column
+    results.target_column = target_column
+
+    blueprint = build_data_blueprint(
+        df,
+        dependent_vars=results.analysis_columns or list(df.columns),
+        group_var=results.group_column or validated_design.grouping_variable,
+        covariates=[],
+        is_paired=validated_design.is_paired,
+        index_column=index_column,
+        target_column=target_column,
+        partition_report=partition_report,
+        raw_payload=results.model_dump(),
+    )
+    state.attach_blueprint(blueprint)
+
+    return validated_design, partition_report, index_column, target_column
+
+
+def _preview_route_proposal(state: WorkflowState, agent_route: list[Any]) -> dict[str, Any]:
+    """Compute deterministic route suggestion without mutating state."""
+    preview = state.model_copy(deep=True)
+    preview.pending_routing_decision = None
+    try:
+        engine_route = decision_engine.evaluate_routing(preview)
+    except Exception as exc:  # pragma: no cover - defensive
+        engine_route = None
+        return {'engine_route': None, 'agent_route': agent_route, 'error': str(exc)}
+    return {'engine_route': engine_route, 'agent_route': agent_route}
 
 
 def _guard_grouping_column(df: pd.DataFrame, group_col: str | None) -> tuple[str | None, str | None]:
@@ -125,7 +298,7 @@ def _infer_group_and_value_columns(state: WorkflowState) -> tuple[pd.DataFrame, 
 
     dep_candidates: list[str] = []
     if design and design.dependent_variable:
-        dep_candidates.extend([col.strip(" []'\"") for col in str(design.dependent_variable).split(',') if col])
+        dep_candidates.extend([col.strip(' []\'"') for col in str(design.dependent_variable).split(',') if col])
     if blueprint:
         dep_candidates.extend(
             [role.name for role in blueprint.variable_roles if getattr(role, 'role', '') == 'dependent']
@@ -201,7 +374,7 @@ def _resolve_repeated_measures_columns(state: WorkflowState) -> tuple[pd.DataFra
 
     dep_candidates: list[str] = []
     if design and design.dependent_variable:
-        dep_candidates.extend([col.strip(" []'\"") for col in str(design.dependent_variable).split(',') if col])
+        dep_candidates.extend([col.strip(' []\'"') for col in str(design.dependent_variable).split(',') if col])
     if blueprint:
         dep_candidates.extend(
             [role.name for role in blueprint.variable_roles if getattr(role, 'role', '') == 'dependent']
@@ -347,9 +520,7 @@ def call_test_agent(
             detail=result.result,
             data={
                 'test_name': test_label,
-                'statistics': float(stats_value)
-                if isinstance(stats_value, (float, int, np.floating))
-                else stats_value,
+                'statistics': float(stats_value) if isinstance(stats_value, (float, int, np.floating)) else stats_value,
                 'null_hypothesis': result.statistical_test_result.null_hypothesis,
                 'alternative': result.statistical_test_result.alternative,
                 'effect_size_type': result.statistical_test_result.effect_size_type,
@@ -560,7 +731,13 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
 
 
 def design_verification_node(state: WorkflowState) -> WorkflowState:
-    """Verify that agent design hypothesis aligns with structural validator output."""
+    """Verify agent design hypothesis against the deterministic structural design.
+
+    Contract: when a mismatch is detected, record it on ``state.design_verification`` and
+    allow routing to proceed to ``DESIGN_RECONCILIATION`` rather than raising. This preserves
+    the deterministic structural design for downstream routing while giving reconciliation a
+    chance to resolve agent/structure disagreements.
+    """
     try:
         design = state.statistical_design
         agent_design = state.agent_design_hypothesis
@@ -569,8 +746,7 @@ def design_verification_node(state: WorkflowState) -> WorkflowState:
         detail = 'Structural and agent designs are aligned.'
         if mismatch:
             detail = (
-                f'Design mismatch: validator={design.design_type} vs agent={agent_design}. '
-                'Routing to reconciliation.'
+                f'Design mismatch: validator={design.design_type} vs agent={agent_design}. Routing to reconciliation.'
             )
         state.design_verification = {
             'mismatch': mismatch,
@@ -627,8 +803,7 @@ def design_reconciliation_node(state: WorkflowState) -> WorkflowState:
             resolved_design.design_type = 'paired'
             resolved_design.is_paired = True
             resolved_design.rationale = (
-                wide_detection.get('reason')
-                or 'Detected paired measurement columns; coercing to paired design.'
+                wide_detection.get('reason') or 'Detected paired measurement columns; coercing to paired design.'
             )
             resolved_design.overlap_summary = resolved_design.overlap_summary or {}
             resolved_design.overlap_summary['wide_format_pairs'] = wide_detection.get('pairs', [])
