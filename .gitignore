@@ -32,8 +32,12 @@ coverage.xml
 .DS_Store
 
 # IDEs
-.vscode/
 .idea/
+
+# VSCode – commit shared settings, ignore personal workspace state
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 
 # Logs
 *.log
@@ -45,7 +49,7 @@ coverage.xml
 .env
 .env.local
 .env.*.local
-.env.devcontainer
+
 .dev.secrets.env
 
 # Database (local development)

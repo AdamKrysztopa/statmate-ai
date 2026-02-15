@@ -1,0 +1,80 @@
+# =============================================================================
+# StatmateAI – Docker Compose
+# =============================================================================
+# Start everything:  docker compose up --build
+# Backend only:      docker compose up backend
+# Production:        docker compose --profile prod up --build
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Backend – FastAPI (always started)
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+      args:
+        PYTHON_VERSION: "3.11"
+    container_name: statmate-backend
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - PYTHONPATH=/app
+      - DATABASE_URL=sqlite:///./database/statmate.db
+    volumes:
+      # Persist data across restarts
+      - statmate-data:/app/data
+      - statmate-db:/app/database
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Frontend – React/Vite served by nginx (production profile)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+    container_name: statmate-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles:
+      - prod
+
+  # ---------------------------------------------------------------------------
+  # Frontend Dev – Vite dev server with hot-reload (dev profile)
+  # ---------------------------------------------------------------------------
+  frontend-dev:
+    image: node:20-slim
+    container_name: statmate-frontend-dev
+    working_dir: /app/frontend
+    command: sh -c "npm install && npm run dev -- --host --port 3000"
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/app/frontend
+      - frontend-node-modules:/app/frontend/node_modules
+    depends_on:
+      - backend
+    profiles:
+      - dev
+
+volumes:
+  statmate-data:
+  statmate-db:
+  frontend-node-modules:
