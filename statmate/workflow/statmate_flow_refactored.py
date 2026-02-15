@@ -52,6 +52,7 @@ class StatMateWorkflow:
         do_association: bool = False,
         model_name: str | None = None,
         provider: str | None = None,
+        route_override: str | None = None,
         on_update: Callable[[dict[str, Any]], None] | None = None,
         thread_id: str | None = None,
     ) -> WorkflowState:
@@ -64,6 +65,7 @@ class StatMateWorkflow:
             do_association: Whether to perform association tests.
             model_name: Override for the AI model to use.
             provider: Override for the model provider.
+            route_override: Optional user override for routing choice.
             thread_id: Optional identifier used by LangGraph checkpointers to resume runs.
 
         Returns:
@@ -96,6 +98,7 @@ class StatMateWorkflow:
             do_association=do_association,
             model_name=final_model_name,
             provider=final_provider,
+            route_override=route_override,
         )
         if mask_report.get('masked_columns'):
             initial_state.add_assumption_entry({'node': 'PII masking', **mask_report})

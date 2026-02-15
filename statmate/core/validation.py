@@ -392,29 +392,6 @@ def _assumption_failed(
     return False
 
 
-def requires_assumptions(normality: bool = False, variance: bool = False):
-    """Decorator to guard statistical functions behind assumption checks."""
-
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            state = kwargs.get('state')
-            if state is None and args:
-                state = args[0]
-
-            assumptions = kwargs.get('assumptions') or {}
-
-            if normality and _assumption_failed(state, assumption='normality', assumptions=assumptions):
-                raise StatisticalAssumptionError('Normality assumption not met for this operation.')
-            if variance and _assumption_failed(state, assumption='variance', assumptions=assumptions):
-                raise StatisticalAssumptionError('Variance equality assumption not met for this operation.')
-
-            return func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
 
 @dataclass
 class StatisticalDesign:

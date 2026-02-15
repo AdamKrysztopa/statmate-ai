@@ -162,6 +162,7 @@ function App() {
   });
   const [showKeys, setShowKeys] = useState(false);
   const [overwriteLatest, setOverwriteLatest] = useState(false);
+  const [routeOverride, setRouteOverride] = useState('');
 
   const api = useMemo(() => new ApiClient(apiBase, token), [apiBase, token]);
 
@@ -336,6 +337,7 @@ function App() {
     setCommentDraft('');
     setDatasetNotes('');
     setWorkflowGraph(undefined);
+    setRouteOverride('');
     if (!id) return;
     try {
       const p = await api.previewDataset(id);
@@ -376,6 +378,7 @@ function App() {
         selected_columns: selectedColumns.length ? selectedColumns : undefined,
         model_name: modelName,
         provider,
+        route_override: routeOverride ? routeOverride : undefined,
         overwrite: overwriteFlag,
       });
       streamAbortRef.current?.abort();
@@ -387,6 +390,7 @@ function App() {
       setWorkflowGraph((prev) => (prev ? { ...prev, visited_nodes: [], selected_path: [], active_node: undefined } : prev));
       setCommentDraft('');
       await loadAnalyses(selectedDatasetId, false);
+      setRouteOverride('');
       setActiveTab('analysis');
     } catch (e) {
       setError((e as Error).message);
@@ -691,6 +695,30 @@ function App() {
     return mergeUniqueSteps([], [...streamSteps, ...fromStatus, ...fromResults]);
   }, [analysisResults, analysisStatus, streamSteps]);
 
+  const pendingRoutingDecision = useMemo(() => {
+    const reversed = [...trace].reverse();
+    for (const step of reversed) {
+      const data = step.data as Record<string, unknown> | undefined;
+      if (!data) continue;
+      const pending = data.pending_decision as
+        | { primary?: string; alternatives?: string[]; reason?: string }
+        | undefined;
+      if (pending?.primary || pending?.alternatives?.length) {
+        return pending;
+      }
+      const primary = data.primary as string | undefined;
+      const alternatives = (data.alternatives as string[]) || [];
+      if (primary || alternatives.length) {
+        return {
+          primary,
+          alternatives,
+          reason: data.reason as string | undefined,
+        };
+      }
+    }
+    return undefined;
+  }, [trace]);
+
   const plots = useMemo(() => analysisResults?.plots || analysisResults?.results_detail?.plots || [], [analysisResults]);
 
   const effectSizes = useMemo(() => {
@@ -727,6 +755,19 @@ function App() {
     if (typeof analysisStatus?.progress === 'number') return analysisStatus.progress;
     return lastStep?.progress_pct;
   }, [analysisResults?.status, analysisStatus?.status, analysisStatus?.progress, trace]);
+
+  useEffect(() => {
+    if (!pendingRoutingDecision?.primary && !pendingRoutingDecision?.alternatives?.length) return;
+    setRouteOverride('');
+  }, [pendingRoutingDecision?.primary, pendingRoutingDecision?.alternatives?.length]);
+
+  const routeOverrideHint = useMemo(() => {
+    if (!routeOverride) return 'No override selected';
+    if (!pendingRoutingDecision) return 'Override saved for next run';
+    const valid = [pendingRoutingDecision.primary, ...(pendingRoutingDecision.alternatives || [])].filter(Boolean);
+    if (!valid.length) return 'Override saved for next run';
+    return valid.includes(routeOverride) ? 'Override ready for next run' : 'Override is not in suggested options';
+  }, [routeOverride, pendingRoutingDecision]);
 
   const providerOptions = useMemo(() => {
     if (availableModels.length) {
@@ -1183,7 +1224,17 @@ function App() {
                             placeholder="Model name"
                           />
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-2 rounded-full border border-slate-700/80 px-3 py-1 text-xs text-slate-300">
+                            <span className="text-slate-400">Route override</span>
+                            <input
+                              value={routeOverride}
+                              onChange={(e) => setRouteOverride(e.target.value)}
+                              placeholder="(optional)"
+                              className="w-40 bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-500"
+                            />
+                          </div>
+                          <span className="text-[11px] text-slate-500">{routeOverrideHint}</span>
                           <button
                             onClick={() => handleRunAnalysis(false)}
                             className="flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-600 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20"
@@ -1507,25 +1558,65 @@ function App() {
                         onDownload={handleGraphDownload}
                       />
                     </div>
-                    <div className={`xl:col-span-2 rounded-2xl border p-6 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Executive summary</p>
-                          <h3 className="text-xl font-bold">{analysisResults?.dataset_name || 'Latest run'}</h3>
+                      <div className={`xl:col-span-2 rounded-2xl border p-6 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Executive summary</p>
+                            <h3 className="text-xl font-bold">{analysisResults?.dataset_name || 'Latest run'}</h3>
+                          </div>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${
+                              streaming
+                                ? 'bg-amber-500/20 text-amber-300'
+                                : analysisStatus?.status === 'completed' || analysisResults
+                                  ? 'bg-emerald-500/20 text-emerald-300'
+                                  : 'bg-slate-800 text-slate-300'
+                            }`}
+                          >
+                            {streaming ? 'Running' : analysisStatus?.status || analysisResults?.status || 'Ready'}
+                          </span>
                         </div>
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold ${
-                            streaming
-                              ? 'bg-amber-500/20 text-amber-300'
-                              : analysisStatus?.status === 'completed' || analysisResults
-                                ? 'bg-emerald-500/20 text-emerald-300'
-                                : 'bg-slate-800 text-slate-300'
-                          }`}
-                        >
-                          {streaming ? 'Running' : analysisStatus?.status || analysisResults?.status || 'Ready'}
-                        </span>
-                      </div>
-                      {typeof progressPct === 'number' && (
+                        {pendingRoutingDecision && (
+                          <div className="mb-4 rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4 text-sm">
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-xs uppercase tracking-[0.2em] text-cyan-200">Routing choice</span>
+                              {pendingRoutingDecision.reason && (
+                                <span className="text-[11px] text-cyan-100/80">Reason: {pendingRoutingDecision.reason}</span>
+                              )}
+                            </div>
+                            <div className="flex flex-col gap-2">
+                              {pendingRoutingDecision.primary && (
+                                <button
+                                  onClick={() => setRouteOverride(pendingRoutingDecision.primary || '')}
+                                  className={`rounded-lg border px-3 py-2 text-left text-sm font-semibold ${
+                                    routeOverride === pendingRoutingDecision.primary
+                                      ? 'border-cyan-400 bg-cyan-400/20 text-cyan-100'
+                                      : 'border-slate-700/80 text-slate-200 hover:border-cyan-400/70'
+                                  }`}
+                                >
+                                  Primary: {pendingRoutingDecision.primary}
+                                </button>
+                              )}
+                              {(pendingRoutingDecision.alternatives || []).map((alt) => (
+                                <button
+                                  key={alt}
+                                  onClick={() => setRouteOverride(alt)}
+                                  className={`rounded-lg border px-3 py-2 text-left text-sm ${
+                                    routeOverride === alt
+                                      ? 'border-cyan-400 bg-cyan-400/20 text-cyan-100'
+                                      : 'border-slate-700/80 text-slate-200 hover:border-cyan-400/70'
+                                  }`}
+                                >
+                                  Alternative: {alt}
+                                </button>
+                              ))}
+                            </div>
+                            <p className="mt-2 text-[11px] text-cyan-100/70">
+                              Selected route will apply on the next run.
+                            </p>
+                          </div>
+                        )}
+{typeof progressPct === 'number' && (
                         <div className="mb-3">
                           <div className="flex items-center justify-between text-[11px] text-slate-400">
                             <span>Progress</span>

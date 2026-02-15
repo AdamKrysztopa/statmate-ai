@@ -24,6 +24,7 @@ from statmate.agents.initial_insights_agent import (
     INITIAL_INSIGHTS_PROMPT,
     TOOL_FUNCS,
     InitialInsightsAgentDeps,
+    InitialInsightsAgentResults,
     build_initial_insights_agent,
     build_partition_report,
     format_data_by_recommendation,
@@ -45,6 +46,9 @@ from statmate.core.validation import (
 )
 from statmate.workflow.blueprint import build_data_blueprint
 from statmate.workflow.edges import decision_engine
+from statmate.workflow.initialization.column_role_agent import propose_column_roles
+from statmate.workflow.initialization.route_proposal import propose_route
+from statmate.workflow.initialization.structural_check import check_structural_validity
 from statmate.workflow.methodology_auditor import MethodologyAuditor, StructureAuditor
 from statmate.workflow.model_factory import create_model, create_model_settings
 from statmate.workflow.state import WorkflowState
@@ -187,6 +191,7 @@ def _reconcile_design_and_blueprint(
     index_column = (
         validated_design.subject_id_column or baseline_design.subject_id_column or results.index_column or df.index.name
     )
+    index_column = index_column if isinstance(index_column, str) else None
     target_column = (results.analysis_columns or [validated_design.dependent_variable or None])[0]
     partition_report = build_partition_report(
         df, results.group_column or validated_design.grouping_variable, index_column
@@ -552,134 +557,86 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
         NodeExecutionError: If the initialization fails.
     """
     try:
-        # Deterministic structural validation before any LLM reasoning
-        design, structural_summary = infer_statistical_design(state.df)
-        state.statistical_design = design
-        state.paired = design.is_paired
-        state.comparison_matrix = design.comparison_matrix
+        structural = check_structural_validity(state.df)
+        if not structural.is_valid:
+            state.add_step(
+                step='Structural Validation (pre-agent)',
+                detail='Structural validation failed.',
+                data={'errors': structural.errors},
+            )
+            raise NodeExecutionError(node_name='call_initialization_agent', original_error=ValueError('Structural validation failed'))
+
+        state.statistical_design = structural.design
+        state.paired = structural.design.is_paired if structural.design else state.paired
+        state.comparison_matrix = structural.design.comparison_matrix if structural.design else state.comparison_matrix
         state.add_step(
             step='Structural Validation (pre-agent)',
-            detail=design.rationale or 'Structural design check completed.',
+            detail=structural.design.rationale if structural.design else 'Structural design check completed.',
             data={
-                'statistical_design': design.as_dict(),
-                'structural_summary': structural_summary,
+                'statistical_design': structural.design.as_dict() if structural.design else None,
+                'structural_summary': structural.structural_summary,
             },
         )
 
-        # Use model from state if specified
         model = create_model(model_name=state.model_name, provider=state.provider)
         settings = create_model_settings(model_name=state.model_name)
-        agent = build_initial_insights_agent(
+
+        roles = propose_column_roles(
+            df=state.df,
+            structural=structural,
             model=model,
-            system_prompt=ENHANCED_INITIAL_INSIGHTS_PROMPT,
             model_settings=settings,
         )
 
-        structural_prompt = json.dumps(
-            {
-                'statistical_design': design.as_dict(),
-                'structural_summary': structural_summary,
-            },
-            default=str,
-        )
-
-        results = execute_with_backoff(
-            lambda: agent.run_sync(
-                user_prompt=(
-                    'Analyze the data and suggest the appropriate test. '
-                    'Use the structural summary to stay consistent with detected design. '
-                    f'STRUCTURAL SUMMARY: {structural_prompt}'
-                ),
-                deps=InitialInsightsAgentDeps(
-                    user_input='Perform a statistical test.',
-                    input_data=state.df,
-                    columns_decision=None,
-                ),
-            ),
-            on_retry=lambda attempt, delay, exc: state.add_step(
-                step='Rate limit backoff',
-                detail=f'Retrying initialization in {delay:.1f}s (attempt {attempt})',
-                data={'error': str(exc)},
-            ),
-        )
-
-        frame_for_grouping = state.df if isinstance(state.df, pd.DataFrame) else pd.DataFrame(state.df)
-        sanitized_group, grouping_warning = _guard_grouping_column(frame_for_grouping, results.data.group_column)
-        dropped_group = None
-        if sanitized_group != results.data.group_column:
-            dropped_group = results.data.group_column
-            results.data.group_column = sanitized_group
-            if not results.data.index_column and dropped_group:
-                results.data.index_column = dropped_group
-            if grouping_warning:
-                state.add_step(
-                    step='Grouping Guardrail',
-                    detail=grouping_warning,
-                    data={'dropped_group_column': dropped_group},
-                )
-
-        # Update sample count
-        state.number_of_samples = int(results.data.data_size)
-
-        # Ensure tool_arguments exists
-        tool_args = results.data.tool_arguments or {}
-
         # Apply transformation if any
-        if results.data.data_transformation != 'None':
-            validated = validate_tool_args(results.data.data_transformation, tool_args)
-            state.df = TOOL_FUNCS[results.data.data_transformation](state.df, **validated)
+        if roles.data_transformation != 'None':
+            state.df = TOOL_FUNCS[roles.data_transformation](state.df, **roles.tool_arguments)
 
         inp_df = state.df if isinstance(state.df, pd.DataFrame) else pd.DataFrame(state.df)
 
-        # Re-run structural validation using agent-selected columns to lock design.
         validated_design = validate_statistical_design(
             inp_df,
-            dependent_var=results.data.analysis_columns or list(inp_df.columns),
-            group_var=results.data.group_column or design.grouping_variable,
-            subject_id=design.subject_id_column,
+            dependent_var=roles.analysis_columns or list(inp_df.columns),
+            group_var=roles.group_column or (structural.design.grouping_variable if structural.design else None),
+            subject_id=structural.design.subject_id_column if structural.design else None,
         )
+
         state.statistical_design = validated_design
         state.paired = validated_design.is_paired
         state.comparison_matrix = validated_design.comparison_matrix or state.comparison_matrix
 
-        index_column = (
-            validated_design.subject_id_column
-            or design.subject_id_column
-            or results.data.index_column
-            or inp_df.index.name
-        )
-        target_column = (results.data.analysis_columns or [validated_design.dependent_variable or None])[0]
+        index_column = validated_design.subject_id_column or inp_df.index.name
+        index_column = index_column if isinstance(index_column, str) else None
+        target_column = (roles.analysis_columns or [validated_design.dependent_variable or None])[0]
         partition_report = build_partition_report(
-            inp_df, results.data.group_column or validated_design.grouping_variable, index_column
+            inp_df,
+            roles.group_column or validated_design.grouping_variable,
+            index_column,
         )
-        if partition_report and partition_report.get('overlap', {}).get('overlap_count'):
-            state.paired = True
-            validated_design.is_paired = True
-            validated_design.design_type = 'paired'
-            results.data.data_design = 'paired'
-        if not validated_design.subject_id_column and index_column:
-            validated_design.subject_id_column = index_column
-
-        results.data.partition_report = partition_report
-        results.data.index_column = index_column
-        results.data.target_column = target_column
 
         blueprint = build_data_blueprint(
             inp_df,
-            dependent_vars=results.data.analysis_columns or list(inp_df.columns),
-            group_var=results.data.group_column or validated_design.grouping_variable,
+            dependent_vars=roles.analysis_columns or list(inp_df.columns),
+            group_var=roles.group_column or validated_design.grouping_variable,
             covariates=[],
             is_paired=validated_design.is_paired,
             index_column=index_column,
-            target_column=target_column,
+            target_column=target_column if isinstance(target_column, str) else None,
             partition_report=partition_report,
-            raw_payload=results.data.model_dump() if hasattr(results, 'data') else {},
+            raw_payload={
+                'analysis_columns': roles.analysis_columns,
+                'group_column': roles.group_column,
+                'data_transformation': roles.data_transformation,
+                'tool_arguments': roles.tool_arguments,
+                'data_type': roles.data_type,
+                'data_design': roles.data_design,
+            },
         )
         state.attach_blueprint(blueprint)
 
         structural_text = (
-            get_structural_summary(inp_df, results.data.group_column)
-            if results.data.group_column
+            get_structural_summary(inp_df, roles.group_column)
+            if roles.group_column
             else 'No grouping column provided.'
         )
         state.add_step(
@@ -687,40 +644,68 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
             detail=validated_design.rationale or 'Structural design confirmed.',
             data={
                 'statistical_design': validated_design.as_dict(),
-                'structural_summary': structural_summary,
+                'structural_summary': structural.structural_summary,
                 'structural_text': structural_text,
                 'data_blueprint': blueprint.model_dump(),
             },
         )
 
-        # Format for downstream tests
-        formatted = format_data_by_recommendation(inp_df, results.data, state.statistical_design)
+        route = propose_route(structural=structural, roles=roles, blueprint=blueprint)
+        state.pending_routing_decision = {
+            'primary': route.primary,
+            'alternatives': route.alternatives,
+            'reason': route.metadata.get('reason'),
+            'profile': route.metadata,
+        }
+
+        from statmate.agents.initial_insights_agent import InitialInsightsAgentResults, NodeName as AgentNodeName
+
+        rec = InitialInsightsAgentResults(
+            analysis_columns=roles.analysis_columns,
+            group_column=roles.group_column,
+            output_format='pd.DataFrame',
+            data_analysis_result='Initialization pipeline completed.',
+            route_to_test=[AgentNodeName(str(value)) for value in route.ordered_nodes],
+            comments='Generated by phased initialization pipeline.',
+            data_type=roles.data_type,
+            data_design=roles.data_design,
+            data_transformation=roles.data_transformation,
+            tool_arguments=roles.tool_arguments,
+            data_size=int(inp_df.shape[0]),
+            number_of_columns=int(inp_df.shape[1]),
+            variable_roles=[],
+            distribution_metrics={},
+            sample_balance=None,
+            index_column=index_column if isinstance(index_column, str) else None,
+            target_column=target_column if isinstance(target_column, str) else None,
+            partition_report=partition_report,
+        )
+
+        formatted = format_data_by_recommendation(inp_df, rec, state.statistical_design)
         if isinstance(formatted, tuple):
             state.df, state.secondary_df = formatted
         else:
             state.df = formatted
 
-        # Set metadata
-        state.data_type = results.data.data_type
-        cols = results.data.analysis_columns
-        state.target_columns = cols if set(cols).issubset(set(inp_df.columns)) else list(inp_df.columns)
-        state.agent_design_hypothesis = results.data.data_design
-        state.add_result(AIMessage(content=str(results.data)))
+        state.data_type = roles.data_type if roles.data_type in ('CONTINUOUS', 'CATEGORICAL') else None
+        state.target_columns = roles.analysis_columns if roles.analysis_columns else list(inp_df.columns)
+        state.agent_design_hypothesis = roles.data_design
+        state.add_result(AIMessage(content=str(rec)))
         state.add_step(
             step='Initialization',
-            detail=results.data.data_analysis_result,
+            detail='Initialization pipeline completed.',
             data={
-                'route_to_test': [getattr(r, 'value', str(r)) for r in results.data.route_to_test],
-                'data_type': results.data.data_type,
-                'analysis_columns': results.data.analysis_columns,
-                'group_column': results.data.group_column,
-                'data_transformation': results.data.data_transformation,
-                'tool_arguments': results.data.tool_arguments,
-                'data_design': results.data.data_design,
+                'route_to_test': route.ordered_nodes,
+                'data_type': roles.data_type,
+                'analysis_columns': roles.analysis_columns,
+                'group_column': roles.group_column,
+                'data_transformation': roles.data_transformation,
+                'tool_arguments': roles.tool_arguments,
+                'data_design': roles.data_design,
             },
         )
 
-        logger.info(f'Data type set: {state.data_type}')
+        logger.info('Initialization pipeline completed.')
         return state
     except RoutingError as e:
         logger.error('Routing error in initialization: %s', e)
@@ -744,7 +729,7 @@ def design_verification_node(state: WorkflowState) -> WorkflowState:
         mismatch = bool(design and agent_design and agent_design != design.design_type)
 
         detail = 'Structural and agent designs are aligned.'
-        if mismatch:
+        if mismatch and design:
             detail = (
                 f'Design mismatch: validator={design.design_type} vs agent={agent_design}. Routing to reconciliation.'
             )
@@ -773,7 +758,7 @@ def design_reconciliation_node(state: WorkflowState) -> WorkflowState:
         df = state.df if isinstance(state.df, pd.DataFrame) else pd.DataFrame(state.df)
         blueprint = state.data_blueprint
         verification = state.design_verification or {}
-        wide_detection = detect_wide_format_pairing(df.columns)
+        wide_detection = detect_wide_format_pairing(list(df.columns))
         partition = blueprint.partition_report if blueprint else None
         overlap = (partition or {}).get('overlap', {})
         overlap_detected = bool(overlap.get('overlap_count'))
@@ -819,7 +804,7 @@ def design_reconciliation_node(state: WorkflowState) -> WorkflowState:
             state.statistical_design = resolved_design
             state.paired = resolved_design.is_paired
             if blueprint:
-                updates = {'is_paired': resolved_design.is_paired}
+                updates: dict[str, Any] = {'is_paired': resolved_design.is_paired}
                 if wide_detection.get('pairs') and state.secondary_df is not None:
                     samples = {
                         str(wide_detection['pairs'][0][0]): int(len(state.df)),
@@ -1280,6 +1265,20 @@ def choice_node(state: WorkflowState) -> WorkflowState:
         decision = state.pending_routing_decision or {}
         primary = decision.get('primary')
         alternatives = decision.get('alternatives') or []
+
+        if state.user_selected_option:
+            valid_options = [opt for opt in [primary, *alternatives] if opt]
+            if state.user_selected_option not in valid_options:
+                state.add_step(
+                    step=NodeName.CHOICE,
+                    detail='Invalid override ignored; falling back to default option.',
+                    data={
+                        'invalid_override': state.user_selected_option,
+                        'valid_options': valid_options,
+                    },
+                )
+                state.user_selected_option = None
+
         selected = state.user_selected_option or decision.get('selected') or primary
 
         entry = {

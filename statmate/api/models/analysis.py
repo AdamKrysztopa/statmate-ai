@@ -18,6 +18,10 @@ class AnalysisCreate(BaseModel):
     )
     provider: str | None = Field(default=None, description='Model provider (optional, auto-detected from model_name)')
     configuration: dict[str, Any] | None = Field(default=None, description='Optional analysis configuration parameters')
+    route_override: str | None = Field(
+        default=None,
+        description='Optional user override for routing choice (must match NodeName values)',
+    )
     overwrite: bool = Field(
         default=False,
         description='If true, mark the latest analysis for this dataset/user as superseded and create a new version',

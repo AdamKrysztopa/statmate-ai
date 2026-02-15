@@ -158,6 +158,7 @@ class AnalysisService:
         *,
         selected_columns: list[str] | None = None,
         configuration: dict[str, Any] | None = None,
+        route_override: str | None = None,
         model_name: str | None = None,
         provider: str | None = None,
         user_id: str | None = None,
@@ -170,6 +171,7 @@ class AnalysisService:
             dataset_id: The UUID of the dataset to analyze.
             selected_columns: The columns to analyze. If None, all columns are used.
             configuration: Optional analysis configuration.
+            route_override: Optional user override for routing choice.
             model_name: The AI model to use for the analysis.
             provider: The model provider (e.g., 'openai', 'ollama').
 
@@ -193,12 +195,16 @@ class AnalysisService:
             latest.superseded_at = datetime.utcnow()
             db.commit()
 
+        config_payload = dict(configuration or {})
+        if route_override:
+            config_payload['route_override'] = route_override
+
         analysis = Analysis(
             dataset_id=dataset_id,
             user_id=user_id,
             status=AnalysisStatus.PENDING,
             selected_columns=selected_columns,
-            configuration=configuration or {},
+            configuration=config_payload,
             model_name=model_name,
             provider=provider,
             version=next_version,
@@ -466,6 +472,7 @@ class AnalysisService:
                     do_association=analysis.configuration.get('do_association', False),
                     model_name=model_override or analysis.model_name,
                     provider=analysis.provider,
+                    route_override=analysis.configuration.get('route_override'),
                     on_update=_on_state_update,
                     thread_id=analysis_id,
                 )

@@ -24,9 +24,14 @@ from statmate.api.services.analysis_service import AnalysisService
 from statmate.api.services.dataset_service import DatasetService
 from statmate.api.services.export_service import ExportService
 from statmate.api.services.storage_service import StorageService
+from statmate.core.config import NodeName
 
 router = APIRouter(prefix='/analysis', tags=['analysis'])
 logger = logging.getLogger(__name__)
+
+_VALID_ROUTE_OVERRIDES = {
+    value for key, value in vars(NodeName).items() if key.isupper() and isinstance(value, str)
+}
 
 
 @router.post('/run', response_model=AnalysisResponse, status_code=status.HTTP_201_CREATED)
@@ -54,6 +59,12 @@ async def run_analysis(
     if settings.AUTH_REQUIRED and not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
 
+    if request.route_override and request.route_override not in _VALID_ROUTE_OVERRIDES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Invalid route_override: {request.route_override}',
+        )
+
     try:
         # Create analysis record
         analysis = AnalysisService.create_analysis(
@@ -61,6 +72,7 @@ async def run_analysis(
             dataset_id=request.dataset_id,
             selected_columns=request.selected_columns,
             configuration=request.configuration,
+            route_override=request.route_override,
             model_name=request.model_name,
             provider=request.provider,
             user_id=current_user.id if current_user else None,

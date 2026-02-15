@@ -9,27 +9,27 @@
 
 ## P0 — Stabilize (do these first)
 
-- [ ] **Fix 2 failing tests**
+- [x] **Fix 2 failing tests** _(Fixed: missing `InitialInsightsAgentResults` import in `nodes.py` — 38/38 pass)_
   - Read: `docs/todo/p0_stabilization_implementation_playbook.md` → P0-1
   - Files: `tests/test_validation_design.py`, `tests/test_workflow_logic.py`
   - Goal: Align tests with current design reconciliation behavior.
 
-- [ ] **Add CI pipeline**
+- [x] **Add CI pipeline** _(Created `.github/workflows/ci.yml` with pytest + ruff E-level gate)_
   - Read: `docs/todo/p0_stabilization_implementation_playbook.md` → P0-5
   - File: `.github/workflows/ci.yml`
   - Goal: `pytest` + targeted `ruff` gate.
 
-- [ ] **Split initialization agent into 3 phases**
+- [x] **Split initialization agent into 3 phases**
   - Read: `docs/todo/p0_stabilization_implementation_playbook.md` → P0-2
   - Files: `statmate/agents/initial_insights_agent.py`, `statmate/workflow/nodes.py`
   - Goal: smaller prompt, cleaner helpers, add tests.
 
-- [ ] **Wire user-in-the-loop choice**
+- [x] **Wire user-in-the-loop choice**
   - Read: `docs/todo/p0_stabilization_implementation_playbook.md` → P0-3
   - Files: `statmate/api/routes/analysis.py`, `statmate/api/models/analysis.py`, `frontend/src/App.tsx`
   - Goal: user override flows end-to-end.
 
-- [ ] **Apply or remove assumption guardrails**
+- [x] **Apply or remove assumption guardrails**
   - Read: `docs/todo/p0_stabilization_implementation_playbook.md` → P0-4
   - Files: `statmate/core/validation.py`, `statmate/statistical_core/*.py`
   - Goal: no unused guardrail abstraction remains.

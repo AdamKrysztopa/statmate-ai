@@ -241,6 +241,7 @@ export class ApiClient {
     selected_columns?: string[];
     model_name?: string;
     provider?: string;
+    route_override?: string;
     overwrite?: boolean;
   }): Promise<{ id: string; version?: number }> {
     const res = await fetch(`${this.baseUrl}/analysis/run`, {
