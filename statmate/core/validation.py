@@ -357,6 +357,30 @@ def validate_assumptions(
     }
 
 
+def requires_assumptions(*, normality: bool | None = None, variance: bool | None = None):
+    """Decorator to block execution when required assumptions are violated.
+
+    Args:
+        normality: Explicit normality requirement; True skips checks, False forces failure.
+        variance: Explicit variance requirement; True skips checks, False forces failure.
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(state: Any, *args: Any, **kwargs: Any):
+            assumptions = {'normality': normality, 'variance': variance}
+            for assumption in ('normality', 'variance'):
+                if _assumption_failed(state, assumption=assumption, assumptions=assumptions):
+                    raise StatisticalAssumptionError(
+                        f"Required assumption '{assumption}' not satisfied for {func.__name__}."
+                    )
+            return func(state, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
 def _assumption_failed(
     state: Any,
     *,
