@@ -120,7 +120,7 @@ Every code change is reviewed against all five principles. Violations are report
 | P2-F02 | Regression module (`linear`, `multiple` with VIF, `logistic`) in `statistical_core/regression.py`; wire into workflow | P1       | Statistical correctness | **Shipped ✓** |
 | P2-F03 | Outlier/influence diagnostics (Cook's distance, leverage, VIF) in `workflow/blueprint.py`                             | P1       | Statistical correctness | **Shipped ✓** |
 | P2-F04 | Resolve `cox_regression` placeholder — implement minimally or hard-disable with `501` + user-facing message           | P1       | Statistical correctness | **Shipped ✓** |
-| P2-F05 | Decompose `statmate/workflow/nodes.py` (~1201 LOC) into per-phase modules; 400-LOC hard limit per file                | P1       | Architecture            | Not started   |
+| P2-F05 | Decompose `statmate/workflow/nodes.py` (~1201 LOC) into per-phase modules; 400-LOC hard limit per file                | P1       | Architecture            | **Shipped ✓** |
 | P2-F06 | >80% line coverage on `statistical_core/` and `workflow/` via `pytest-cov`; coverage report in CI                     | P1       | Test coverage           | Not started   |
 | P2-F07 | Integration tests for full analysis workflow (file upload → result export)                                            | P1       | Test coverage           | Not started   |
 | P2-F08 | Structured Finding/Evidence/Caveat format in summarizer; reviewer check for missing clinical significance block       | P2       | Medical reporting       | Not started   |
