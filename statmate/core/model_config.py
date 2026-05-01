@@ -151,7 +151,61 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         supports_tools=True,
         description='Latest mini reasoning model (requires temperature=1)',
     ),
-    # Anthropic models (2025 - Latest)
+    # Anthropic models (2025/2026 - Latest)
+    'claude-sonnet-4-5-20250514': ModelInfo(
+        name='claude-sonnet-4-5-20250514',
+        provider=ModelProvider.ANTHROPIC,
+        display_name='Claude Sonnet 4.5',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=200000,
+        supports_tools=True,
+        description='Claude Sonnet 4.5 - advanced reasoning model (May 2025)',
+    ),
+    'claude-sonnet-4-5-latest': ModelInfo(
+        name='claude-sonnet-4-5-latest',
+        provider=ModelProvider.ANTHROPIC,
+        display_name='Claude Sonnet 4.5 (Latest)',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=200000,
+        supports_tools=True,
+        description='Always uses the latest Claude Sonnet 4.5',
+    ),
+    'claude-opus-4-20250514': ModelInfo(
+        name='claude-opus-4-20250514',
+        provider=ModelProvider.ANTHROPIC,
+        display_name='Claude Opus 4',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=200000,
+        supports_tools=True,
+        description='Claude Opus 4 - most capable model (May 2025)',
+    ),
+    'claude-opus-4-latest': ModelInfo(
+        name='claude-opus-4-latest',
+        provider=ModelProvider.ANTHROPIC,
+        display_name='Claude Opus 4 (Latest)',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
+        context_window=200000,
+        supports_tools=True,
+        description='Always uses the latest Claude Opus 4',
+    ),
+    'claude-haiku-4-20250514': ModelInfo(
+        name='claude-haiku-4-20250514',
+        provider=ModelProvider.ANTHROPIC,
+        display_name='Claude Haiku 4',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING],
+        context_window=200000,
+        supports_tools=True,
+        description='Claude Haiku 4 - fast and efficient (May 2025)',
+    ),
+    'claude-haiku-4-latest': ModelInfo(
+        name='claude-haiku-4-latest',
+        provider=ModelProvider.ANTHROPIC,
+        display_name='Claude Haiku 4 (Latest)',
+        capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING],
+        context_window=200000,
+        supports_tools=True,
+        description='Always uses the latest Claude Haiku 4',
+    ),
     'claude-3-7-sonnet-20250219': ModelInfo(
         name='claude-3-7-sonnet-20250219',
         provider=ModelProvider.ANTHROPIC,
@@ -159,7 +213,7 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         capabilities=[ModelCapability.REASONING, ModelCapability.FUNCTION_CALLING, ModelCapability.VISION],
         context_window=200000,
         supports_tools=True,
-        description='Latest Claude with extended thinking - Feb 2025',
+        description='Claude 3.7 with extended thinking - Feb 2025',
     ),
     'claude-3-5-sonnet-20241022': ModelInfo(
         name='claude-3-5-sonnet-20241022',
@@ -354,6 +408,46 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         description='Local Mistral 7B via Ollama',
     ),
 }
+
+
+# Friendly / shorthand aliases → canonical model names in SUPPORTED_MODELS.
+# Users can type these in the UI instead of the full identifier.
+MODEL_ALIASES: dict[str, str] = {
+    # Anthropic friendly names
+    'sonnet-4.5': 'claude-sonnet-4-5-20250514',
+    'sonnet-4-5': 'claude-sonnet-4-5-20250514',
+    'claude-sonnet-4.5': 'claude-sonnet-4-5-20250514',
+    'claude-sonnet-4-5': 'claude-sonnet-4-5-latest',
+    'opus-4': 'claude-opus-4-20250514',
+    'claude-opus-4': 'claude-opus-4-latest',
+    'haiku-4': 'claude-haiku-4-20250514',
+    'claude-haiku-4': 'claude-haiku-4-latest',
+    'claude-3.7-sonnet': 'claude-3-7-sonnet-20250219',
+    'claude-3.5-sonnet': 'claude-3-5-sonnet-latest',
+    'claude-3.5-haiku': 'claude-3-5-haiku-latest',
+    'claude-3-opus': 'claude-3-opus-latest',
+    # OpenAI friendly names
+    'gpt5': 'gpt-5',
+    'gpt4o': 'gpt-4o',
+    'gpt-4o-mini': 'gpt-4o-mini',
+    'o1-mini': 'o1-mini',
+    # Google friendly names
+    'gemini-pro': 'gemini-1.5-pro-latest',
+    'gemini-flash': 'gemini-1.5-flash-latest',
+    'gemini-2-flash': 'gemini-2.0-flash-exp',
+    'gemini-2.5-pro': 'gemini-2.5-pro-preview',
+}
+
+
+def resolve_model_alias(model_name: str) -> str:
+    """Resolve a friendly model alias to its canonical name.
+
+    If *model_name* is already a canonical key in ``SUPPORTED_MODELS``, it is
+    returned unchanged.  Otherwise the ``MODEL_ALIASES`` mapping is consulted.
+    """
+    if model_name in SUPPORTED_MODELS:
+        return model_name
+    return MODEL_ALIASES.get(model_name, model_name)
 
 
 @dataclass

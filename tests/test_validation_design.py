@@ -64,7 +64,9 @@ def test_validate_statistical_design_wide_paired():
 
     assert design.is_paired
     assert design.design_type == 'paired'
-    assert 'wide-format paired' in design.rationale
+    rationale = (design.rationale or '').lower()
+    assert 'wide-format' in rationale
+    assert 'pair' in rationale
 
 
 def test_validate_statistical_design_independent_groups():

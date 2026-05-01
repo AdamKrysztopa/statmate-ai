@@ -1,0 +1,17 @@
+{
+    "recommendations": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "tamasfe.even-better-toml",
+        "ms-toolsai.jupyter",
+        "redhat.vscode-yaml",
+        "yzhang.markdown-all-in-one",
+        "esbenp.prettier-vscode",
+        "foxundermoon.shell-format",
+        "emeraldwalk.runonsave",
+        "github.copilot",
+        "bierner.markdown-mermaid",
+        "shd101wyy.markdown-preview-enhanced"
+    ]
+}

@@ -95,23 +95,20 @@ extend-select = ["ANN", "ARG", "D", "PIE", "PT", "RET", "S", "UP"]
 fix = true
 
 
-[tool.ruff.lint.pydocstyle]
+[tool.ruff.pydocstyle]
 convention = "google"
 
-[tool.ruff.lint.pep8-naming]
+[tool.ruff.pep8-naming]
 ignore-names = ["X*"]
 
 [tool.pyright]
 typeCheckingMode = "standard"
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [dependency-groups]
-dev = [
-    "pytest>=8.3.5",
-    "locust>=2.29.0",
-]
+dev = ["pytest>=8.3.5", "locust>=2.29.0"]
 
-[tool.ruff.format]
-quote-style = "single"
-
-[tool.ruff.lint.flake8-quotes]
+[tool.ruff.flake8-quotes]
 inline-quotes = "single"

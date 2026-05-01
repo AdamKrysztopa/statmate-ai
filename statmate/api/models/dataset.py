@@ -24,6 +24,8 @@ class DatasetResponse(BaseModel):
     data_types: dict[str, str] | None = Field(description='Data types for each column')
     description: str | None = Field(description='User-provided description')
     user_id: str | None = Field(description='Owner user ID')
+    file_missing: bool | None = Field(default=None, description='True when the dataset file is missing from storage')
+    file_missing: bool | None = Field(default=None, description='True when the dataset file is missing from storage')
 
     class Config:
         """Pydantic config."""
@@ -74,3 +76,10 @@ class DatasetDescriptionUpdate(BaseModel):
     """Request payload for updating dataset notes/description."""
 
     description: str | None = Field(default=None, description='New dataset notes')
+
+
+class DatasetPurgeResponse(BaseModel):
+    """Response model for purging missing datasets."""
+
+    deleted_count: int = Field(description='Number of dataset records removed')
+    deleted_ids: list[str] = Field(description='Dataset IDs that were removed')

@@ -248,16 +248,48 @@ status: ## Check system status
 	fi
 
 # =============================================================================
-# Docker (Future)
+# Docker
 # =============================================================================
 
-docker-build: ## Build Docker image
-	@echo '$(GREEN)Building Docker image...$(RESET)'
-	docker build -t statmate-ai:latest .
+docker-build: ## Build all Docker images
+	@echo '$(GREEN)Building Docker images...$(RESET)'
+	docker compose build
 
-docker-run: ## Run Docker container
-	@echo '$(GREEN)Running Docker container...$(RESET)'
-	docker run -p 8000:8000 -p 8501:8501 statmate-ai:latest
+docker-up: ## Start all services (backend only by default)
+	@echo '$(GREEN)Starting StatmateAI via Docker Compose...$(RESET)'
+	docker compose up --build
+	@echo '$(GREEN)Services are up. Useful links:$(RESET)'
+	@echo "  API health: http://localhost:$${API_PORT:-8000}/api/v1/health"
+	@echo "  API docs:   http://localhost:$${API_PORT:-8000}/docs"
+	@echo "  API OpenAPI: http://localhost:$${API_PORT:-8000}/openapi.json"
+	@echo "  Logs:       docker compose logs -f"
+
+docker-dev: ## Start backend + frontend dev server (hot-reload)
+	@echo '$(GREEN)Starting StatmateAI dev stack...$(RESET)'
+	docker compose --profile dev up --build
+	@echo '$(GREEN)Services are up. Useful links:$(RESET)'
+	@echo "  Frontend:   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "  API health: http://localhost:$${API_PORT:-8000}/api/v1/health"
+	@echo "  API docs:   http://localhost:$${API_PORT:-8000}/docs"
+	@echo "  API OpenAPI: http://localhost:$${API_PORT:-8000}/openapi.json"
+	@echo "  Logs:       docker compose logs -f"
+
+docker-prod: ## Start backend + production frontend (nginx)
+	@echo '$(GREEN)Starting StatmateAI production stack...$(RESET)'
+	docker compose --profile prod up --build -d
+	@echo '$(GREEN)Services are up. Useful links:$(RESET)'
+	@echo "  Frontend:   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "  API health: http://localhost:$${API_PORT:-8000}/api/v1/health"
+	@echo "  API docs:   http://localhost:$${API_PORT:-8000}/docs"
+	@echo "  API OpenAPI: http://localhost:$${API_PORT:-8000}/openapi.json"
+	@echo "  Logs:       docker compose logs -f"
+
+docker-down: ## Stop all Docker services
+	@echo '$(YELLOW)Stopping Docker services...$(RESET)'
+	docker compose --profile dev --profile prod down
+
+docker-logs: ## Tail Docker service logs
+	docker compose logs -f
 
 # =============================================================================
 # Quick Start Guide

@@ -222,7 +222,7 @@ make dev    # Terminal 1 - API
 make ui     # Terminal 2 - UI
 ```
 
-> 🎯 **Full Ollama Guide:** See [Ollama Setup Guide](docs/OLLAMA_SETUP.md) for detailed instructions
+> 🎯 **Full Ollama Guide:** See [Ollama Setup Guide](docs/models/OLLAMA_SETUP.md) for detailed instructions
 
 ---
 
@@ -274,8 +274,8 @@ make prod   # Users enter API keys via UI
 make kill   # Stop everything
 ```
 
-> 📖 **Detailed Setup:** See [Setup Guide](docs/SETUP_GUIDE.md) for comprehensive instructions  
-> 🤖 **Ollama Guide:** See [Ollama Setup](docs/OLLAMA_SETUP.md) for local AI models
+> 📖 **Detailed Setup:** See [Setup Guide](docs/setup/SETUP_GUIDE.md) for comprehensive instructions  
+> 🤖 **Ollama Guide:** See [Ollama Setup](docs/models/OLLAMA_SETUP.md) for local AI models
 
 ---
 
@@ -283,71 +283,63 @@ make kill   # Stop everything
 
 ### 📖 Getting Started Guides
 
-| Guide                                              | Description                      | For Who                | Time   |
-| -------------------------------------------------- | -------------------------------- | ---------------------- | ------ |
-| **[Setup Guide](docs/SETUP_GUIDE.md)**             | Quick setup for DEV & PROD modes | First-time users       | 5 min  |
-| **[Ollama Setup](docs/OLLAMA_SETUP.md)**           | 🔥 Run AI locally (FREE!)         | Everyone               | 10 min |
-| **[Adding Models](docs/ADDING_MODELS.md)**         | How to add new AI models         | Customizers            | 5 min  |
-| **[Quick Reference](docs/QUICK_REFERENCE.md)**     | Command cheat sheet              | Everyone               | 2 min  |
-| **[Dev vs Prod Guide](docs/DEV_VS_PROD_GUIDE.md)** | Credential management deep dive  | Developers & Deployers | 15 min |
-| **[Quick Start](docs/QUICK_START.md)**             | Fast API setup and first calls   | API users              | 5 min  |
+| Guide                                                    | Description                      | For Who                | Time   |
+| -------------------------------------------------------- | -------------------------------- | ---------------------- | ------ |
+| **[Setup Guide](docs/setup/SETUP_GUIDE.md)**             | Quick setup for DEV & PROD modes | First-time users       | 5 min  |
+| **[Ollama Setup](docs/models/OLLAMA_SETUP.md)**          | 🔥 Run AI locally (FREE!)         | Everyone               | 10 min |
+| **[Adding Models](docs/models/ADDING_MODELS.md)**        | How to add new AI models         | Customizers            | 5 min  |
+| **[Quick Reference](docs/reference/QUICK_REFERENCE.md)** | Command cheat sheet              | Everyone               | 2 min  |
+| **[Dev vs Prod Guide](docs/setup/DEV_VS_PROD_GUIDE.md)** | Credential management deep dive  | Developers & Deployers | 15 min |
+| **[Quick Start](docs/setup/QUICK_START.md)**             | Fast API setup and first calls   | API users              | 5 min  |
 
 ### 🏗️ Architecture & Design
 
-| Document                                                   | Description                         | For Who                  |
-| ---------------------------------------------------------- | ----------------------------------- | ------------------------ |
-| **[Architecture Proposal](docs/ARCHITECTURE_PROPOSAL.md)** | System design & future plans        | Architects, Contributors |
-| **[Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)**   | How everything works internally     | Backend developers       |
-| **[Workflow Documentation](docs/WORKFLOW.md)**             | LangGraph workflow & test selection | Data scientists          |
-| **[Service Layer](docs/SERVICE_LAYER.md)**                 | Business logic reference            | Backend developers       |
+| Document                                                                | Description                         | For Who                  |
+| ----------------------------------------------------------------------- | ----------------------------------- | ------------------------ |
+| **[Architecture Proposal](docs/architecture/ARCHITECTURE_PROPOSAL.md)** | System design & future plans        | Architects, Contributors |
+| **[Implementation Guide](docs/reference/IMPLEMENTATION_GUIDE.md)**      | How everything works internally     | Backend developers       |
+| **[Workflow Documentation](docs/architecture/WORKFLOW.md)**             | LangGraph workflow & test selection | Data scientists          |
+| **[Service Layer](docs/architecture/SERVICE_LAYER.md)**                 | Business logic reference            | Backend developers       |
 
 ### 🔌 API & Integration
 
-| Document                                   | Description                           | For Who                          |
-| ------------------------------------------ | ------------------------------------- | -------------------------------- |
-| **[API Reference](docs/API_REFERENCE.md)** | Complete REST API docs (18 endpoints) | Frontend developers, Integrators |
-| **[Backend Setup](docs/BACKEND_SETUP.md)** | Development environment setup         | Developers                       |
+| Document                                             | Description                           | For Who                          |
+| ---------------------------------------------------- | ------------------------------------- | -------------------------------- |
+| **[API Reference](docs/reference/API_REFERENCE.md)** | Complete REST API docs (18 endpoints) | Frontend developers, Integrators |
+| **[Backend Setup](docs/setup/BACKEND_SETUP.md)**     | Development environment setup         | Developers                       |
 
 ### 🚀 Operations & Deployment
 
-| Document                                             | Description                     | For Who                      |
-| ---------------------------------------------------- | ------------------------------- | ---------------------------- |
-| **[DevOps Plan](docs/DEVOPS_PLAN.md)**               | CI/CD, Docker, monitoring       | DevOps engineers             |
-| **[Credentials System](docs/CREDENTIALS_SYSTEM.md)** | Security implementation details | Security-conscious deployers |
+| Document                                                    | Description                     | For Who                      |
+| ----------------------------------------------------------- | ------------------------------- | ---------------------------- |
+| **[DevOps Plan](docs/devops/DEVOPS_PLAN.md)**               | CI/CD, Docker, monitoring       | DevOps engineers             |
+| **[Credentials System](docs/models/CREDENTIALS_SYSTEM.md)** | Security implementation details | Security-conscious deployers |
 
 ### 🤖 AI Models
 
-| Document                                                    | Description                 | For Who             |
-| ----------------------------------------------------------- | --------------------------- | ------------------- |
-| **[Model Configuration](docs/MODEL_CONFIGURATION.md)**      | AI model setup & providers  | AI/ML engineers     |
-| **[Flexible Model System](docs/FLEXIBLE_MODEL_SYSTEM.md)**  | Multi-provider model system | Developers          |
-| **[Model Quick Reference](docs/QUICK_REFERENCE_MODELS.md)** | Model selection guide       | Everyone            |
-| **[UI Model Integration](docs/UI_MODEL_INTEGRATION.md)**    | Frontend model integration  | Frontend developers |
-
-### 📊 Additional Resources
-
-| Document                                                       | Description                        |
-| -------------------------------------------------------------- | ---------------------------------- |
-| **[Flexible Models Summary](docs/FLEXIBLE_MODELS_SUMMARY.md)** | Multi-model implementation summary |
-| **[UI Integration Complete](docs/UI_INTEGRATION_COMPLETE.md)** | UI implementation status           |
-| **[Documentation Summary](docs/DOCUMENTATION_SUMMARY.md)**     | Overview of all documentation      |
+| Document                                                           | Description                 | For Who             |
+| ------------------------------------------------------------------ | --------------------------- | ------------------- |
+| **[Model Configuration](docs/models/MODEL_CONFIGURATION.md)**      | AI model setup & providers  | AI/ML engineers     |
+| **[Flexible Model System](docs/models/FLEXIBLE_MODEL_SYSTEM.md)**  | Multi-provider model system | Developers          |
+| **[Model Quick Reference](docs/models/QUICK_REFERENCE_MODELS.md)** | Model selection guide       | Everyone            |
+| **[UI Model Integration](docs/models/UI_MODEL_INTEGRATION.md)**    | Frontend model integration  | Frontend developers |
 
 ### 🎯 Documentation by Use Case
 
 **"I want to try it quickly"**
-→ [Setup Guide](docs/SETUP_GUIDE.md) → [Quick Reference](docs/QUICK_REFERENCE.md)
+→ [Setup Guide](docs/setup/SETUP_GUIDE.md) → [Quick Reference](docs/reference/QUICK_REFERENCE.md)
 
 **"I want to understand the system"**
-→ [Architecture Proposal](docs/ARCHITECTURE_PROPOSAL.md) → [Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)
+→ [Architecture Proposal](docs/architecture/ARCHITECTURE_PROPOSAL.md) → [Implementation Guide](docs/reference/IMPLEMENTATION_GUIDE.md)
 
 **"I want to deploy it"**
-→ [Dev vs Prod Guide](docs/DEV_VS_PROD_GUIDE.md) → [DevOps Plan](docs/DEVOPS_PLAN.md)
+→ [Dev vs Prod Guide](docs/setup/DEV_VS_PROD_GUIDE.md) → [DevOps Plan](docs/devops/DEVOPS_PLAN.md)
 
 **"I want to contribute"**
-→ [Architecture](docs/ARCHITECTURE_PROPOSAL.md) → [Implementation Guide](docs/IMPLEMENTATION_GUIDE.md) → [Service Layer](docs/SERVICE_LAYER.md)
+→ [Architecture](docs/architecture/ARCHITECTURE_PROPOSAL.md) → [Implementation Guide](docs/reference/IMPLEMENTATION_GUIDE.md) → [Service Layer](docs/architecture/SERVICE_LAYER.md)
 
 **"I want to integrate the API"**
-→ [API Reference](docs/API_REFERENCE.md) → Interactive docs at `/docs`
+→ [API Reference](docs/reference/API_REFERENCE.md) → Interactive docs at `/docs`
 
 ---
 
@@ -525,7 +517,10 @@ make help             # Show all commands
 ### Setup Development Environment
 
 ```bash
-# Install with dev dependencies
+# One-line setup (uv — recommended)
+uv sync --all-extras && uv run pytest
+
+# Install with dev dependencies (make)
 make install-dev
 make frontend-install  # Install React deps (requires Node 18+)
 
@@ -545,8 +540,8 @@ pip install -e ".[dev]"
 We welcome contributions!
 
 **Quick Start:**
-1. Read [Architecture Proposal](docs/ARCHITECTURE_PROPOSAL.md) - Understand the vision
-2. Read [Implementation Guide](docs/IMPLEMENTATION_GUIDE.md) - See what exists
+1. Read [Architecture Proposal](docs/architecture/ARCHITECTURE_PROPOSAL.md) - Understand the vision
+2. Read [Implementation Guide](docs/reference/IMPLEMENTATION_GUIDE.md) - See what exists
 3. Fork the repository
 4. Create a feature branch (`git checkout -b feature/amazing-feature`)
 5. Make your changes
@@ -556,9 +551,9 @@ We welcome contributions!
 9. Open a Pull Request
 
 **Detailed Guides:**
-- [Backend Setup](docs/BACKEND_SETUP.md) - Development environment
-- [Service Layer](docs/SERVICE_LAYER.md) - Business logic patterns
-- [Workflow Documentation](docs/WORKFLOW.md) - Adding statistical tests
+- [Backend Setup](docs/setup/BACKEND_SETUP.md) - Development environment
+- [Service Layer](docs/architecture/SERVICE_LAYER.md) - Business logic patterns
+- [Workflow Documentation](docs/architecture/WORKFLOW.md) - Adding statistical tests
 
 ---
 

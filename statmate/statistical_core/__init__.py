@@ -3,11 +3,17 @@
 from statmate.statistical_core.anova import (
     anova_one_way_test,
     anova_rm_test,
+    dunn_posthoc_test,
+    friedman_test,
+    kruskal_wallis_test,
+    prepare_groups_from_frame,
 )
 from statmate.statistical_core.base import StatTestResult
 from statmate.statistical_core.categorical_comparison import (
     chi2_test,
+    cochran_armitage_trend_test,
     fisher_exact_test,
+    mcnemar_test,
 )
 from statmate.statistical_core.comparison import (
     mannwhitneyu_test,
@@ -46,8 +52,14 @@ __all__ = [
     'cramer_von_mises_test',
     'anova_one_way_test',
     'anova_rm_test',
+    'kruskal_wallis_test',
+    'friedman_test',
+    'dunn_posthoc_test',
+    'prepare_groups_from_frame',
     'chi2_test',
     'fisher_exact_test',
+    'mcnemar_test',
+    'cochran_armitage_trend_test',
     'levene_test',
     'bartlett_test',
     'spearman_corr',

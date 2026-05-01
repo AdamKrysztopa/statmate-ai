@@ -1,7 +1,4 @@
-"""Categorical Comparison Agents.
-
-Namely, Chi-Squared Test and Fisher's Exact Test.
-"""
+"""Categorical comparison agents for chi-square, Fisher, McNemar, and trend tests."""
 
 from collections.abc import Callable
 
@@ -15,7 +12,9 @@ from statmate.core.config import default_config
 from statmate.statistical_core import (
     StatTestResult,
     chi2_test,
+    cochran_armitage_trend_test,
     fisher_exact_test,
+    mcnemar_test,
 )
 
 
@@ -70,6 +69,40 @@ def fisher_exact_agent(
         test_function=test_function,
         potential_suggestions='Please suggest the best way to perform the test. '
         'If results are not clear, propose different tests.',
+    )
+
+
+def mcnemar_agent(
+    model: Model,
+    model_settings: ModelSettings | None = None,
+    test_name: str = "McNemar's Test",
+    test_function: Callable[..., StatTestResult] = mcnemar_test,
+) -> Agent[StatTestDeps, AgentResult]:
+    """Builds a McNemar test agent for paired categorical data."""
+    return build_stat_test_agent(
+        model=model,
+        model_settings=model_settings,
+        test_name=test_name,
+        test_function=test_function,
+        potential_suggestions='Use when the same subjects are measured twice (pre/post). '
+        'Ensure categories are binary and aligned row-wise.',
+    )
+
+
+def cochran_armitage_agent(
+    model: Model,
+    model_settings: ModelSettings | None = None,
+    test_name: str = 'Cochran-Armitage Trend Test',
+    test_function: Callable[..., StatTestResult] = cochran_armitage_trend_test,
+) -> Agent[StatTestDeps, AgentResult]:
+    """Builds a Cochran-Armitage trend test agent for ordered categories."""
+    return build_stat_test_agent(
+        model=model,
+        model_settings=model_settings,
+        test_name=test_name,
+        test_function=test_function,
+        potential_suggestions='Apply when a binary outcome is measured across ordered groups (e.g., dose levels). '
+        'Confirm the ordering of the predictor categories.',
     )
 
 

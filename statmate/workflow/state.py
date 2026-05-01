@@ -156,6 +156,7 @@ def create_initial_state(
     do_association: bool = False,
     model_name: str | None = None,
     provider: str | None = None,
+    route_override: str | None = None,
 ) -> WorkflowState:
     """Create an initial workflow state.
 
@@ -166,6 +167,7 @@ def create_initial_state(
         do_association: Whether to perform association tests.
         model_name: Name of the AI model to use for analysis.
         provider: Name of the model provider.
+        route_override: Optional user override for routing choice.
 
     Returns:
         Initialized WorkflowState.
@@ -193,7 +195,7 @@ def create_initial_state(
         data_blueprint=None,
         pending_routing_decision=None,
         choice_log=[],
-        user_selected_option=None,
+        user_selected_option=route_override,
         intent_summary=None,
         intent_confidence=None,
         correction_steps=[],

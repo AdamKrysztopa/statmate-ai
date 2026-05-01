@@ -12,17 +12,17 @@ from statmate.core.validation import validate_paired_data
 from statmate.statistical_core.base import StatTestResult
 
 
-def _assert_design(design_type: str | None, expected: Literal['paired', 'independent']) -> None:
+def _assert_design(design_type: str | None, expected: Literal["paired", "independent"]) -> None:
     """Prevent running mismatched tests for the detected design."""
     if design_type is None:
         return
     normalized = design_type.lower()
-    if normalized not in ('paired', 'independent', 'mixed'):
-        raise DataValidationError(f'Unknown design_type={design_type}')
-    if expected == 'paired' and normalized == 'independent':
-        raise DataValidationError('Paired test requested but design is independent.')
-    if expected == 'independent' and normalized in ('paired', 'mixed'):
-        raise DataValidationError('Independent-sample test is not allowed for paired/mixed designs.')
+    if normalized not in ("paired", "independent", "mixed"):
+        raise DataValidationError(f"Unknown design_type={design_type}")
+    if expected == "paired" and normalized == "independent":
+        raise DataValidationError("Paired test requested but design is independent.")
+    if expected == "independent" and normalized in ("paired", "mixed"):
+        raise DataValidationError("Independent-sample test is not allowed for paired/mixed designs.")
 
 
 # 2. Paired t-test (Dependent Samples)
@@ -51,29 +51,29 @@ def ttest_rel_test(
     if alpha is None:
         alpha = default_config.statistical.default_alpha
 
-    _assert_design(design_type, 'paired')
+    _assert_design(design_type, "paired")
 
     # Validate input
     validate_paired_data(data1, data2, alpha)
 
-    result = scipy.stats.ttest_rel(data1, data2, nan_policy='propagate')
+    result = scipy.stats.ttest_rel(data1, data2, nan_policy="propagate")
     result_typed = cast(TtestResult, result)
     statistic = float(result_typed.statistic)
     p_value = float(result_typed.pvalue)
 
     if p_value < alpha:
-        result_text = f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}).'
+        result_text = f"We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha})."
     else:
-        result_text = f'We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}).'
+        result_text = f"We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha})."
 
     return StatTestResult(
-        test_name='Paired t-test',
+        test_name="Paired t-test",
         statistics=statistic,
         p_value=p_value,
-        null_hypothesis='The mean difference between paired samples is zero.',
-        alternative='The mean difference between paired samples is not zero.',
+        null_hypothesis="The mean difference between paired samples is zero.",
+        alternative="The mean difference between paired samples is not zero.",
         statistical_test_results=result_text,
-        test_specifics={'alpha': alpha, 'sample_size': len(data1)},
+        test_specifics={"alpha": alpha, "sample_size": len(data1)},
     )
 
 
@@ -103,29 +103,29 @@ def wilcoxon_test(
     if alpha is None:
         alpha = default_config.statistical.default_alpha
 
-    _assert_design(design_type, 'paired')
+    _assert_design(design_type, "paired")
 
     # Validate input
     validate_paired_data(data1, data2, alpha)
 
-    result = scipy.stats.wilcoxon(data1, data2, zero_method='wilcox', correction=False)
+    result = scipy.stats.wilcoxon(data1, data2, zero_method="wilcox", correction=False)
     result_typed = cast(Any, result)  # WilcoxonResult not available in all scipy versions
     statistic = float(result_typed.statistic)
     p_value = float(result_typed.pvalue)
 
     if p_value < alpha:
-        result_text = f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}).'
+        result_text = f"We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha})."
     else:
-        result_text = f'We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}).'
+        result_text = f"We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha})."
 
     return StatTestResult(
-        test_name='Wilcoxon Signed-Rank Test',
+        test_name="Wilcoxon Signed-Rank Test",
         statistics=statistic,
         p_value=p_value,
-        null_hypothesis='The distribution of the differences between paired samples is symmetric about zero.',
-        alternative='The distribution of the differences between paired samples is not symmetric about zero.',
+        null_hypothesis="The distribution of the differences between paired samples is symmetric about zero.",
+        alternative="The distribution of the differences between paired samples is not symmetric about zero.",
         statistical_test_results=result_text,
-        test_specifics={'alpha': alpha, 'sample_size': len(data1)},
+        test_specifics={"alpha": alpha, "sample_size": len(data1)},
     )
 
 
@@ -145,29 +145,29 @@ def ttest_ind_test(
     Alternative hypothesis:
         The two independent samples have different means.
     """
-    _assert_design(design_type, 'independent')
-    results = scipy.stats.ttest_ind(data1, data2, equal_var=equal_var, nan_policy='propagate')
+    _assert_design(design_type, "independent")
+    results = scipy.stats.ttest_ind(data1, data2, equal_var=equal_var, nan_policy="propagate")
     statistic = results.statistic  # type: ignore # not true
     p_value = results.pvalue  # type: ignore # not true
 
     test_type = "Student's t-test" if equal_var else "Welch's t-test"
     if p_value < alpha:
-        result_text = f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}) using {test_type}.'
+        result_text = f"We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}) using {test_type}."
     else:
-        result_text = f'We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}) using {test_type}.'
+        result_text = f"We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}) using {test_type}."
 
     return StatTestResult(
         test_name=test_type,
         statistics=statistic,
         p_value=p_value,
-        null_hypothesis='The two independent samples have equal means.',
-        alternative='The two independent samples have different means.',
+        null_hypothesis="The two independent samples have equal means.",
+        alternative="The two independent samples have different means.",
         statistical_test_results=result_text,
         test_specifics={
-            'alpha': alpha,
-            'equal_var': equal_var,
-            'sample_size_1': len(data1),
-            'sample_size_2': len(data2),
+            "alpha": alpha,
+            "equal_var": equal_var,
+            "sample_size_1": len(data1),
+            "sample_size_2": len(data2),
         },
     )
 
@@ -177,7 +177,7 @@ def mannwhitneyu_test(
     data1: np.ndarray,
     data2: np.ndarray,
     alpha: float = 0.05,
-    alternative: str = 'two-sided',
+    alternative: str = "two-sided",
     design_type: str | None = None,
 ) -> StatTestResult:
     """Performs the Mann–Whitney U test for two independent samples.
@@ -188,31 +188,33 @@ def mannwhitneyu_test(
     Alternative hypothesis:
         The distributions of the two independent samples are not equal.
     """
-    _assert_design(design_type, 'independent')
+    _assert_design(design_type, "independent")
     statistic, p_value = scipy.stats.mannwhitneyu(data1, data2, alternative=alternative)
     if p_value < alpha:
-        result_text = f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}).'
+        result_text = f"We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha})."
     else:
-        result_text = f'We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}).'
+        result_text = f"We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha})."
 
     return StatTestResult(
-        test_name='Mann-Whitney U Test',
+        test_name="Mann-Whitney U Test",
         statistics=statistic,
         p_value=p_value,
-        null_hypothesis='The two independent samples come from identical distributions.',
-        alternative='The two independent samples come from different distributions.',
+        null_hypothesis="The two independent samples come from identical distributions.",
+        alternative="The two independent samples come from different distributions.",
         statistical_test_results=result_text,
         test_specifics={
-            'alpha': alpha,
-            'alternative': alternative,
-            'sample_size_1': len(data1),
-            'sample_size_2': len(data2),
+            "alpha": alpha,
+            "alternative": alternative,
+            "sample_size_1": len(data1),
+            "sample_size_2": len(data2),
         },
     )
 
 
 # 6 Welch's t-test (Two Independent Samples, Non-parametric)
-def welch_t_test(data1: np.ndarray, data2: np.ndarray, alpha: float = 0.05, design_type: str | None = None) -> StatTestResult:
+def welch_t_test(
+    data1: np.ndarray, data2: np.ndarray, alpha: float = 0.05, design_type: str | None = None
+) -> StatTestResult:
     """Performs Welch's t-test for two independent samples with unequal variances.
 
     Args:
@@ -230,29 +232,29 @@ def welch_t_test(data1: np.ndarray, data2: np.ndarray, alpha: float = 0.05, desi
             - statistical_test_results: A human-readable decision string.
             - test_specifics: A dictionary of extra details like alpha and sample sizes.
     """
-    _assert_design(design_type, 'independent')
-    results = scipy.stats.ttest_ind(data1, data2, equal_var=False, nan_policy='propagate')
+    _assert_design(design_type, "independent")
+    results = scipy.stats.ttest_ind(data1, data2, equal_var=False, nan_policy="propagate")
     statistic = results.statistic  # type: ignore # not true
     p_value = results.pvalue  # type: ignore # not true
 
     if p_value < alpha:
-        result_text = f'We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}); '
-        'means are significantly different.'
+        result_text = f"We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}); "
+        "means are significantly different."
     else:
-        result_text = f'We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}); '
-        'means are not significantly different.'
+        result_text = f"We cannot reject the null hypothesis (p = {p_value:.4f} >= alpha = {alpha}); "
+        "means are not significantly different."
 
     return StatTestResult(
         test_name="Welch's t-test",
         statistics=statistic,
         p_value=p_value,
-        null_hypothesis='The two independent samples have equal means.',
-        alternative='The two independent samples have different means.',
+        null_hypothesis="The two independent samples have equal means.",
+        alternative="The two independent samples have different means.",
         statistical_test_results=result_text,
         test_specifics={
-            'alpha': alpha,
-            'sample_size_1': len(data1),
-            'sample_size_2': len(data2),
-            'equal_variance_assumed': False,
+            "alpha": alpha,
+            "sample_size_1": len(data1),
+            "sample_size_2": len(data2),
+            "equal_variance_assumed": False,
         },
     )

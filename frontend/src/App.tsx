@@ -162,6 +162,7 @@ function App() {
   });
   const [showKeys, setShowKeys] = useState(false);
   const [overwriteLatest, setOverwriteLatest] = useState(false);
+  const [routeOverride, setRouteOverride] = useState('');
 
   const api = useMemo(() => new ApiClient(apiBase, token), [apiBase, token]);
 
@@ -224,9 +225,49 @@ function App() {
     }
   };
 
+  const handleDeleteDataset = async (datasetId: string, datasetName?: string) => {
+    const confirmDelete = window.confirm(
+      `Delete dataset${datasetName ? ` "${datasetName}"` : ''}? This will also remove related analyses.`
+    );
+    if (!confirmDelete) return;
+    try {
+      await api.deleteDataset(datasetId);
+      if (selectedDatasetId === datasetId) {
+        setSelectedDatasetId('');
+        setPreview(undefined);
+        setSelectedColumns([]);
+        setDatasetNotes('');
+      }
+      await loadDatasets();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const handlePurgeMissing = async () => {
+    try {
+      const result = await api.purgeMissingDatasets();
+      setError(
+        result.deleted_count
+          ? `Purged ${result.deleted_count} datasets with missing files.`
+          : 'No broken datasets found.'
+      );
+      if (selectedDatasetId && result.deleted_ids.includes(selectedDatasetId)) {
+        setSelectedDatasetId('');
+        setPreview(undefined);
+        setSelectedColumns([]);
+        setDatasetNotes('');
+      }
+      await loadDatasets();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   const loadModelMeta = async () => {
     try {
-      const res = await api.availableModels();
+      // Only fetch models from configured providers (include_all=false)
+      const res = await api.availableModels(false);
       setAvailableModels(res.models || []);
       if (res.default_model) setModelName((prev) => prev || res.default_model);
       if (res.default_provider) setProvider((prev) => prev || res.default_provider);
@@ -240,26 +281,21 @@ function App() {
     try {
       const res = await api.configuredCredentials();
       setConfiguredProviders(res.configured_providers || []);
-      if (res.stored_credentials) {
-        setCredentialInputs((prev) => ({
-          ...prev,
-          openai: res.stored_credentials.openai || prev.openai,
-          anthropic: res.stored_credentials.anthropic || prev.anthropic,
-          groq: res.stored_credentials.groq || prev.groq,
-          google: res.stored_credentials.google || res.stored_credentials.gemini || prev.google,
-          gemini: res.stored_credentials.gemini || res.stored_credentials.google || prev.gemini,
-        }));
-      }
-      if (res.provider_quotas) {
-        setCredentialInputs((prev) => ({
-          ...prev,
-          openai_quota: res.provider_quotas.openai?.toString() || prev.openai_quota,
-          anthropic_quota: res.provider_quotas.anthropic?.toString() || prev.anthropic_quota,
-          google_quota: res.provider_quotas.google?.toString() || prev.google_quota,
-          gemini_quota: res.provider_quotas.google?.toString() || prev.gemini_quota,
-          groq_quota: res.provider_quotas.groq?.toString() || prev.groq_quota,
-        }));
-      }
+      const stored = res.stored_credentials ?? {};
+      const quotas = res.provider_quotas ?? {};
+      setCredentialInputs((prev) => ({
+        ...prev,
+        openai: stored.openai || prev.openai,
+        anthropic: stored.anthropic || prev.anthropic,
+        groq: stored.groq || prev.groq,
+        google: stored.google || stored.gemini || prev.google,
+        gemini: stored.gemini || stored.google || prev.gemini,
+        openai_quota: quotas.openai?.toString() || prev.openai_quota,
+        anthropic_quota: quotas.anthropic?.toString() || prev.anthropic_quota,
+        google_quota: quotas.google?.toString() || prev.google_quota,
+        gemini_quota: quotas.google?.toString() || prev.gemini_quota,
+        groq_quota: quotas.groq?.toString() || prev.groq_quota,
+      }));
     } catch (e) {
       console.warn(e);
     }
@@ -336,6 +372,7 @@ function App() {
     setCommentDraft('');
     setDatasetNotes('');
     setWorkflowGraph(undefined);
+    setRouteOverride('');
     if (!id) return;
     try {
       const p = await api.previewDataset(id);
@@ -345,7 +382,14 @@ function App() {
       setRenameDrafts({});
       await loadAnalyses(id);
     } catch (e) {
-      setError((e as Error).message);
+      const message = (e as Error).message;
+      if (message.toLowerCase().includes('dataset file missing')) {
+        setPreview(undefined);
+        setSelectedColumns([]);
+        setError('Dataset file is missing from storage. Re-upload the file to restore the preview.');
+      } else {
+        setError(message);
+      }
     }
   };
 
@@ -376,6 +420,7 @@ function App() {
         selected_columns: selectedColumns.length ? selectedColumns : undefined,
         model_name: modelName,
         provider,
+        route_override: routeOverride ? routeOverride : undefined,
         overwrite: overwriteFlag,
       });
       streamAbortRef.current?.abort();
@@ -387,6 +432,7 @@ function App() {
       setWorkflowGraph((prev) => (prev ? { ...prev, visited_nodes: [], selected_path: [], active_node: undefined } : prev));
       setCommentDraft('');
       await loadAnalyses(selectedDatasetId, false);
+      setRouteOverride('');
       setActiveTab('analysis');
     } catch (e) {
       setError((e as Error).message);
@@ -494,6 +540,8 @@ function App() {
         groq_quota: credentialInputs.groq_quota ? Number(credentialInputs.groq_quota) : undefined,
       });
       setConfiguredProviders(res.configured_providers || []);
+      await loadModelMeta();
+      await loadCredentialMeta();
     } catch (e) {
       setError((e as Error).message);
     }
@@ -534,7 +582,6 @@ function App() {
         .catch(() => setToken(undefined));
       loadDatasets();
       connect();
-      loadModelMeta();
       loadCredentialMeta();
     } else {
       localStorage.removeItem('statmate-token');
@@ -545,6 +592,11 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    loadModelMeta();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api]);
 
   useEffect(() => {
     const shouldStream = streaming || analysisStatus?.status === 'running' || analysisStatus?.status === 'pending';
@@ -652,12 +704,12 @@ function App() {
           prev.map((item) =>
             item.id === analysisId
               ? {
-                  ...item,
-                  status: status.status,
-                  version: status.version || item.version,
-                  superseded_at: status.superseded_at || item.superseded_at,
-                  comment: status.comment ?? item.comment,
-                }
+                ...item,
+                status: status.status,
+                version: status.version || item.version,
+                superseded_at: status.superseded_at || item.superseded_at,
+                comment: status.comment ?? item.comment,
+              }
               : item
           )
         );
@@ -690,6 +742,30 @@ function App() {
     const fromStatus = analysisStatus?.decision_steps || analysisStatus?.execution_trace || [];
     return mergeUniqueSteps([], [...streamSteps, ...fromStatus, ...fromResults]);
   }, [analysisResults, analysisStatus, streamSteps]);
+
+  const pendingRoutingDecision = useMemo(() => {
+    const reversed = [...trace].reverse();
+    for (const step of reversed) {
+      const data = step.data as Record<string, unknown> | undefined;
+      if (!data) continue;
+      const pending = data.pending_decision as
+        | { primary?: string; alternatives?: string[]; reason?: string }
+        | undefined;
+      if (pending?.primary || pending?.alternatives?.length) {
+        return pending;
+      }
+      const primary = data.primary as string | undefined;
+      const alternatives = (data.alternatives as string[]) || [];
+      if (primary || alternatives.length) {
+        return {
+          primary,
+          alternatives,
+          reason: data.reason as string | undefined,
+        };
+      }
+    }
+    return undefined;
+  }, [trace]);
 
   const plots = useMemo(() => analysisResults?.plots || analysisResults?.results_detail?.plots || [], [analysisResults]);
 
@@ -728,12 +804,32 @@ function App() {
     return lastStep?.progress_pct;
   }, [analysisResults?.status, analysisStatus?.status, analysisStatus?.progress, trace]);
 
+  useEffect(() => {
+    if (!pendingRoutingDecision?.primary && !pendingRoutingDecision?.alternatives?.length) return;
+    setRouteOverride('');
+  }, [pendingRoutingDecision?.primary, pendingRoutingDecision?.alternatives?.length]);
+
+  const routeOverrideHint = useMemo(() => {
+    if (!routeOverride) return 'No override selected';
+    if (!pendingRoutingDecision) return 'Override saved for next run';
+    const valid = [pendingRoutingDecision.primary, ...(pendingRoutingDecision.alternatives || [])].filter(Boolean);
+    if (!valid.length) return 'Override saved for next run';
+    return valid.includes(routeOverride) ? 'Override ready for next run' : 'Override is not in suggested options';
+  }, [routeOverride, pendingRoutingDecision]);
+
   const providerOptions = useMemo(() => {
-    if (availableModels.length) {
-      return Array.from(new Set(availableModels.map((m) => m.provider)));
+    // Only show providers that are actually configured with API keys
+    if (configuredProviders.length) {
+      return configuredProviders;
     }
+    // Fallback to default list only if no providers are configured yet
     return ['openai', 'anthropic', 'google', 'groq', 'ollama'];
-  }, [availableModels]);
+  }, [configuredProviders]);
+
+  const modelOptions = useMemo(() => {
+    if (!provider) return [];
+    return availableModels.filter((m) => m.provider === provider);
+  }, [availableModels, provider]);
 
   const connectionLabel = health || (error && !token ? error : 'API status unknown');
 
@@ -936,9 +1032,8 @@ function App() {
 
       {/* Sidebar */}
       <aside
-        className={`relative z-10 flex-shrink-0 border-r backdrop-blur transition-all duration-300 ${
-          isSidebarOpen ? 'w-64' : 'w-20'
-        } ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white/70'}`}
+        className={`relative z-10 flex-shrink-0 border-r backdrop-blur transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-20'
+          } ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white/70'}`}
       >
         <div className="flex h-16 items-center gap-3 px-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-lg font-extrabold text-slate-950 shadow-glow">
@@ -952,9 +1047,8 @@ function App() {
           )}
           <button
             onClick={() => setSidebarOpen((v) => !v)}
-            className={`ml-auto rounded-lg border p-2 text-slate-500 transition ${
-              theme === 'dark' ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-100'
-            }`}
+            className={`ml-auto rounded-lg border p-2 text-slate-500 transition ${theme === 'dark' ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-100'
+              }`}
             aria-label="Toggle sidebar"
           >
             <LayoutDashboard size={16} />
@@ -998,9 +1092,8 @@ function App() {
           </div>
           <button
             onClick={toggleTheme}
-            className={`flex w-full items-center gap-3 rounded-xl p-3 text-sm font-semibold transition ${
-              theme === 'dark' ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
-            }`}
+            className={`flex w-full items-center gap-3 rounded-xl p-3 text-sm font-semibold transition ${theme === 'dark' ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
+              }`}
           >
             {theme === 'dark' ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-indigo-600" />}
             {isSidebarOpen && <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
@@ -1011,9 +1104,8 @@ function App() {
       {/* Main area */}
       <main className="relative z-0 flex flex-1 flex-col overflow-hidden">
         <header
-          className={`flex h-16 items-center justify-between border-b px-6 backdrop-blur ${
-            theme === 'dark' ? 'border-slate-800 bg-slate-950/70' : 'border-slate-200 bg-white/70'
-          }`}
+          className={`flex h-16 items-center justify-between border-b px-6 backdrop-blur ${theme === 'dark' ? 'border-slate-800 bg-slate-950/70' : 'border-slate-200 bg-white/70'
+            }`}
         >
           <div className="flex items-center gap-3">
             <span className={`h-2 w-2 rounded-full ${streaming ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
@@ -1060,6 +1152,12 @@ function App() {
                     <h2 className="text-3xl font-bold tracking-tight">Dataset library</h2>
                     <div className="flex items-center gap-2">
                       <button
+                        onClick={handlePurgeMissing}
+                        className="rounded-full border border-rose-500/60 px-3 py-1 text-xs font-semibold text-rose-200"
+                      >
+                        Purge broken
+                      </button>
+                      <button
                         onClick={loadDatasets}
                         className="rounded-full border border-slate-800/70 px-3 py-1 text-xs font-semibold text-cyan-400"
                       >
@@ -1096,9 +1194,8 @@ function App() {
                         placeholder="Optional notes for the agent"
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${
-                          theme === 'dark' ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500' : 'border-slate-200 bg-white focus:border-cyan-500'
-                        }`}
+                        className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500' : 'border-slate-200 bg-white focus:border-cyan-500'
+                          }`}
                         rows={3}
                       />
                       <button
@@ -1121,27 +1218,42 @@ function App() {
                       {datasets.map((ds) => {
                         const active = selectedDatasetId === ds.id;
                         return (
-                          <button
+                          <div
                             key={ds.id}
-                            onClick={() => selectDataset(ds.id)}
-                            className={`group flex w-full flex-col rounded-2xl border p-4 text-left transition ${
-                              active
-                                ? 'border-cyan-500/70 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
-                                : theme === 'dark'
-                                  ? 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
-                                  : 'border-slate-200 bg-white hover:border-slate-300'
-                            }`}
+                            className={`group flex w-full flex-col rounded-2xl border p-4 text-left transition ${active
+                              ? 'border-cyan-500/70 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
+                              : theme === 'dark'
+                                ? 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
+                                : 'border-slate-200 bg-white hover:border-slate-300'
+                              }`}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-semibold text-slate-100">{ds.original_filename}</span>
-                              {active && <CheckCircle2 size={16} className="text-cyan-400" />}
+                            <button onClick={() => selectDataset(ds.id)} className="w-full text-left">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-semibold text-slate-100">
+                                  {ds.original_filename}
+                                  {ds.file_missing && (
+                                    <span className="ml-2 rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-rose-200">
+                                      missing
+                                    </span>
+                                  )}
+                                </span>
+                                {active && <CheckCircle2 size={16} className="text-cyan-400" />}
+                              </div>
+                              <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+                                <span>{ds.row_count ? `${ds.row_count} rows` : 'Row count pending'}</span>
+                                <span>•</span>
+                                <span>{ds.id.slice(0, 6)}…</span>
+                              </div>
+                            </button>
+                            <div className="mt-3 flex items-center justify-end">
+                              <button
+                                onClick={() => handleDeleteDataset(ds.id, ds.original_filename)}
+                                className="rounded-full border border-rose-500/60 px-2 py-1 text-[11px] font-semibold text-rose-200"
+                              >
+                                Delete
+                              </button>
                             </div>
-                            <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
-                              <span>{ds.row_count ? `${ds.row_count} rows` : 'Row count pending'}</span>
-                              <span>•</span>
-                              <span>{ds.id.slice(0, 6)}…</span>
-                            </div>
-                          </button>
+                          </div>
                         );
                       })}
                       {!datasets.length && (
@@ -1161,12 +1273,19 @@ function App() {
                         <h3 className="text-lg font-semibold">{preview.original_filename}</h3>
                       </div>
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleDeleteDataset(preview.dataset_id, preview.original_filename)}
+                          className="rounded-full border border-rose-500/60 px-3 py-1 text-xs font-semibold text-rose-200"
+                        >
+                          Delete dataset
+                        </button>
                         <div className="flex items-center gap-2 rounded-full border border-slate-800/50 px-3 py-1 text-xs text-slate-400">
                           <Settings size={14} />
                           <select
                             value={provider}
                             onChange={(e) => setProvider(e.target.value)}
                             className="bg-transparent text-sm outline-none"
+                            disabled={configuredProviders.length === 0}
                           >
                             {providerOptions.map((p) => (
                               <option key={p} value={p}>
@@ -1174,25 +1293,56 @@ function App() {
                               </option>
                             ))}
                           </select>
+                          {configuredProviders.length === 0 && (
+                            <span className="text-amber-400 text-[10px] ml-1">Configure keys ↓</span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 rounded-full border border-slate-800/50 px-3 py-1 text-xs text-slate-400">
-                          <input
-                            value={modelName}
-                            onChange={(e) => setModelName(e.target.value)}
-                            className="bg-transparent text-sm outline-none"
-                            placeholder="Model name"
-                          />
+                          {modelOptions.length ? (
+                            <select
+                              value={modelName}
+                              onChange={(e) => setModelName(e.target.value)}
+                              className="bg-transparent text-sm outline-none"
+                              disabled={configuredProviders.length === 0}
+                            >
+                              {modelOptions.map((model) => (
+                                <option key={model.name} value={model.name}>
+                                  {model.display_name || model.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              value={modelName}
+                              onChange={(e) => setModelName(e.target.value)}
+                              className="bg-transparent text-sm outline-none"
+                              placeholder={configuredProviders.length === 0 ? "Configure API key" : "Model name"}
+                              disabled={configuredProviders.length === 0}
+                            />
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-2 rounded-full border border-slate-700/80 px-3 py-1 text-xs text-slate-300">
+                            <span className="text-slate-400">Route override</span>
+                            <input
+                              value={routeOverride}
+                              onChange={(e) => setRouteOverride(e.target.value)}
+                              placeholder="(optional)"
+                              className="w-40 bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-500"
+                            />
+                          </div>
+                          <span className="text-[11px] text-slate-500">{routeOverrideHint}</span>
                           <button
                             onClick={() => handleRunAnalysis(false)}
-                            className="flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-600 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20"
+                            disabled={configuredProviders.length === 0}
+                            className="flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-600 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Zap size={16} /> Run new version
                           </button>
                           <button
                             onClick={() => handleRunAnalysis(true)}
-                            className="rounded-full border border-amber-400/60 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-500/10"
+                            disabled={configuredProviders.length === 0}
+                            className="rounded-full border border-amber-400/60 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Overwrite latest
                           </button>
@@ -1205,6 +1355,14 @@ function App() {
                         <span className="rounded-full bg-slate-800/60 px-3 py-1">{preview.column_names.length} columns</span>
                         <span className="rounded-full bg-slate-800/60 px-3 py-1">Select columns below</span>
                       </div>
+                      {configuredProviders.length === 0 && (
+                        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+                          <p className="font-semibold">No API keys configured</p>
+                          <p className="text-xs mt-1">
+                            Configure your API keys in the "Provider credentials" section below to enable analysis.
+                          </p>
+                        </div>
+                      )}
                       <div className="mb-4">
                         <div className="mb-1 flex items-center justify-between text-xs uppercase tracking-[0.18em] text-slate-500">
                           <span>Dataset notes</span>
@@ -1214,11 +1372,10 @@ function App() {
                           value={datasetNotes}
                           onChange={(e) => setDatasetNotes(e.target.value)}
                           placeholder="Add collection context, quirks, or exclusions..."
-                          className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${
-                            theme === 'dark'
-                              ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500'
-                              : 'border-slate-200 bg-white focus:border-cyan-500'
-                          }`}
+                          className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${theme === 'dark'
+                            ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500'
+                            : 'border-slate-200 bg-white focus:border-cyan-500'
+                            }`}
                           rows={3}
                         />
                       </div>
@@ -1233,11 +1390,10 @@ function App() {
                                   cols.includes(name) ? cols.filter((c) => c !== name) : [...cols, name]
                                 )
                               }
-                              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                                active
-                                  ? 'border-cyan-500 bg-cyan-500/10 text-cyan-200 shadow-cyan-500/10'
-                                  : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
-                              }`}
+                              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${active
+                                ? 'border-cyan-500 bg-cyan-500/10 text-cyan-200 shadow-cyan-500/10'
+                                : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                                }`}
                               type="button"
                             >
                               {active ? '✓ ' : ''}
@@ -1514,17 +1670,54 @@ function App() {
                           <h3 className="text-xl font-bold">{analysisResults?.dataset_name || 'Latest run'}</h3>
                         </div>
                         <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold ${
-                            streaming
-                              ? 'bg-amber-500/20 text-amber-300'
-                              : analysisStatus?.status === 'completed' || analysisResults
-                                ? 'bg-emerald-500/20 text-emerald-300'
-                                : 'bg-slate-800 text-slate-300'
-                          }`}
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${streaming
+                            ? 'bg-amber-500/20 text-amber-300'
+                            : analysisStatus?.status === 'completed' || analysisResults
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-slate-800 text-slate-300'
+                            }`}
                         >
                           {streaming ? 'Running' : analysisStatus?.status || analysisResults?.status || 'Ready'}
                         </span>
                       </div>
+                      {pendingRoutingDecision && (
+                        <div className="mb-4 rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4 text-sm">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-xs uppercase tracking-[0.2em] text-cyan-200">Routing choice</span>
+                            {pendingRoutingDecision.reason && (
+                              <span className="text-[11px] text-cyan-100/80">Reason: {pendingRoutingDecision.reason}</span>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            {pendingRoutingDecision.primary && (
+                              <button
+                                onClick={() => setRouteOverride(pendingRoutingDecision.primary || '')}
+                                className={`rounded-lg border px-3 py-2 text-left text-sm font-semibold ${routeOverride === pendingRoutingDecision.primary
+                                  ? 'border-cyan-400 bg-cyan-400/20 text-cyan-100'
+                                  : 'border-slate-700/80 text-slate-200 hover:border-cyan-400/70'
+                                  }`}
+                              >
+                                Primary: {pendingRoutingDecision.primary}
+                              </button>
+                            )}
+                            {(pendingRoutingDecision.alternatives || []).map((alt) => (
+                              <button
+                                key={alt}
+                                onClick={() => setRouteOverride(alt)}
+                                className={`rounded-lg border px-3 py-2 text-left text-sm ${routeOverride === alt
+                                  ? 'border-cyan-400 bg-cyan-400/20 text-cyan-100'
+                                  : 'border-slate-700/80 text-slate-200 hover:border-cyan-400/70'
+                                  }`}
+                              >
+                                Alternative: {alt}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="mt-2 text-[11px] text-cyan-100/70">
+                            Selected route will apply on the next run.
+                          </p>
+                        </div>
+                      )}
                       {typeof progressPct === 'number' && (
                         <div className="mb-3">
                           <div className="flex items-center justify-between text-[11px] text-slate-400">
@@ -1547,9 +1740,8 @@ function App() {
                           <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-slate-300">
                             <span>Reviewer Agent</span>
                             <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] ${
-                                reviewerReport.approved ? 'bg-emerald-500/20 text-emerald-200' : 'bg-amber-500/20 text-amber-200'
-                              }`}
+                              className={`rounded-full px-2 py-0.5 text-[10px] ${reviewerReport.approved ? 'bg-emerald-500/20 text-emerald-200' : 'bg-amber-500/20 text-amber-200'
+                                }`}
                             >
                               {reviewerReport.approved ? 'Approved' : 'Adjusted'}
                             </span>
@@ -1575,9 +1767,8 @@ function App() {
                           value={commentDraft}
                           onChange={(e) => setCommentDraft(e.target.value)}
                           placeholder="Add context or reviewer notes..."
-                          className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${
-                            theme === 'dark' ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500' : 'border-slate-200 bg-white focus:border-cyan-500'
-                          }`}
+                          className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500' : 'border-slate-200 bg-white focus:border-cyan-500'
+                            }`}
                           rows={3}
                         />
                       </div>
@@ -1585,10 +1776,10 @@ function App() {
 
                     <div className="space-y-4">
                       <div className={`rounded-2xl border p-4 shadow-lg ${theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Version history</p>
-                        <div className="flex items-center gap-2 text-xs">
-                          <label className="flex items-center gap-1 text-slate-400">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Version history</p>
+                          <div className="flex items-center gap-2 text-xs">
+                            <label className="flex items-center gap-1 text-slate-400">
                               <input type="checkbox" checked={overwriteLatest} onChange={(e) => setOverwriteLatest(e.target.checked)} />
                               Overwrite latest
                             </label>
@@ -1602,9 +1793,8 @@ function App() {
                             analysisHistory.map((item) => (
                               <div
                                 key={item.id}
-                                className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${
-                                  item.id === analysisId ? 'border-cyan-500 bg-cyan-500/10' : theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'
-                                }`}
+                                className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${item.id === analysisId ? 'border-cyan-500 bg-cyan-500/10' : theme === 'dark' ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'
+                                  }`}
                               >
                                 <div className="flex-1">
                                   <div className="flex items-center justify-between text-xs text-slate-400">
@@ -1653,9 +1843,8 @@ function App() {
                             testHierarchy.attempted.map((node, idx) => (
                               <div
                                 key={`${node.name}-${idx}`}
-                                className={`rounded-xl border p-3 ${
-                                  theme === 'dark' ? 'border-slate-800 bg-slate-950/60' : 'border-slate-200 bg-slate-50'
-                                }`}
+                                className={`rounded-xl border p-3 ${theme === 'dark' ? 'border-slate-800 bg-slate-950/60' : 'border-slate-200 bg-slate-50'
+                                  }`}
                               >
                                 <div className="flex items-center justify-between text-sm font-semibold text-slate-100">
                                   <span>{node.name}</span>
@@ -1699,11 +1888,10 @@ function App() {
                             value={commentDraft}
                             onChange={(e) => setCommentDraft(e.target.value)}
                             placeholder="Add interpretation, caveats, or next steps..."
-                            className={`min-h-[120px] w-full rounded-xl border px-3 py-2 text-sm outline-none ${
-                              theme === 'dark'
-                                ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500'
-                                : 'border-slate-200 bg-white focus:border-cyan-500'
-                            }`}
+                            className={`min-h-[120px] w-full rounded-xl border px-3 py-2 text-sm outline-none ${theme === 'dark'
+                              ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500'
+                              : 'border-slate-200 bg-white focus:border-cyan-500'
+                              }`}
                           />
                         </div>
                       )}
@@ -1841,11 +2029,10 @@ function App() {
                     Fetch latest
                   </button>
                 </div>
-                <pre className={`h-[70vh] overflow-auto rounded-2xl border p-6 text-xs leading-relaxed ${
-                  theme === 'dark'
-                    ? 'border-slate-800 bg-slate-950 text-emerald-200'
-                    : 'border-slate-200 bg-slate-900 text-slate-50'
-                }`}>
+                <pre className={`h-[70vh] overflow-auto rounded-2xl border p-6 text-xs leading-relaxed ${theme === 'dark'
+                  ? 'border-slate-800 bg-slate-950 text-emerald-200'
+                  : 'border-slate-200 bg-slate-900 text-slate-50'
+                  }`}>
                   {logContent || '// Waiting for execution logs...'}
                 </pre>
               </div>
@@ -1855,9 +2042,8 @@ function App() {
           {/* Right panel */}
           {isRightPanelOpen && (
             <aside
-              className={`hidden w-80 border-l p-5 backdrop-blur xl:block ${
-                theme === 'dark' ? 'border-slate-800 bg-slate-950/70' : 'border-slate-200 bg-white/70'
-              }`}
+              className={`hidden w-80 border-l p-5 backdrop-blur xl:block ${theme === 'dark' ? 'border-slate-800 bg-slate-950/70' : 'border-slate-200 bg-white/70'
+                }`}
             >
               <div className="mb-6 flex items-center justify-between">
                 <div>
@@ -1866,9 +2052,8 @@ function App() {
                 </div>
                 <button
                   onClick={() => setRightPanelOpen(false)}
-                  className={`rounded-full border p-2 text-slate-500 transition ${
-                    theme === 'dark' ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-100'
-                  }`}
+                  className={`rounded-full border p-2 text-slate-500 transition ${theme === 'dark' ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-100'
+                    }`}
                   aria-label="Close panel"
                 >
                   <LayoutDashboard size={16} />
@@ -1883,11 +2068,10 @@ function App() {
                       <div key={`${step.step}-${idx}`} className="relative pl-6">
                         {idx !== trace.length - 1 && <div className="absolute left-[10px] top-5 h-full w-[1px] bg-slate-800" />}
                         <div
-                          className={`absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-full border-2 ${
-                            isCurrent && streaming
-                              ? 'border-amber-400 bg-amber-500/10'
-                              : 'border-cyan-400 bg-cyan-500/10'
-                          }`}
+                          className={`absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-full border-2 ${isCurrent && streaming
+                            ? 'border-amber-400 bg-amber-500/10'
+                            : 'border-cyan-400 bg-cyan-500/10'
+                            }`}
                         >
                           <CheckCircle2 size={12} className={isCurrent && streaming ? 'text-amber-300 animate-pulse' : 'text-cyan-300'} />
                         </div>
@@ -1921,15 +2105,14 @@ function App() {
 const NavItem = ({ icon, label, active, isOpen, onClick, theme }: NavItemProps) => (
   <button
     onClick={onClick}
-    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-      active
-        ? theme === 'dark'
-          ? 'bg-cyan-500/10 text-cyan-300'
-          : 'bg-cyan-50 text-cyan-600'
-        : theme === 'dark'
-          ? 'text-slate-400 hover:bg-slate-800 hover:text-white'
-          : 'text-slate-500 hover:bg-slate-100'
-    }`}
+    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold transition ${active
+      ? theme === 'dark'
+        ? 'bg-cyan-500/10 text-cyan-300'
+        : 'bg-cyan-50 text-cyan-600'
+      : theme === 'dark'
+        ? 'text-slate-400 hover:bg-slate-800 hover:text-white'
+        : 'text-slate-500 hover:bg-slate-100'
+      }`}
   >
     <span className={active ? 'scale-110' : ''}>{icon}</span>
     {isOpen && <span>{label}</span>}

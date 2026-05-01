@@ -6,13 +6,14 @@ statmate_flow.py with a cleaner API using the refactored modules.
 
 import os
 import sys
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 
 from statmate.core.config import Config, default_config
-from statmate.core.pii import sanitize_dataframe
 from statmate.core.logging_config import get_logger, setup_logging
+from statmate.core.pii import sanitize_dataframe
 from statmate.workflow.graph_builder import build_workflow_graph, create_default_checkpointer
 from statmate.workflow.model_factory import initialize_default_factory
 from statmate.workflow.state import WorkflowState, create_initial_state
@@ -51,6 +52,7 @@ class StatMateWorkflow:
         do_association: bool = False,
         model_name: str | None = None,
         provider: str | None = None,
+        route_override: str | None = None,
         on_update: Callable[[dict[str, Any]], None] | None = None,
         thread_id: str | None = None,
     ) -> WorkflowState:
@@ -63,6 +65,7 @@ class StatMateWorkflow:
             do_association: Whether to perform association tests.
             model_name: Override for the AI model to use.
             provider: Override for the model provider.
+            route_override: Optional user override for routing choice.
             thread_id: Optional identifier used by LangGraph checkpointers to resume runs.
 
         Returns:
@@ -95,6 +98,7 @@ class StatMateWorkflow:
             do_association=do_association,
             model_name=final_model_name,
             provider=final_provider,
+            route_override=route_override,
         )
         if mask_report.get('masked_columns'):
             initial_state.add_assumption_entry({'node': 'PII masking', **mask_report})

@@ -2,7 +2,6 @@
 
 import logging
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -82,7 +81,7 @@ class TaskService:
         return task
 
     @staticmethod
-    def get_task(db: Session, task_id: str, *, user_id: Optional[str] = None) -> ScheduledTask | None:
+    def get_task(db: Session, task_id: str, *, user_id: str | None = None) -> ScheduledTask | None:
         """Get a task by ID.
 
         Args:
@@ -127,7 +126,7 @@ class TaskService:
         return query.order_by(ScheduledTask.created_at.desc()).offset(skip).limit(limit).all()
 
     @staticmethod
-    def pause_task(db: Session, task_id: str, *, user_id: Optional[str] = None) -> ScheduledTask:
+    def pause_task(db: Session, task_id: str, *, user_id: str | None = None) -> ScheduledTask:
         """Pause a scheduled task.
 
         Args:
@@ -154,7 +153,7 @@ class TaskService:
         return task
 
     @staticmethod
-    def resume_task(db: Session, task_id: str, *, user_id: Optional[str] = None) -> ScheduledTask:
+    def resume_task(db: Session, task_id: str, *, user_id: str | None = None) -> ScheduledTask:
         """Resume a paused task.
 
         Args:
@@ -181,7 +180,7 @@ class TaskService:
         return task
 
     @staticmethod
-    def delete_task(db: Session, task_id: str, *, user_id: Optional[str] = None) -> bool:
+    def delete_task(db: Session, task_id: str, *, user_id: str | None = None) -> bool:
         """Delete a scheduled task.
 
         Args:

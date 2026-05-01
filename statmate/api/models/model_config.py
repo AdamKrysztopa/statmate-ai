@@ -38,3 +38,13 @@ class CurrentModelResponse(BaseModel):
     temperature: float = Field(..., description='Model temperature')
     require_reasoning_for_tools: bool = Field(..., description='Whether reasoning models are required for tools')
     available_providers: list[str] = Field(..., description='List of configured providers')
+
+
+class ModelValidationResponse(BaseModel):
+    """Response model for validating a model/provider combination."""
+
+    requested_model: str = Field(..., description='Requested model name')
+    resolved_model: str = Field(..., description='Resolved model name after alias lookup')
+    provider: str = Field(..., description='Resolved provider name')
+    valid: bool = Field(..., description='Whether the model is valid for the current configuration')
+    error: str | None = Field(None, description='Validation error if invalid')

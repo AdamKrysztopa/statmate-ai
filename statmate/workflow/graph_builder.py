@@ -8,36 +8,42 @@ from langgraph.graph import END, StateGraph
 
 from statmate.agents import (
     chi2_agent,
+    cochran_armitage_agent,
     fisher_exact_agent,
     mannwhitneyu_agent,
+    mcnemar_agent,
     normality_of_difference_agent,
-    get_reviewer_agent,
     ttest_ind_agent,
     ttest_rel_agent,
-    wilcoxon_agent,
     welch_t_agent,
+    wilcoxon_agent,
 )
 from statmate.core import get_logger
 from statmate.core.config import NodeName
 from statmate.workflow.edges import (
     assess_study_design,
+    decide_anova_path,
     decide_outcome,
     decide_two_independent,
     parametric_assumptions,
 )
 from statmate.workflow.model_factory import create_model, create_model_settings
 from statmate.workflow.nodes import (
+    anova_assumptions_node,
+    anova_one_way_node,
+    anova_rm_node,
     assess_study_design_node,
     call_initialization_agent,
     call_test_agent,
     choice_node,
     cox_regression_node,
     descriptive_summary_node,
-    design_verification_node,
     design_reconciliation_node,
+    design_verification_node,
+    friedman_node,
     intent_discovery_node,
+    kruskal_wallis_node,
     methodology_auditor_node,
-    mcnemar_node,
     nonparametric_node,
     resolve_choice,
     reviewer_node,
@@ -86,8 +92,14 @@ class WorkflowGraphBuilder:
                 NodeName.ASSESS_STUDY_DESIGN: NodeName.ASSESS_STUDY_DESIGN,
                 NodeName.CHI2: NodeName.CHI2,
                 NodeName.FISHER: NodeName.FISHER,
+                NodeName.COCHRAN_ARMITAGE: NodeName.COCHRAN_ARMITAGE,
                 NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
                 NodeName.MCNEMAR: NodeName.MCNEMAR,
+                NodeName.ANOVA_ASSUMPTIONS: NodeName.ANOVA_ASSUMPTIONS,
+                NodeName.ANOVA_ONE_WAY: NodeName.ANOVA_ONE_WAY,
+                NodeName.KRUSKAL_WALLIS: NodeName.KRUSKAL_WALLIS,
+                NodeName.ANOVA_RM: NodeName.ANOVA_RM,
+                NodeName.FRIEDMAN: NodeName.FRIEDMAN,
                 NodeName.CHOICE: NodeName.CHOICE,
                 NodeName.COX_REGRESSION: NodeName.COX_REGRESSION,
                 NodeName.DESCRIPTIVE_SUMMARY: NodeName.DESCRIPTIVE_SUMMARY,
@@ -102,8 +114,14 @@ class WorkflowGraphBuilder:
                 NodeName.ASSESS_STUDY_DESIGN: NodeName.ASSESS_STUDY_DESIGN,
                 NodeName.CHI2: NodeName.CHI2,
                 NodeName.FISHER: NodeName.FISHER,
+                NodeName.COCHRAN_ARMITAGE: NodeName.COCHRAN_ARMITAGE,
                 NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
                 NodeName.MCNEMAR: NodeName.MCNEMAR,
+                NodeName.ANOVA_ASSUMPTIONS: NodeName.ANOVA_ASSUMPTIONS,
+                NodeName.ANOVA_ONE_WAY: NodeName.ANOVA_ONE_WAY,
+                NodeName.KRUSKAL_WALLIS: NodeName.KRUSKAL_WALLIS,
+                NodeName.ANOVA_RM: NodeName.ANOVA_RM,
+                NodeName.FRIEDMAN: NodeName.FRIEDMAN,
                 NodeName.CHOICE: NodeName.CHOICE,
                 NodeName.COX_REGRESSION: NodeName.COX_REGRESSION,
                 NodeName.DESCRIPTIVE_SUMMARY: NodeName.DESCRIPTIVE_SUMMARY,
@@ -133,6 +151,10 @@ class WorkflowGraphBuilder:
                 NodeName.INDEP_T: NodeName.INDEP_T,
                 NodeName.WELCH: NodeName.WELCH,
                 NodeName.MANN: NodeName.MANN,
+                NodeName.ANOVA_ONE_WAY: NodeName.ANOVA_ONE_WAY,
+                NodeName.KRUSKAL_WALLIS: NodeName.KRUSKAL_WALLIS,
+                NodeName.FRIEDMAN: NodeName.FRIEDMAN,
+                NodeName.ANOVA_RM: NodeName.ANOVA_RM,
                 NodeName.NONPARAMETRIC: NodeName.NONPARAMETRIC,
                 NodeName.CHI2: NodeName.CHI2,
                 NodeName.FISHER: NodeName.FISHER,
@@ -262,6 +284,25 @@ class WorkflowGraphBuilder:
 
         return self
 
+    def add_anova_paths(self) -> 'WorkflowGraphBuilder':
+        """Add nodes for multi-group ANOVA/Kruskal and repeated measures."""
+        self.graph.add_node(NodeName.ANOVA_ASSUMPTIONS, anova_assumptions_node)
+        self.graph.add_conditional_edges(
+            NodeName.ANOVA_ASSUMPTIONS,
+            decide_anova_path,
+            {
+                NodeName.ANOVA_ONE_WAY: NodeName.ANOVA_ONE_WAY,
+                NodeName.KRUSKAL_WALLIS: NodeName.KRUSKAL_WALLIS,
+                END: END,
+            },
+        )
+
+        self.graph.add_node(NodeName.ANOVA_ONE_WAY, anova_one_way_node)
+        self.graph.add_node(NodeName.KRUSKAL_WALLIS, kruskal_wallis_node)
+        self.graph.add_node(NodeName.ANOVA_RM, anova_rm_node)
+        self.graph.add_node(NodeName.FRIEDMAN, friedman_node)
+        return self
+
     def add_categorical_tests(self) -> 'WorkflowGraphBuilder':
         """Add categorical test nodes.
 
@@ -274,7 +315,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = chi2_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='chi_square')
+            return call_test_agent(agent, state, probability_key='chi_square', assess_assumptions=False)
 
         self.graph.add_node(NodeName.CHI2, chi2_wrapper)
 
@@ -283,10 +324,25 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = fisher_exact_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='fisher_exact')
+            return call_test_agent(agent, state, probability_key='fisher_exact', assess_assumptions=False)
 
         self.graph.add_node(NodeName.FISHER, fisher_wrapper)
-        self.graph.add_node(NodeName.MCNEMAR, mcnemar_node)
+
+        def mcnemar_wrapper(state: WorkflowState) -> WorkflowState:
+            model = create_model(model_name=state.model_name, provider=state.provider)
+            settings = create_model_settings(model_name=state.model_name)
+            agent = mcnemar_agent(model=model, model_settings=settings)
+            return call_test_agent(agent, state, probability_key='mcnemar', assess_assumptions=False)
+
+        self.graph.add_node(NodeName.MCNEMAR, mcnemar_wrapper)
+
+        def trend_wrapper(state: WorkflowState) -> WorkflowState:
+            model = create_model(model_name=state.model_name, provider=state.provider)
+            settings = create_model_settings(model_name=state.model_name)
+            agent = cochran_armitage_agent(model=model, model_settings=settings)
+            return call_test_agent(agent, state, probability_key='cochran_armitage_trend', assess_assumptions=False)
+
+        self.graph.add_node(NodeName.COCHRAN_ARMITAGE, trend_wrapper)
 
         return self
 
@@ -310,9 +366,14 @@ class WorkflowGraphBuilder:
             NodeName.INDEP_T,
             NodeName.WELCH,
             NodeName.MANN,
+            NodeName.ANOVA_ONE_WAY,
+            NodeName.KRUSKAL_WALLIS,
+            NodeName.FRIEDMAN,
+            NodeName.ANOVA_RM,
             NodeName.CHI2,
             NodeName.FISHER,
             NodeName.MCNEMAR,
+            NodeName.COCHRAN_ARMITAGE,
             NodeName.COX_REGRESSION,
         ]
         for node in terminal_nodes:
@@ -366,6 +427,7 @@ def build_workflow_graph(checkpointer=None):
         .add_study_design_assessment()
         .add_paired_test_path()
         .add_independent_test_path()
+        .add_anova_paths()
         .add_categorical_tests()
         .add_survival_tests()
         .add_summary_node()
@@ -380,9 +442,11 @@ def build_workflow_graph(checkpointer=None):
 
 # Create default graph instance
 try:
-    from config.settings import settings
-    from langgraph.checkpoint.sqlite import SqliteSaver
     from pathlib import Path
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    from config.settings import settings
 
     def create_default_checkpointer():
         """Create a persistent checkpointer backed by SQLite."""

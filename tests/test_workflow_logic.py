@@ -1,3 +1,6 @@
+from collections.abc import Iterable
+from typing import cast
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -6,7 +9,6 @@ from statmate.agents.agent_builder import AgentResult
 from statmate.agents.initial_insights_agent import InitialInsightsAgentResults, format_data_by_recommendation
 from statmate.agents.initial_insights_agent import NodeName as AgentNodeName
 from statmate.core.config import NodeName
-from statmate.core.exceptions import NodeExecutionError
 from statmate.core.validation import StatisticalDesign, validate_statistical_design
 from statmate.statistical_core.base import StatTestResult
 from statmate.workflow.edges import decide_two_independent, parametric_assumptions
@@ -48,7 +50,7 @@ def test_call_test_agent_uses_explicit_probability_key(monkeypatch):
     agent = DummyAgent('Statistical Test Agent: Dummy', fake_stat_func)
     state = create_initial_state(df=pd.Series(np.arange(5)))
 
-    updated = call_test_agent(agent, state, alpha=0.05, probability_key='dummy_key')
+    updated = call_test_agent(agent, state, alpha=0.05, probability_key='dummy_key')  # type: ignore[arg-type]
 
     assert updated.get_probability('dummy_key') == 0.01
     assert updated.results, 'Agent result should be recorded'
@@ -75,7 +77,7 @@ def test_parametric_assumptions_for_paired_branch():
     assert parametric_assumptions(state, alpha=0.05) == NodeName.WILCOXON
 
 
-def test_design_verification_blocks_mismatch():
+def test_design_verification_records_mismatch():
     state = create_initial_state(df=pd.DataFrame({'a': [1, 2]}))
     state.statistical_design = StatisticalDesign(
         design_type='paired',
@@ -86,8 +88,12 @@ def test_design_verification_blocks_mismatch():
     )
     state.agent_design_hypothesis = 'independent'
 
-    with pytest.raises(NodeExecutionError):
-        design_verification_node(state)
+    updated = design_verification_node(state)
+
+    assert updated.design_verification is not None
+    assert updated.design_verification['mismatch'] is True
+    assert updated.design_verification['structural_design']['design_type'] == 'paired'
+    assert updated.design_verification['agent_design'] == 'independent'
 
 
 def test_format_data_by_recommendation_pads_missing_columns():
@@ -112,8 +118,8 @@ def test_format_data_by_recommendation_pads_missing_columns():
     )
 
     s1, s2 = format_data_by_recommendation(df, rec)
-    assert len(s1) == len(df)
-    assert len(s2) == len(df)
+    assert len(list(cast(Iterable[float], s1))) == len(df)
+    assert len(list(cast(Iterable[float], s2))) == len(df)
 
 
 def test_format_data_by_recommendation_raises_when_only_one_column():
@@ -167,8 +173,8 @@ def test_format_data_by_recommendation_splits_by_group_for_independent_design():
     )
 
     s1, s2 = format_data_by_recommendation(df, rec, design)
-    assert list(s1) == [1, 2]
-    assert list(s2) == [3, 4]
+    assert list(cast(Iterable[float], s1)) == [1, 2]
+    assert list(cast(Iterable[float], s2)) == [3, 4]
 
 
 def test_validate_statistical_design_prioritises_wide_dep_list_with_group():
@@ -190,7 +196,9 @@ def test_validate_statistical_design_prioritises_wide_dep_list_with_group():
 
     assert design.design_type == 'paired'
     assert design.is_paired is True
-    assert 'wide-format' in design.rationale.lower()
+    rationale = (design.rationale or '').lower()
+    assert 'wide-format' in rationale
+    assert 'pair' in rationale
 
 
 def test_format_data_by_recommendation_prefers_validator_paired_design():
@@ -225,8 +233,8 @@ def test_format_data_by_recommendation_prefers_validator_paired_design():
     )
 
     s1, s2 = format_data_by_recommendation(df, rec, design)
-    assert list(s1) == [1, 2, 3]
-    assert list(s2) == [2, 3, 4]
+    assert list(cast(Iterable[float], s1)) == [1, 2, 3]
+    assert list(cast(Iterable[float], s2)) == [2, 3, 4]
 
 
 def test_validate_statistical_design_does_not_force_paired_when_deps_include_ids_and_group():

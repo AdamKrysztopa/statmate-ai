@@ -13,7 +13,7 @@ from statmate.workflow.state import WorkflowState
 def _last_executed_test(state: WorkflowState) -> str | None:
     """Return the last executed node that is not a meta/summary step."""
     for entry in reversed(state.execution_trace):
-        name = entry.get('step')
+        name = entry.get("step")
         if name and name not in (
             NodeName.SUMMARY,
             NodeName.REVIEWER,
@@ -22,7 +22,7 @@ def _last_executed_test(state: WorkflowState) -> str | None:
             NodeName.INITIALIZATION,
             NodeName.CHOICE,
             NodeName.INTENT,
-            'Structural Validation',
+            "Structural Validation",
         ):
             return name
     return None
@@ -62,26 +62,28 @@ class MethodologyAuditor:
 
         if recommendation_is_conflict := (
             assumption_status
-            and assumption_status.get('status') == 'fail'
+            and assumption_status.get("status") == "fail"
             and recommended != executed
             and recommended != NodeName.CHOICE
         ):
             correction = {
-                'suggested_node': recommended,
-                'reason': 'Assumption failure detected',
-                'failures': assumption_status.get('failures'),
+                "suggested_node": recommended,
+                "reason": "Assumption failure detected",
+                "failures": assumption_status.get("failures"),
             }
             state.correction_steps.append(correction)
             state.pending_routing_decision = state.pending_routing_decision or {}
-            state.pending_routing_decision.update({'selected': recommended})
+            state.pending_routing_decision.update({"selected": recommended})
 
-        statuses = {entry.get('status') for entry in state.assumption_log if entry.get('status')}
-        if 'pass' in statuses and 'fail' in statuses:
-            conflicts.append('Assumption diagnostics disagree (pass vs fail).')
+        statuses = {entry.get("status") for entry in state.assumption_log if entry.get("status")}
+        if "pass" in statuses and "fail" in statuses:
+            conflicts.append("Assumption diagnostics disagree (pass vs fail).")
 
         # Resolve CHOICE to a concrete node for the audit summary
         if recommended == NodeName.CHOICE and state.pending_routing_decision:
-            recommended = state.pending_routing_decision.get('selected') or state.pending_routing_decision.get('primary')
+            recommended = state.pending_routing_decision.get("selected") or state.pending_routing_decision.get(
+                "primary"
+            )
 
         return AuditResult(executed=executed, recommended=recommended, correction_step=correction, conflicts=conflicts)
 
@@ -93,7 +95,7 @@ class StructureAuditor:
         self.engine = engine or decision_engine
 
     def audit(self, state: WorkflowState) -> AuditResult | None:
-        blueprint = getattr(state, 'data_blueprint', None)
+        blueprint = getattr(state, "data_blueprint", None)
         paired_flag = None
         if blueprint and blueprint.is_paired is not None:
             paired_flag = blueprint.is_paired
@@ -109,12 +111,12 @@ class StructureAuditor:
         normal_flag = self.engine._normal_flag(state, blueprint)  # type: ignore[attr-defined]
         recommended = NodeName.WILCOXON if normal_flag is False else NodeName.PAIRED_T
         correction = {
-            'suggested_node': recommended,
-            'reason': 'Paired design detected; rerouting to paired-compatible test.',
-            'executed': executed,
+            "suggested_node": recommended,
+            "reason": "Paired design detected; rerouting to paired-compatible test.",
+            "executed": executed,
         }
         state.correction_steps.append(correction)
         state.pending_routing_decision = state.pending_routing_decision or {}
-        state.pending_routing_decision.update({'selected': recommended})
+        state.pending_routing_decision.update({"selected": recommended})
 
         return AuditResult(executed=executed, recommended=recommended, correction_step=correction, conflicts=[])

@@ -80,7 +80,7 @@ def _build_default_registry() -> MethodRegistry:
     )
     registry.register(
         MethodProfile('categorical', None, None, False),
-        MethodSuggestion(NodeName.CHI2, [NodeName.FISHER], weight=1.0, reason='Categorical'),
+        MethodSuggestion(NodeName.CHI2, [NodeName.FISHER, NodeName.COCHRAN_ARMITAGE], weight=1.0, reason='Categorical'),
     )
     registry.register(
         MethodProfile('categorical', None, None, True),
@@ -100,9 +100,15 @@ NODE_METADATA: dict[str, NodeMetadata] = {
     NodeName.WELCH: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, 2)),
     NodeName.MANN: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, 2)),
     NodeName.NONPARAMETRIC: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, 2)),
+    NodeName.ANOVA_ASSUMPTIONS: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(3, None)),
+    NodeName.ANOVA_ONE_WAY: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(3, None)),
+    NodeName.KRUSKAL_WALLIS: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(3, None)),
+    NodeName.ANOVA_RM: NodeMetadata(is_paired=True, min_sample_size=2, group_count_range=(3, None)),
+    NodeName.FRIEDMAN: NodeMetadata(is_paired=True, min_sample_size=2, group_count_range=(3, None)),
     NodeName.CHI2: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, None)),
     NodeName.FISHER: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(2, None)),
     NodeName.MCNEMAR: NodeMetadata(is_paired=True, min_sample_size=2, group_count_range=(2, None)),
+    NodeName.COCHRAN_ARMITAGE: NodeMetadata(is_paired=False, min_sample_size=2, group_count_range=(3, None)),
     NodeName.COX_REGRESSION: NodeMetadata(is_paired=None, min_sample_size=1, group_count_range=None),
     NodeName.DESCRIPTIVE_SUMMARY: NodeMetadata(is_paired=None, min_sample_size=0, group_count_range=None),
     NodeName.USER_INTERVENTION: NodeMetadata(is_paired=None, min_sample_size=0, group_count_range=None),
@@ -159,7 +165,7 @@ class DecisionEngine:
                     return p_val >= default_config.statistical.normality_threshold
 
         # Fall back to logged p-values if blueprint lacks info
-        p_normality = state.get_probability('normality_of_difference', None)
+        p_normality = state.get_probability('normality_of_difference', 0.0)
         if p_normality is not None:
             return p_normality >= default_config.statistical.normality_threshold
         return None
@@ -185,7 +191,9 @@ class DecisionEngine:
         counts = self._group_samples(blueprint)
         return min(counts.values()) if counts else None
 
-    def _scale(self, state: WorkflowState, blueprint: DataBlueprint | None) -> Literal['continuous', 'categorical', 'survival']:
+    def _scale(
+        self, state: WorkflowState, blueprint: DataBlueprint | None
+    ) -> Literal['continuous', 'categorical', 'survival']:
         if blueprint and blueprint.survival_data:
             return 'survival'
         if state.data_type == DataType.SURVIVAL:
@@ -245,7 +253,11 @@ class DecisionEngine:
                 continue
             seen.add(node)
             if self._node_allowed(
-                node, blueprint=blueprint, group_count=group_count, min_group_size=min_group_size, paired_flag=paired_flag
+                node,
+                blueprint=blueprint,
+                group_count=group_count,
+                min_group_size=min_group_size,
+                paired_flag=paired_flag,
             ):
                 allowed.append(node)
         return allowed
@@ -257,7 +269,13 @@ class DecisionEngine:
         categorical_threshold: int | None = None,
         prefer_terminal: bool = False,
     ) -> str:
-        """Evaluate the next node based on blueprint + registry."""
+        """Evaluate the next node based on blueprint + registry.
+
+        Contract: if ``state.design_verification`` reports a mismatch between the
+        structural validator and the agent hypothesis, do not raise. Route to
+        ``DESIGN_RECONCILIATION`` and store a pending decision payload so the
+        reconciliation step can resolve the disagreement.
+        """
         if categorical_threshold is None:
             categorical_threshold = default_config.statistical.categorical_sample_size_threshold
 
@@ -291,6 +309,14 @@ class DecisionEngine:
             return NodeName.COX_REGRESSION
         if scale == 'categorical' and paired:
             return NodeName.MCNEMAR
+        if scale == 'continuous' and group_count and group_count > 2:
+            if paired:
+                return NodeName.ANOVA_RM if normal_flag is not False else NodeName.FRIEDMAN
+            if assumption_status and assumption_status.get('status') == 'fail':
+                return NodeName.KRUSKAL_WALLIS
+            if normal_flag is False and prefer_terminal:
+                return NodeName.KRUSKAL_WALLIS
+            return NodeName.ANOVA_ASSUMPTIONS if not prefer_terminal else NodeName.ANOVA_ONE_WAY
         if scale == 'continuous' and normal_flag is False and group_count == 2 and not paired:
             return NodeName.NONPARAMETRIC
 
@@ -413,4 +439,21 @@ def decide_two_independent(state: WorkflowState, alpha: float | None = None) -> 
         return NodeName.NONPARAMETRIC
     except Exception as e:
         logger.error(f'Error in decide_two_independent: {e}')
+        return END
+
+
+def decide_anova_path(state: WorkflowState, alpha: float | None = None) -> str:
+    """Route to One-way ANOVA or Kruskal-Wallis based on assumption checks."""
+    if alpha is None:
+        alpha = default_config.statistical.variance_threshold
+
+    try:
+        p_levene = state.get_probability('anova_levene', 0)
+        p_shapiro = state.get_probability('anova_min_shapiro', default_config.statistical.normality_threshold)
+
+        if p_levene > alpha and p_shapiro > default_config.statistical.normality_threshold:
+            return NodeName.ANOVA_ONE_WAY
+        return NodeName.KRUSKAL_WALLIS
+    except Exception as e:
+        logger.error(f'Error in decide_anova_path: {e}')
         return END
