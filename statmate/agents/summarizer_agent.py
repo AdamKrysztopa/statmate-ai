@@ -9,29 +9,29 @@ from pydantic_ai.models.openai import Model, ModelSettings
 
 
 class SummariserDeps(BaseModel):
-    results: list[AIMessage] = Field(description='Structured AIMessage results from executed tests.')
-    performed_tests: list[str] = Field(description='List of tests explicitly executed.')
+    results: list[AIMessage] = Field(description="Structured AIMessage results from executed tests.")
+    performed_tests: list[str] = Field(description="List of tests explicitly executed.")
 
 
 class SummariserResults(BaseModel):
-    summary: str = Field(description='Consolidated scientific summary of test outcomes.')
-    recommendations: str = Field(description='Concise recommendations based on executed tests.')
-    performed_tests: list[str] = Field(description='Tests actually performed.')
+    summary: str = Field(description="Consolidated scientific summary of test outcomes.")
+    recommendations: str = Field(description="Concise recommendations based on executed tests.")
+    performed_tests: list[str] = Field(description="Tests actually performed.")
     power_interpretation: str | None = Field(
         default=None,
-        description='Plain-language power note — populated when any p_value > 0.05; null otherwise.',
+        description="Plain-language power note — populated when any p_value > 0.05; null otherwise.",
     )
 
     def __str__(self) -> str:
-        tests = ', '.join(self.performed_tests)
+        tests = ", ".join(self.performed_tests)
         parts = [
-            f'Summary:\n{self.summary}',
-            f'Recommendations:\n{self.recommendations}',
-            f'Performed Tests:\n{tests}',
+            f"Summary:\n{self.summary}",
+            f"Recommendations:\n{self.recommendations}",
+            f"Performed Tests:\n{tests}",
         ]
         if self.power_interpretation:
-            parts.append(f'Power Interpretation:\n{self.power_interpretation}')
-        return '\n\n'.join(parts)
+            parts.append(f"Power Interpretation:\n{self.power_interpretation}")
+        return "\n\n".join(parts)
 
 
 def get_summariser_agent(
@@ -77,7 +77,7 @@ def get_summariser_agent(
         model_settings=model_settings,
         deps_type=SummariserDeps,
         result_type=SummariserResults,
-        name='Summariser Agent',
+        name="Summariser Agent",
         system_prompt=system_prompt,
         retries=retries,
     )
@@ -86,8 +86,8 @@ def get_summariser_agent(
     def all_inputs_merged(ctx: RunContext[SummariserDeps]) -> str:
         """Merge all inputs into a single string for the model."""
         results = ctx.deps.results
-        results = '\n'.join([result.__str__() for result in results])
+        results = "\n".join([result.__str__() for result in results])
         performed_tests = ctx.deps.performed_tests
-        return f'Results: {results}, Performed Tests: {performed_tests}'
+        return f"Results: {results}, Performed Tests: {performed_tests}"
 
     return agent

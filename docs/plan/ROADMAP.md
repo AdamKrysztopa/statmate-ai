@@ -19,6 +19,8 @@
 
 **Shipped baseline:** 38 tests green · ruff E-gate clean · model settings UI fixed · CI green · dev setup documented.
 
+**Part 2 — P1 wave shipped (2026-05-01):** 62 tests green · P2-F00 (effect sizes & 95% CIs) · P2-F01 (post-hoc power interpretation) · P2-F02 (regression module: linear, multiple+VIF, logistic) · P2-F03 (outlier/influence diagnostics) · P2-F04 (Cox regression hard-disabled, HTTP 501).
+
 ---
 
 ## Phase overview
@@ -111,31 +113,31 @@ Every code change is reviewed against all five principles. Violations are report
 
 ## Part 2 feature inventory
 
-| ID     | Feature                                                                                                               | Priority | Area                    | Status      |
-| ------ | --------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------- | ----------- |
-| P2-F00 | Effect sizes and 95% CIs across all test families; shared `effect_size.py` helper                                     | P1       | Statistical correctness | Not started |
-| P2-F01 | Post-hoc power interpretation for non-significant results — update summarizer prompt and result model                 | P1       | Statistical correctness | Not started |
-| P2-F02 | Regression module (`linear`, `multiple` with VIF, `logistic`) in `statistical_core/regression.py`; wire into workflow | P1       | Statistical correctness | Not started |
-| P2-F03 | Outlier/influence diagnostics (Cook's distance, leverage, VIF) in `workflow/blueprint.py`                             | P1       | Statistical correctness | Not started |
-| P2-F04 | Resolve `cox_regression` placeholder — implement minimally or hard-disable with `501` + user-facing message           | P1       | Statistical correctness | Not started |
-| P2-F05 | Decompose `statmate/workflow/nodes.py` (~1201 LOC) into per-phase modules; 400-LOC hard limit per file                | P1       | Architecture            | Not started |
-| P2-F06 | >80% line coverage on `statistical_core/` and `workflow/` via `pytest-cov`; coverage report in CI                     | P1       | Test coverage           | Not started |
-| P2-F07 | Integration tests for full analysis workflow (file upload → result export)                                            | P1       | Test coverage           | Not started |
-| P2-F08 | Structured Finding/Evidence/Caveat format in summarizer; reviewer check for missing clinical significance block       | P2       | Medical reporting       | Not started |
-| P2-F09 | Reviewer enforcement for CI/effect-size presence (fail-soft: flag, not error)                                         | P2       | Medical reporting       | Not started |
-| P2-F10 | Multiplicity check in reviewer agent for multi-group comparisons (Bonferroni/FDR flag)                                | P2       | Medical reporting       | Not started |
-| P2-F11 | Chart narrative captions in plain clinical language                                                                   | P2       | Medical reporting       | Not started |
-| P2-F12 | Decompose `frontend/src/App.tsx` (~1940 LOC) into focused components; 400-LOC hard limit per file                     | P2       | Frontend                | Not started |
-| P2-F13 | Playwright end-to-end smoke test for happy-path analysis flow                                                         | P2       | Frontend                | Not started |
-| P2-F14 | Address ~507 ruff W/C/ANN findings in a dedicated cleanup PR — do not mix with feature work                           | P2       | Lint debt               | Not started |
-| P2-F15 | Set `select = ["E", "W", "C90"]` in `pyproject.toml` to lock in lint gate after cleanup                               | P2       | Lint debt               | Not started |
-| P2-F16 | Replace `BackgroundTasks` with durable worker queue (Celery or Temporal); wire task status persistence to DB          | P3       | Production infra        | Not started |
-| P2-F17 | Implement real scheduled-task parsing — replace `datetime.utcnow()` mock in scheduler service                         | P3       | Production infra        | Not started |
-| P2-F18 | API rate-limiting middleware (`slowapi`) with per-user quotas                                                         | P3       | Production infra        | Not started |
-| P2-F19 | Policy-driven PII modes (strict / balanced / permissive) with per-tenant audit report                                 | P3       | Production infra        | Not started |
-| P2-F20 | Data retention/TTL enforcement — auto-delete upload and result rows after configurable period                         | P3       | Production infra        | Not started |
-| P2-F21 | Guided UX wizard: column type-casting, assumption stoplights, "why this test?" explainer                              | P3       | Frontend                | Not started |
-| P2-F22 | Documented decision on primary UI strategy (React vs Streamlit); deprecate secondary path                             | P3       | Frontend                | Not started |
+| ID     | Feature                                                                                                               | Priority | Area                    | Status        |
+| ------ | --------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------- | ------------- |
+| P2-F00 | Effect sizes and 95% CIs across all test families; shared `effect_size.py` helper                                     | P1       | Statistical correctness | **Shipped ✓** |
+| P2-F01 | Post-hoc power interpretation for non-significant results — update summarizer prompt and result model                 | P1       | Statistical correctness | **Shipped ✓** |
+| P2-F02 | Regression module (`linear`, `multiple` with VIF, `logistic`) in `statistical_core/regression.py`; wire into workflow | P1       | Statistical correctness | **Shipped ✓** |
+| P2-F03 | Outlier/influence diagnostics (Cook's distance, leverage, VIF) in `workflow/blueprint.py`                             | P1       | Statistical correctness | **Shipped ✓** |
+| P2-F04 | Resolve `cox_regression` placeholder — implement minimally or hard-disable with `501` + user-facing message           | P1       | Statistical correctness | **Shipped ✓** |
+| P2-F05 | Decompose `statmate/workflow/nodes.py` (~1201 LOC) into per-phase modules; 400-LOC hard limit per file                | P1       | Architecture            | Not started   |
+| P2-F06 | >80% line coverage on `statistical_core/` and `workflow/` via `pytest-cov`; coverage report in CI                     | P1       | Test coverage           | Not started   |
+| P2-F07 | Integration tests for full analysis workflow (file upload → result export)                                            | P1       | Test coverage           | Not started   |
+| P2-F08 | Structured Finding/Evidence/Caveat format in summarizer; reviewer check for missing clinical significance block       | P2       | Medical reporting       | Not started   |
+| P2-F09 | Reviewer enforcement for CI/effect-size presence (fail-soft: flag, not error)                                         | P2       | Medical reporting       | Not started   |
+| P2-F10 | Multiplicity check in reviewer agent for multi-group comparisons (Bonferroni/FDR flag)                                | P2       | Medical reporting       | Not started   |
+| P2-F11 | Chart narrative captions in plain clinical language                                                                   | P2       | Medical reporting       | Not started   |
+| P2-F12 | Decompose `frontend/src/App.tsx` (~1940 LOC) into focused components; 400-LOC hard limit per file                     | P2       | Frontend                | Not started   |
+| P2-F13 | Playwright end-to-end smoke test for happy-path analysis flow                                                         | P2       | Frontend                | Not started   |
+| P2-F14 | Address ~507 ruff W/C/ANN findings in a dedicated cleanup PR — do not mix with feature work                           | P2       | Lint debt               | Not started   |
+| P2-F15 | Set `select = ["E", "W", "C90"]` in `pyproject.toml` to lock in lint gate after cleanup                               | P2       | Lint debt               | Not started   |
+| P2-F16 | Replace `BackgroundTasks` with durable worker queue (Celery or Temporal); wire task status persistence to DB          | P3       | Production infra        | Not started   |
+| P2-F17 | Implement real scheduled-task parsing — replace `datetime.utcnow()` mock in scheduler service                         | P3       | Production infra        | Not started   |
+| P2-F18 | API rate-limiting middleware (`slowapi`) with per-user quotas                                                         | P3       | Production infra        | Not started   |
+| P2-F19 | Policy-driven PII modes (strict / balanced / permissive) with per-tenant audit report                                 | P3       | Production infra        | Not started   |
+| P2-F20 | Data retention/TTL enforcement — auto-delete upload and result rows after configurable period                         | P3       | Production infra        | Not started   |
+| P2-F21 | Guided UX wizard: column type-casting, assumption stoplights, "why this test?" explainer                              | P3       | Frontend                | Not started   |
+| P2-F22 | Documented decision on primary UI strategy (React vs Streamlit); deprecate secondary path                             | P3       | Frontend                | Not started   |
 
 ---
 
@@ -147,7 +149,7 @@ Each section below gives a junior developer enough context to implement the feat
 
 ### P2-F00 — Effect sizes and 95% CIs across all test families
 
-**Status:** Not started | **Priority:** P1 | **Area:** Statistical correctness
+**Status:** Shipped ✓ (2026-05-01) | **Priority:** P1 | **Area:** Statistical correctness
 
 **Context.**
 `StatTestResult` (defined in `statmate/statistical_core/base.py`) already has two optional fields:
@@ -235,7 +237,7 @@ These fields exist but are not populated by most test functions. The goal is to 
 
 ### P2-F01 — Post-hoc power interpretation for non-significant results
 
-**Status:** Not started | **Priority:** P1 | **Area:** Statistical correctness
+**Status:** Shipped ✓ (2026-05-01) | **Priority:** P1 | **Area:** Statistical correctness
 
 **Context.**
 When a test returns `p_value > alpha`, the current summarizer says the result is "not significant" but does not tell the clinician whether the study was powered to detect a meaningful effect. A post-hoc power note prevents the common misinterpretation of "not significant" as "no effect".
@@ -269,7 +271,7 @@ When a test returns `p_value > alpha`, the current summarizer says the result is
 
 ### P2-F02 — Regression module (linear, multiple with VIF, logistic)
 
-**Status:** Not started | **Priority:** P1 | **Area:** Statistical correctness
+**Status:** Shipped ✓ (2026-05-01) | **Priority:** P1 | **Area:** Statistical correctness
 
 **Context.**
 No `statmate/statistical_core/regression.py` exists yet. The module must follow the same pattern as `comparison.py`: pure functions, no I/O, returning `StatTestResult`. After creating it, wire it into the workflow as a new node so the routing engine can send regression-typed blueprints to it.
@@ -348,7 +350,7 @@ No `statmate/statistical_core/regression.py` exists yet. The module must follow 
 
 ### P2-F03 — Outlier and influence diagnostics
 
-**Status:** Not started | **Priority:** P1 | **Area:** Statistical correctness
+**Status:** Shipped ✓ (2026-05-01) | **Priority:** P1 | **Area:** Statistical correctness
 
 **Context.**
 The `DataBlueprint` model in `statmate/workflow/blueprint.py` carries distribution metrics and sample balance but has no outlier or influence diagnostics. These should be computed once during blueprint construction and surfaced in `test_specifics` of subsequent test nodes, so agents can mention leverage/Cook's distance in their narratives without re-computing.
@@ -406,7 +408,7 @@ The `DataBlueprint` model in `statmate/workflow/blueprint.py` carries distributi
 
 ### P2-F04 — Resolve `cox_regression` placeholder
 
-**Status:** Not started | **Priority:** P1 | **Area:** Statistical correctness
+**Status:** Shipped ✓ (2026-05-01, hard-disable path) | **Priority:** P1 | **Area:** Statistical correctness
 
 **Context.**
 `cox_regression_node` in `statmate/workflow/nodes.py` (around line 1344–1351) is a stub. It currently exists in the graph but does nothing meaningful. The decision recorded in Open Question 1 must be resolved first; pending that decision, implement the hard-disable path described below.
@@ -1417,6 +1419,6 @@ The project has a React frontend under `frontend/` and traces of Streamlit code 
 
 ## Open questions
 
-1. **`cox_regression` scope (P2-F04):** Minimal implementation or hard-disable? If implemented, what datasets and model assumptions are in scope for P1? Decision needed before P1 begins.
+1. **`cox_regression` scope (P2-F04):** ~~Minimal implementation or hard-disable?~~ **Resolved (2026-05-01):** Hard-disable path chosen. `cox_regression_node` records `NOT_IMPLEMENTED` in execution trace; graph routes to `user_intervention_node`; `GET /analysis/{id}` returns HTTP 501 with `code: NOT_IMPLEMENTED`.
 2. **Worker queue (P2-F16):** Celery or Temporal? Decision needed before P3 begins. Primary signal: operational complexity vs reliability guarantee.
 3. **UI strategy (P2-F22):** React (current) vs Streamlit — documented decision required before P3 frontend work begins. React is already in production; Streamlit adds a second runtime dependency with no clear benefit.
