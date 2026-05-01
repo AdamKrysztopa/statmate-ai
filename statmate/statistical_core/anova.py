@@ -40,26 +40,26 @@ def anova_one_way_test(*groups: np.ndarray, alpha: float | None = None) -> StatT
     eta_squared(float(statistic), df_between, df_within)
     if p_value < alpha:
         result_text = (
-            f"We must reject the null hypothesis (p = {p_value:.4f} < α = {alpha}); at least one group mean differs."
+            f'We must reject the null hypothesis (p = {p_value:.4f} < α = {alpha}); at least one group mean differs.'
         )
     else:
         result_text = (
-            f"We cannot reject the null hypothesis (p = {p_value:.4f} ≥ α = {alpha}); all group means appear equal."
+            f'We cannot reject the null hypothesis (p = {p_value:.4f} ≥ α = {alpha}); all group means appear equal.'
         )
 
     return StatTestResult(
-        test_name="One-way ANOVA",
+        test_name='One-way ANOVA',
         statistics=statistic,
         p_value=p_value,
-        null_hypothesis="All groups have equal means.",
-        alternative="At least one group mean is different.",
+        null_hypothesis='All groups have equal means.',
+        alternative='At least one group mean is different.',
         statistical_test_results=result_text,
         test_specifics={
-            "alpha": alpha,
-            "sample_sizes": [len(g) for g in groups],
-            "number_of_groups": len(groups),
+            'alpha': alpha,
+            'sample_sizes': [len(g) for g in groups],
+            'number_of_groups': len(groups),
         },
-        effect_size_type="eta_squared",
+        effect_size_type='eta_squared',
     )
 
 
@@ -76,14 +76,14 @@ def prepare_groups_from_frame(
     groups: list[np.ndarray] = []
     labels: list[str] = []
     for label, series in frame.groupby(group_column)[value_column]:
-        arr = pd.to_numeric(series, errors="coerce").dropna().to_numpy()
+        arr = pd.to_numeric(series, errors='coerce').dropna().to_numpy()
         if arr.size == 0:
             continue
         groups.append(arr)
         labels.append(str(label))
 
     if len(groups) < 2:
-        raise ValueError("At least two non-empty groups are required.")
+        raise ValueError('At least two non-empty groups are required.')
 
     return groups, labels
 
@@ -92,7 +92,7 @@ def dunn_posthoc_test(
     groups: Iterable[np.ndarray],
     *,
     labels: list[str] | None = None,
-    p_adjust: str = "holm",
+    p_adjust: str = 'holm',
 ) -> list[dict[str, float | str | bool]]:
     """Compute pairwise Dunn's test with multiple-comparison correction."""
     cleaned: list[np.ndarray] = []
@@ -103,7 +103,7 @@ def dunn_posthoc_test(
         if arr.size == 0:
             continue
         cleaned.append(arr)
-        label_list.append(labels[idx] if labels and idx < len(labels) else f"Group {idx + 1}")
+        label_list.append(labels[idx] if labels and idx < len(labels) else f'Group {idx + 1}')
 
     if len(cleaned) < 2:
         return []
@@ -137,20 +137,20 @@ def dunn_posthoc_test(
         p_uncorrected = float(2 * norm.sf(abs(z_score)))
         raw_results.append(
             {
-                "group1": label_list[i],
-                "group2": label_list[j],
-                "z": float(z_score),
-                "p_uncorrected": p_uncorrected,
+                'group1': label_list[i],
+                'group2': label_list[j],
+                'z': float(z_score),
+                'p_uncorrected': p_uncorrected,
             }
         )
 
     if not raw_results:
         return []
 
-    adjusted = multipletests([res["p_uncorrected"] for res in raw_results], method=p_adjust.lower())
+    adjusted = multipletests([res['p_uncorrected'] for res in raw_results], method=p_adjust.lower())
     for res, reject, p_adj in zip(raw_results, adjusted[0], adjusted[1]):
-        res["p_adjusted"] = float(p_adj)
-        res["reject"] = bool(reject)
+        res['p_adjusted'] = float(p_adj)
+        res['reject'] = bool(reject)
 
     return raw_results
 
@@ -160,7 +160,7 @@ def kruskal_wallis_test(
     alpha: float | None = None,
     group_labels: list[str] | None = None,
     perform_dunn: bool = True,
-    p_adjust: str = "holm",
+    p_adjust: str = 'holm',
 ) -> StatTestResult:
     """Run the Kruskal-Wallis H-test with optional Dunn's post-hoc analysis."""
     if alpha is None:
@@ -174,21 +174,21 @@ def kruskal_wallis_test(
         if arr.size == 0:
             continue
         cleaned.append(arr)
-        labels.append(group_labels[idx] if group_labels and idx < len(group_labels) else f"Group {idx + 1}")
+        labels.append(group_labels[idx] if group_labels and idx < len(group_labels) else f'Group {idx + 1}')
 
     if len(cleaned) < 2:
-        raise ValueError("Kruskal-Wallis H-test requires at least two groups.")
+        raise ValueError('Kruskal-Wallis H-test requires at least two groups.')
 
-    statistic, p_value = scipy.stats.kruskal(*cleaned, nan_policy="omit")
+    statistic, p_value = scipy.stats.kruskal(*cleaned, nan_policy='omit')
     n_total = sum(len(g) for g in cleaned)
     epsilon_squared_kruskal(float(statistic), n_total)
 
     if p_value < alpha:
-        decision = f"We must reject the null hypothesis (p = {p_value:.4f} < α = {alpha}); at least one group differs."
+        decision = f'We must reject the null hypothesis (p = {p_value:.4f} < α = {alpha}); at least one group differs.'
     else:
         decision = (
-            f"We cannot reject the null hypothesis (p = {p_value:.4f} ≥ α = {alpha}); "
-            "group distributions appear similar."
+            f'We cannot reject the null hypothesis (p = {p_value:.4f} ≥ α = {alpha}); '
+            'group distributions appear similar.'
         )
 
     posthoc_results = (
@@ -196,20 +196,20 @@ def kruskal_wallis_test(
     )
 
     return StatTestResult(
-        test_name="Kruskal-Wallis H-test",
+        test_name='Kruskal-Wallis H-test',
         statistics=float(statistic),
         p_value=float(p_value),
-        null_hypothesis="All groups come from the same distribution.",
-        alternative="At least one group distribution differs.",
+        null_hypothesis='All groups come from the same distribution.',
+        alternative='At least one group distribution differs.',
         statistical_test_results=decision,
         test_specifics={
-            "alpha": alpha,
-            "sample_sizes": [len(g) for g in cleaned],
-            "group_labels": labels,
-            "posthoc": posthoc_results,
-            "p_adjust": p_adjust,
+            'alpha': alpha,
+            'sample_sizes': [len(g) for g in cleaned],
+            'group_labels': labels,
+            'posthoc': posthoc_results,
+            'p_adjust': p_adjust,
         },
-        effect_size_type="epsilon_squared",
+        effect_size_type='epsilon_squared',
     )
 
 
@@ -219,9 +219,9 @@ def anova_rm_test(
     # … validation as before …
 
     # ensure factors are categorical
-    input_data[subject] = input_data[subject].astype("category")
+    input_data[subject] = input_data[subject].astype('category')
     for col in within:
-        input_data[col] = input_data[col].astype("category")
+        input_data[col] = input_data[col].astype('category')
 
     model = AnovaRM(
         data=input_data,
@@ -232,7 +232,7 @@ def anova_rm_test(
 
     anova_table = model.anova_table
     first = anova_table.iloc[0]
-    f_value, p_value = first["F Value"], first["Pr > F"]
+    f_value, p_value = first['F Value'], first['Pr > F']
 
     if p_value < alpha:
         result_text = (
@@ -241,22 +241,22 @@ def anova_rm_test(
         )
     else:
         result_text = (
-            f"We cannot reject the null hypothesis (p = {p_value:.4f} ≥ α = {alpha}); all condition means appear equal."
+            f'We cannot reject the null hypothesis (p = {p_value:.4f} ≥ α = {alpha}); all condition means appear equal.'
         )
 
     return StatTestResult(
-        test_name="Repeated Measures ANOVA",
+        test_name='Repeated Measures ANOVA',
         statistics=f_value,
         p_value=p_value,
-        null_hypothesis="The means across conditions (within‑subject factors) are equal.",
+        null_hypothesis='The means across conditions (within‑subject factors) are equal.',
         alternative="At least one condition's mean is different.",
         statistical_test_results=result_text,
         test_specifics={
-            "alpha": alpha,
-            "dependent_variable": dependent_variable,
-            "subject": subject,
-            "within_factors": within,
-            "anova_table": anova_table.to_dict(),
+            'alpha': alpha,
+            'dependent_variable': dependent_variable,
+            'subject': subject,
+            'within_factors': within,
+            'anova_table': anova_table.to_dict(),
         },
     )
 
@@ -278,83 +278,83 @@ def friedman_test(
 
     if isinstance(data, pd.DataFrame):
         if not dependent_variable or not subject or not within:
-            raise ValueError("dependent_variable, subject, and within are required for Friedman test on DataFrames.")
+            raise ValueError('dependent_variable, subject, and within are required for Friedman test on DataFrames.')
         factor = within[0]
         subset = data[[dependent_variable, subject, factor]].dropna()
         pivot = subset.pivot(index=subject, columns=factor, values=dependent_variable)
         if pivot.shape[1] < 3:
-            raise ValueError("Friedman test requires at least three related conditions.")
+            raise ValueError('Friedman test requires at least three related conditions.')
         arrays = [pivot[col].to_numpy() for col in pivot.columns]
         condition_labels = [str(col) for col in pivot.columns]
         n_subjects = pivot.shape[0]
     else:
         arrays = [np.asarray(group, dtype=float) for group in data]
         arrays = [arr[~np.isnan(arr)] for arr in arrays]
-        condition_labels = [f"Condition {i + 1}" for i in range(len(arrays))]
+        condition_labels = [f'Condition {i + 1}' for i in range(len(arrays))]
         n_subjects = len(arrays[0]) if arrays else 0
 
     if len(arrays) < 3:
-        raise ValueError("Friedman test requires at least three paired samples.")
+        raise ValueError('Friedman test requires at least three paired samples.')
 
     statistic, p_value = scipy.stats.friedmanchisquare(*arrays)
     k_cond = len(arrays)
     kendall_w_friedman(float(statistic), n_subjects, k_cond)
     if p_value < alpha:
         decision = (
-            f"We must reject the null hypothesis (p = {p_value:.4f} < α = {alpha}); at least one condition differs."
+            f'We must reject the null hypothesis (p = {p_value:.4f} < α = {alpha}); at least one condition differs.'
         )
     else:
         decision = (
-            f"We cannot reject the null hypothesis (p = {p_value:.4f} ≥ α = {alpha}); "
-            "no evidence of differences across conditions."
+            f'We cannot reject the null hypothesis (p = {p_value:.4f} ≥ α = {alpha}); '
+            'no evidence of differences across conditions.'
         )
 
     posthoc_guidance = (
-        "If significant, follow up with pairwise Wilcoxon signed-rank tests or Nemenyi tests with Holm correction."
+        'If significant, follow up with pairwise Wilcoxon signed-rank tests or Nemenyi tests with Holm correction.'
     )
 
     return StatTestResult(
-        test_name="Friedman Test",
+        test_name='Friedman Test',
         statistics=float(statistic),
         p_value=float(p_value),
-        null_hypothesis="All related samples come from the same distribution.",
-        alternative="At least one paired condition differs.",
+        null_hypothesis='All related samples come from the same distribution.',
+        alternative='At least one paired condition differs.',
         statistical_test_results=decision,
         test_specifics={
-            "alpha": alpha,
-            "condition_labels": condition_labels,
-            "subjects": n_subjects,
-            "posthoc_guidance": posthoc_guidance,
+            'alpha': alpha,
+            'condition_labels': condition_labels,
+            'subjects': n_subjects,
+            'posthoc_guidance': posthoc_guidance,
         },
-        effect_size_type="kendall_w",
+        effect_size_type='kendall_w',
     )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # Example usage
-    print("Running ANOVA tests...")
-    print("One-way ANOVA Test:")
+    print('Running ANOVA tests...')
+    print('One-way ANOVA Test:')
     data = np.random.rand(10, 3)  # Example data
     result = anova_one_way_test(data[:, 0], data[:, 1], data[:, 2])
     print(result)
 
-    print("Repeated Measures ANOVA Test:")
+    print('Repeated Measures ANOVA Test:')
     n_subj, n_cond = 10, 3
     subjects = np.repeat(np.arange(n_subj), n_cond)
-    conditions = np.tile([f"C{i + 1}" for i in range(n_cond)], n_subj)
+    conditions = np.tile([f'C{i + 1}' for i in range(n_cond)], n_subj)
     values = np.random.randn(n_subj * n_cond)  # or your real data
 
-    rm_df = pd.DataFrame({"subject": subjects, "condition": conditions, "value": values})
+    rm_df = pd.DataFrame({'subject': subjects, 'condition': conditions, 'value': values})
 
     # make factors categorical
-    rm_df["subject"] = rm_df["subject"].astype("category")
-    rm_df["condition"] = rm_df["condition"].astype("category")
+    rm_df['subject'] = rm_df['subject'].astype('category')
+    rm_df['condition'] = rm_df['condition'].astype('category')
     print(rm_df)
     # now this will work:
     rm_result = anova_rm_test(
         input_data=rm_df,
-        dependent_variable="value",
-        subject="subject",
-        within=["condition"],
+        dependent_variable='value',
+        subject='subject',
+        within=['condition'],
     )
     print(rm_result)

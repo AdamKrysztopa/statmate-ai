@@ -11,7 +11,7 @@ from statmate.statistical_core import StatTestResult, bartlett_test, levene_test
 def bartlett_agent(
     model: OpenAIModel,
     model_settings: ModelSettings | None = None,
-    test_name: str = "Bartlett Test",
+    test_name: str = 'Bartlett Test',
     test_function: Callable[..., StatTestResult] = bartlett_test,
 ) -> Agent[StatTestDeps, AgentResult]:
     """Builds a Bartlett equality of variance agent."""
@@ -36,7 +36,7 @@ def bartlett_agent(
 def levene_agent(
     model: OpenAIModel,
     model_settings: ModelSettings | None = None,
-    test_name: str = "Levene Test",
+    test_name: str = 'Levene Test',
     test_function: Callable[..., StatTestResult] = levene_test,
 ) -> Agent[StatTestDeps, AgentResult]:
     """Builds a Levene variance homogeneity agent."""
@@ -57,9 +57,9 @@ def levene_agent(
     )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # Example usage
-    model = OpenAIModel("gpt-4o")
+    model = OpenAIModel('gpt-4o')
     model_settings = ModelSettings(
         temperature=0.1,
         max_tokens=1500,
@@ -79,7 +79,7 @@ if __name__ == "__main__":
         data=group1,
         data_secondary=group2,
         test_params={
-            "alpha": 0.05,
+            'alpha': 0.05,
         },
     )
 
@@ -87,21 +87,21 @@ if __name__ == "__main__":
         data=group1,
         data_secondary=group3,
         test_params={
-            "alpha": 0.05,
+            'alpha': 0.05,
         },
     )
-    print("--- ---- ---- ---")
-    b_res = run_sync_agent(b_agent, "", deps1)
-    print("### Bartlett test results for same variance:")
+    print('--- ---- ---- ---')
+    b_res = run_sync_agent(b_agent, '', deps1)
+    print('### Bartlett test results for same variance:')
     print(b_res)
-    l_res = run_sync_agent(l_agent, "", deps1)
-    print("\n### Levene test results for same variance:")
+    l_res = run_sync_agent(l_agent, '', deps1)
+    print('\n### Levene test results for same variance:')
     print(l_res)
-    print("--- ---- ---- ---")
-    b_res2 = run_sync_agent(b_agent, "", deps2)
-    print("### Bartlett test results for differnet variance:")
+    print('--- ---- ---- ---')
+    b_res2 = run_sync_agent(b_agent, '', deps2)
+    print('### Bartlett test results for differnet variance:')
     print(b_res2)
-    l_res2 = run_sync_agent(l_agent, "", deps2)
-    print("\n### Levene test results for different variance:")
+    l_res2 = run_sync_agent(l_agent, '', deps2)
+    print('\n### Levene test results for different variance:')
     print(l_res2)
-    print("--- ---- ---- ---")
+    print('--- ---- ---- ---')

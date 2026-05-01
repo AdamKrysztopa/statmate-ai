@@ -17,10 +17,21 @@ class SummariserResults(BaseModel):
     summary: str = Field(description='Consolidated scientific summary of test outcomes.')
     recommendations: str = Field(description='Concise recommendations based on executed tests.')
     performed_tests: list[str] = Field(description='Tests actually performed.')
+    power_interpretation: str | None = Field(
+        default=None,
+        description='Plain-language power note — populated when any p_value > 0.05; null otherwise.',
+    )
 
     def __str__(self) -> str:
         tests = ', '.join(self.performed_tests)
-        return f'Summary:\n{self.summary}\n\nRecommendations:\n{self.recommendations}\n\nPerformed Tests:\n{tests}'
+        parts = [
+            f'Summary:\n{self.summary}',
+            f'Recommendations:\n{self.recommendations}',
+            f'Performed Tests:\n{tests}',
+        ]
+        if self.power_interpretation:
+            parts.append(f'Power Interpretation:\n{self.power_interpretation}')
+        return '\n\n'.join(parts)
 
 
 def get_summariser_agent(
@@ -34,7 +45,7 @@ def get_summariser_agent(
     - `performed_tests`: Names of tests explicitly performed.
 
     You have one available tool: `all_inputs_merged`, which merges the results and performed tests into a single string.
-    
+
     Invoke this tool to get the merged string, but do not use it in your final output.
 
     STRICTLY adhere to these instructions:
@@ -46,8 +57,19 @@ def get_summariser_agent(
     {
       "summary": "<scientific paragraph summarizing ONLY provided tests, clearly mentioning statistics and p-values>",
       "recommendations": "<concise recommendations based on provided tests only>",
-      "performed_tests": "<copy this directly from input>"
+      "performed_tests": "<copy this directly from input>",
+      "power_interpretation": "<plain-language note or null>"
     }
+
+    When one or more reported p-values exceed the significance threshold (p > 0.05), populate
+    `power_interpretation` with a plain-language note that: (a) states explicitly that a
+    non-significant result does not confirm the null hypothesis; (b) references the observed effect
+    size from the test result fields and explains qualitatively whether it suggests a clinically
+    meaningful difference (e.g., "the observed Cohen's d of 0.15 is small, suggesting the groups
+    differ by less than one-fifth of a standard deviation"); (c) advises the reader to interpret the
+    result in the context of sample size and study power — do not compute power numerically but
+    describe the implication of having a small sample relative to the observed effect.
+    If ALL results have p <= 0.05, set `power_interpretation` to null.
     """
 
     agent = Agent(

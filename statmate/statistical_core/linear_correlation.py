@@ -29,28 +29,28 @@ def pearson_corr(data: np.ndarray, data2: np.ndarray, alpha: float = 0.05) -> St
     ci = ci_pearson(float(corr_coef), n, alpha)
     if p_value < alpha:  # type: ignore # not true
         result_text = (
-            f"Reject H₀ (p = {p_value:.4f} < α = {alpha}); "
-            f"r = {corr_coef:.4f} indicates significant linear correlation."
+            f'Reject H₀ (p = {p_value:.4f} < α = {alpha}); '
+            f'r = {corr_coef:.4f} indicates significant linear correlation.'
         )
     else:
         result_text = (
-            f"Fail to reject H₀ (p = {p_value:.4f} ≥ α = {alpha}); "
-            f"r = {corr_coef:.4f} indicates no significant linear correlation."
+            f'Fail to reject H₀ (p = {p_value:.4f} ≥ α = {alpha}); '
+            f'r = {corr_coef:.4f} indicates no significant linear correlation.'
         )
 
     return StatTestResult(
-        test_name="Pearson’s correlation",
+        test_name='Pearson’s correlation',
         statistics=corr_coef,  # type: ignore # not true
         p_value=p_value,  # type: ignore # not true
-        null_hypothesis="No linear correlation between the two variables.",
-        alternative="There is a linear correlation between the two variables.",
+        null_hypothesis='No linear correlation between the two variables.',
+        alternative='There is a linear correlation between the two variables.',
         statistical_test_results=result_text,
         test_specifics={
-            "alpha": alpha,
-            "sample_size_1": len(data),
-            "sample_size_2": len(data2),
+            'alpha': alpha,
+            'sample_size_1': len(data),
+            'sample_size_2': len(data2),
         },
-        effect_size_type="pearson_r",
+        effect_size_type='pearson_r',
         confidence_interval=ci,
     )
 
@@ -77,27 +77,27 @@ def spearman_corr(data: np.ndarray, data2: np.ndarray, alpha: float = 0.05) -> S
     ci = ci_pearson(float(corr_coef), n, alpha)
     if p_value < alpha:  # type: ignore # not true
         result_text = (
-            f"Reject Null hypothesis (p = {p_value:.4f} < alpha = {alpha}); "
-            f"corr_coeff = {corr_coef:.4f} indicates significant monotonic association."
+            f'Reject Null hypothesis (p = {p_value:.4f} < alpha = {alpha}); '
+            f'corr_coeff = {corr_coef:.4f} indicates significant monotonic association.'
         )
     else:
         result_text = (
-            f"Fail to reject Null  (p = {p_value:.4f} ≥ alpha = {alpha}); "
-            f"corr_coeff = {corr_coef:.4f} indicates no significant monotonic association."
+            f'Fail to reject Null  (p = {p_value:.4f} ≥ alpha = {alpha}); '
+            f'corr_coeff = {corr_coef:.4f} indicates no significant monotonic association.'
         )
 
     return StatTestResult(
-        test_name="Spearman’s correlation",
+        test_name='Spearman’s correlation',
         statistics=corr_coef,  # type: ignore # not true
         p_value=p_value,  # type: ignore # not true
-        null_hypothesis="No monotonic association between the two variables.",
-        alternative="There is a monotonic association between the two variables.",
+        null_hypothesis='No monotonic association between the two variables.',
+        alternative='There is a monotonic association between the two variables.',
         statistical_test_results=result_text,
         test_specifics={
-            "alpha": alpha,
-            "sample_size_1": len(data),
-            "sample_size_2": len(data2),
+            'alpha': alpha,
+            'sample_size_1': len(data),
+            'sample_size_2': len(data2),
         },
-        effect_size_type="spearman_rho",
+        effect_size_type='spearman_rho',
         confidence_interval=ci,
     )

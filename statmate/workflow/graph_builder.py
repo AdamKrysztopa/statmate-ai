@@ -349,6 +349,7 @@ class WorkflowGraphBuilder:
     def add_survival_tests(self) -> 'WorkflowGraphBuilder':
         """Add survival-analysis placeholders."""
         self.graph.add_node(NodeName.COX_REGRESSION, cox_regression_node)
+        self.graph.add_edge(NodeName.COX_REGRESSION, NodeName.USER_INTERVENTION)
         return self
 
     def add_summary_node(self) -> 'WorkflowGraphBuilder':
@@ -374,7 +375,6 @@ class WorkflowGraphBuilder:
             NodeName.FISHER,
             NodeName.MCNEMAR,
             NodeName.COCHRAN_ARMITAGE,
-            NodeName.COX_REGRESSION,
         ]
         for node in terminal_nodes:
             self.graph.add_edge(node, NodeName.SUMMARY)

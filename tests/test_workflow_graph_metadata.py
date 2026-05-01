@@ -22,3 +22,11 @@ def test_render_workflow_graph_returns_svg():
     assets = render_workflow_graph(base)
     assert assets['svg_base64']
     assert assets['alt']
+
+
+def test_workflow_graph_contains_regression_node():
+    from statmate.workflow.graph_metadata import get_workflow_graph
+
+    graph = get_workflow_graph()
+    node_ids = [n['id'] for n in graph['nodes']]
+    assert 'regression_node' in node_ids

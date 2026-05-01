@@ -34,11 +34,11 @@ def propose_route(
     # Use decision engine to produce a deterministic suggestion if agent provided none.
     if not primary:
         stub_state = type('Stub', (), {})()
-        setattr(stub_state, 'data_blueprint', blueprint)
-        setattr(stub_state, 'statistical_design', structural.design)
-        setattr(stub_state, 'paired', structural.design.is_paired if structural.design else None)
-        setattr(stub_state, 'design_verification', None)
-        setattr(stub_state, 'pending_routing_decision', None)
+        stub_state.data_blueprint = blueprint
+        stub_state.statistical_design = structural.design
+        stub_state.paired = structural.design.is_paired if structural.design else None
+        stub_state.design_verification = None
+        stub_state.pending_routing_decision = None
         try:
             primary = decision_engine.evaluate_routing(stub_state)
         except Exception:
