@@ -18,6 +18,7 @@ from statmate.core.model_config import (
     ModelProvider,
     ModelProviderConfig,
     MultiModelConfig,
+    resolve_model_alias,
 )
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,13 @@ class ModelProviderSystem:
         # Use defaults if not specified
         if model_name is None:
             model_name = self.config.default_model_name
+
+        # Resolve friendly aliases (e.g. 'sonnet-4.5' → 'claude-sonnet-4-5-20250514')
+        original_name = model_name
+        model_name = resolve_model_alias(model_name)
+        if model_name != original_name:
+            logger.info('Resolved model alias %s → %s', original_name, model_name)
+
         if provider is None:
             # Try to infer provider from model name
             model_info = SUPPORTED_MODELS.get(model_name)

@@ -5,9 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import logging
+
 import pandas as pd
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.models.openai import Model, ModelSettings
+from pydantic_ai.models.openai import Model
+from pydantic_ai.settings import ModelSettings
+
+logger = logging.getLogger(__name__)
 
 from statmate.agents.initial_insights_agent import (
     InitialInsightsAgentDeps,
@@ -52,6 +57,7 @@ class ColumnRoleResult:
     data_type: str
     data_design: str
     route_to_test: list[AgentNodeName]
+    raw_response: dict[str, Any] | None = None
 
 
 def build_column_role_agent(
@@ -91,16 +97,20 @@ def propose_column_roles(
         f'STRUCTURAL SUMMARY: {structural_payload}'
     )
 
-    response = agent.run_sync(
-        user_prompt=prompt,
-        deps=InitialInsightsAgentDeps(
-            user_input='Assign column roles.',
-            input_data=frame,
-            columns_decision=list(frame.columns),
-        ),
-    )
+    try:
+        response = agent.run_sync(
+            user_prompt=prompt,
+            deps=InitialInsightsAgentDeps(
+                user_input='Assign column roles.',
+                input_data=frame,
+                columns_decision=list(frame.columns),
+            ),
+        )
+        data = response.data or {}
+    except Exception as exc:
+        logger.warning('Column role agent failed, falling back to defaults: %s', exc)
+        data = {}
 
-    data = response.data or {}
     analysis_columns = list(data.get('analysis_columns') or [])
     group_column = data.get('group_column')
     data_transformation = data.get('data_transformation') or 'None'
@@ -109,9 +119,42 @@ def propose_column_roles(
     data_design = data.get('data_design') or (structural.design.design_type if structural.design else 'independent')
     route_to_test = data.get('route_to_test') or []
 
+    if not analysis_columns:
+        analysis_columns = [str(col) for col in frame.columns if pd.api.types.is_numeric_dtype(frame[col])]
+    if not analysis_columns:
+        analysis_columns = [str(col) for col in frame.columns]
+
+    if group_column and group_column in analysis_columns:
+        analysis_columns = [col for col in analysis_columns if col != group_column]
+
+    if not group_column and structural.design and structural.design.grouping_variable:
+        group_column = structural.design.grouping_variable
+
+    if data_transformation not in ('None', 'transform_independent', 'transform_categorical'):
+        data_transformation = 'None'
+        tool_arguments = {}
+
+    if data_type not in ('CATEGORICAL', 'CONTINUOUS'):
+        data_type = 'CONTINUOUS'
+
+    if data_design not in ('independent', 'paired', 'mixed'):
+        data_design = structural.design.design_type if structural.design else 'independent'
+
     if data_transformation != 'None':
-        tool_arguments = validate_tool_args(data_transformation, tool_arguments)
-        frame = TOOL_FUNCS[data_transformation](frame, **tool_arguments)
+        try:
+            tool_arguments = validate_tool_args(data_transformation, tool_arguments)
+            frame = TOOL_FUNCS[data_transformation](frame, **tool_arguments)
+        except Exception as exc:
+            logger.warning('Skipping transformation %s due to invalid tool args: %s', data_transformation, exc)
+            data_transformation = 'None'
+            tool_arguments = {}
+
+    safe_route: list[AgentNodeName] = []
+    for value in route_to_test:
+        try:
+            safe_route.append(AgentNodeName(value) if isinstance(value, str) else value)
+        except Exception:
+            logger.warning('Dropping invalid route_to_test entry: %s', value)
 
     return ColumnRoleResult(
         analysis_columns=analysis_columns,
@@ -120,5 +163,6 @@ def propose_column_roles(
         tool_arguments=tool_arguments,
         data_type=data_type,
         data_design=data_design,
-        route_to_test=[AgentNodeName(value) if isinstance(value, str) else value for value in route_to_test],
+        route_to_test=safe_route,
+        raw_response=data,
     )

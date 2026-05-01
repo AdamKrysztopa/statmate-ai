@@ -14,8 +14,11 @@ from statmate.api.models.model_config import (
     AvailableModelsResponse,
     CurrentModelResponse,
     ModelInfoResponse,
+    ModelValidationResponse,
 )
+from statmate.core.model_config import ModelProvider, resolve_model_alias
 from statmate.api.services.credential_service import CredentialService
+from statmate.core.model_config import SUPPORTED_MODELS
 from statmate.workflow.model_factory import get_default_factory, initialize_default_factory
 
 logger = logging.getLogger(__name__)
@@ -66,7 +69,7 @@ class EnvironmentResponse(BaseModel):
 
 
 @router.get('/available', response_model=AvailableModelsResponse)
-async def get_available_models(for_tools: bool = True) -> AvailableModelsResponse:
+async def get_available_models(for_tools: bool = True, include_all: bool = False) -> AvailableModelsResponse:
     """Get list of available models.
 
     Args:
@@ -77,7 +80,12 @@ async def get_available_models(for_tools: bool = True) -> AvailableModelsRespons
     """
     try:
         factory = get_default_factory()
-        models = factory.list_available_models(for_tools=for_tools)
+        if include_all:
+            models = list(SUPPORTED_MODELS.values())
+            if for_tools:
+                models = [model for model in models if model.supports_tools]
+        else:
+            models = factory.list_available_models(for_tools=for_tools)
 
         model_responses = [
             ModelInfoResponse(
@@ -163,6 +171,72 @@ async def get_model_info(model_name: str) -> ModelInfoResponse:
         raise
     except Exception as e:
         logger.error(f'Error getting model info for {model_name}: {e}', exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get('/validate', response_model=ModelValidationResponse)
+async def validate_model(
+    model_name: str,
+    provider: str | None = None,
+    for_tools: bool = True,
+) -> ModelValidationResponse:
+    """Validate whether a model is available for the current configuration.
+
+    Args:
+        model_name: Requested model name (may be an alias).
+        provider: Optional provider override to validate against.
+        for_tools: If True, require tool-calling capability.
+
+    Returns:
+        ModelValidationResponse with resolved model and validation status.
+    """
+    try:
+        factory = get_default_factory()
+        resolved = resolve_model_alias(model_name)
+        model_info = factory.get_model_info(resolved)
+        if not model_info:
+            return ModelValidationResponse(
+                requested_model=model_name,
+                resolved_model=resolved,
+                provider=provider or 'unknown',
+                valid=False,
+                error=f'Model {resolved} not found in supported models',
+            )
+
+        resolved_provider = model_info.provider.value
+        if provider:
+            try:
+                provider_enum = ModelProvider(provider)
+            except ValueError:
+                return ModelValidationResponse(
+                    requested_model=model_name,
+                    resolved_model=resolved,
+                    provider=provider,
+                    valid=False,
+                    error=f'Provider {provider} is not supported',
+                )
+            if provider_enum != model_info.provider:
+                return ModelValidationResponse(
+                    requested_model=model_name,
+                    resolved_model=resolved,
+                    provider=provider,
+                    valid=False,
+                    error=(
+                        f'Model {resolved} belongs to provider {resolved_provider}, '
+                        f'not {provider_enum.value}'
+                    ),
+                )
+
+        is_valid, error = factory.multi_model_config.validate_model(resolved, for_tools=for_tools)
+        return ModelValidationResponse(
+            requested_model=model_name,
+            resolved_model=resolved,
+            provider=resolved_provider,
+            valid=is_valid,
+            error=error or None,
+        )
+    except Exception as e:
+        logger.error(f'Error validating model {model_name}: {e}', exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

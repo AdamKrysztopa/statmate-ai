@@ -10,6 +10,7 @@ from statmate.api.dependencies import get_current_user_optional
 from statmate.api.models.dataset import (
     ColumnRenameRequest,
     DatasetDescriptionUpdate,
+    DatasetPurgeResponse,
     DatasetPreviewResponse,
     DatasetResponse,
     DatasetUploadResponse,
@@ -40,7 +41,7 @@ async def upload_dataset(
         HTTPException: If file format is unsupported or upload fails
     """
     # Validate file extension
-    if not DatasetService.is_supported_extension(file.filename):
+    if not file.filename or not DatasetService.is_supported_extension(file.filename):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f'Unsupported file format. Allowed: {", ".join(sorted(DatasetService.SUPPORTED_EXTENSIONS))}',
@@ -55,7 +56,7 @@ async def upload_dataset(
             file=file.file,
             original_filename=file.filename,
             description=description,
-            user_id=current_user.id if current_user else None,
+            user_id=str(current_user.id) if current_user else None,
         )
 
         return DatasetUploadResponse(
@@ -91,10 +92,32 @@ async def list_datasets(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
 
     if current_user:
-        datasets = DatasetService.list_user_datasets(db, current_user.id, skip=skip, limit=limit)
+        datasets = DatasetService.list_user_datasets(db, str(current_user.id), skip=skip, limit=limit)
     else:
         datasets = DatasetService.list_datasets(db, skip=skip, limit=limit)
-    return [DatasetResponse.model_validate(d) for d in datasets]
+
+    responses: list[DatasetResponse] = []
+    for dataset in datasets:
+        payload = DatasetResponse.model_validate(dataset)
+        payload.file_missing = not DatasetService.dataset_file_exists(dataset)
+        responses.append(payload)
+
+    return responses
+
+
+@router.delete('/purge-missing', response_model=DatasetPurgeResponse)
+async def purge_missing_datasets(
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> DatasetPurgeResponse:
+    """Delete datasets whose files are missing from storage."""
+    if settings.AUTH_REQUIRED and not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
+
+    deleted_ids = DatasetService.purge_missing_datasets(
+        db, user_id=str(current_user.id) if current_user else None
+    )
+    return DatasetPurgeResponse(deleted_count=len(deleted_ids), deleted_ids=deleted_ids)
 
 
 @router.get('/{dataset_id}', response_model=DatasetResponse)
@@ -118,7 +141,7 @@ async def get_dataset(
     if settings.AUTH_REQUIRED and not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
 
-    dataset = DatasetService.get_dataset(db, dataset_id, user_id=current_user.id if current_user else None)
+    dataset = DatasetService.get_dataset(db, dataset_id, user_id=str(current_user.id) if current_user else None)
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Dataset not found')
 
@@ -148,9 +171,13 @@ async def preview_dataset(
     if settings.AUTH_REQUIRED and not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
 
-    preview = DatasetService.get_dataset_preview(
-        db, dataset_id, num_rows=num_rows, user_id=current_user.id if current_user else None
-    )
+    try:
+        preview = DatasetService.get_dataset_preview(
+            db, dataset_id, num_rows=num_rows, user_id=str(current_user.id) if current_user else None
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=str(exc))
+
     if not preview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Dataset not found')
 
@@ -172,7 +199,7 @@ async def update_dataset_description(
         db=db,
         dataset_id=dataset_id,
         description=payload.description,
-        user_id=current_user.id if current_user else None,
+        user_id=str(current_user.id) if current_user else None,
     )
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Dataset not found')
@@ -198,7 +225,7 @@ async def delete_dataset(
     if settings.AUTH_REQUIRED and not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
 
-    deleted = DatasetService.delete_dataset(db, dataset_id, user_id=current_user.id if current_user else None)
+    deleted = DatasetService.delete_dataset(db, dataset_id, user_id=str(current_user.id) if current_user else None)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Dataset not found')
 
@@ -226,7 +253,7 @@ async def rename_columns(
             db,
             dataset_id,
             renames,
-            user_id=current_user.id if current_user else None,
+            user_id=str(current_user.id) if current_user else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))

@@ -17,6 +17,7 @@ from statmate.core.model_config import (
     ModelProvider,
     MultiModelConfig,
     create_default_multi_model_config,
+    resolve_model_alias,
 )
 from statmate.core.model_provider import create_model_provider_system
 
@@ -168,7 +169,7 @@ class ModelFactory:
                 return reasoning_models[0].name
             # Fallback to config default
             return self.multi_model_config.default_model_name
-        return model_name
+        return resolve_model_alias(model_name)
 
     def _is_restricted_model(self, model_name: str) -> bool:
         """Check if a model has parameter restrictions.

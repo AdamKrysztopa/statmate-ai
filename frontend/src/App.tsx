@@ -225,9 +225,49 @@ function App() {
     }
   };
 
+  const handleDeleteDataset = async (datasetId: string, datasetName?: string) => {
+    const confirmDelete = window.confirm(
+      `Delete dataset${datasetName ? ` "${datasetName}"` : ''}? This will also remove related analyses.`
+    );
+    if (!confirmDelete) return;
+    try {
+      await api.deleteDataset(datasetId);
+      if (selectedDatasetId === datasetId) {
+        setSelectedDatasetId('');
+        setPreview(undefined);
+        setSelectedColumns([]);
+        setDatasetNotes('');
+      }
+      await loadDatasets();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const handlePurgeMissing = async () => {
+    try {
+      const result = await api.purgeMissingDatasets();
+      setError(
+        result.deleted_count
+          ? `Purged ${result.deleted_count} datasets with missing files.`
+          : 'No broken datasets found.'
+      );
+      if (selectedDatasetId && result.deleted_ids.includes(selectedDatasetId)) {
+        setSelectedDatasetId('');
+        setPreview(undefined);
+        setSelectedColumns([]);
+        setDatasetNotes('');
+      }
+      await loadDatasets();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   const loadModelMeta = async () => {
     try {
-      const res = await api.availableModels();
+      // Only fetch models from configured providers (include_all=false)
+      const res = await api.availableModels(false);
       setAvailableModels(res.models || []);
       if (res.default_model) setModelName((prev) => prev || res.default_model);
       if (res.default_provider) setProvider((prev) => prev || res.default_provider);
@@ -342,7 +382,14 @@ function App() {
       setRenameDrafts({});
       await loadAnalyses(id);
     } catch (e) {
-      setError((e as Error).message);
+      const message = (e as Error).message;
+      if (message.toLowerCase().includes('dataset file missing')) {
+        setPreview(undefined);
+        setSelectedColumns([]);
+        setError('Dataset file is missing from storage. Re-upload the file to restore the preview.');
+      } else {
+        setError(message);
+      }
     }
   };
 
@@ -493,6 +540,8 @@ function App() {
         groq_quota: credentialInputs.groq_quota ? Number(credentialInputs.groq_quota) : undefined,
       });
       setConfiguredProviders(res.configured_providers || []);
+      await loadModelMeta();
+      await loadCredentialMeta();
     } catch (e) {
       setError((e as Error).message);
     }
@@ -533,7 +582,6 @@ function App() {
         .catch(() => setToken(undefined));
       loadDatasets();
       connect();
-      loadModelMeta();
       loadCredentialMeta();
     } else {
       localStorage.removeItem('statmate-token');
@@ -544,6 +592,11 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    loadModelMeta();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api]);
 
   useEffect(() => {
     const shouldStream = streaming || analysisStatus?.status === 'running' || analysisStatus?.status === 'pending';
@@ -765,11 +818,18 @@ function App() {
   }, [routeOverride, pendingRoutingDecision]);
 
   const providerOptions = useMemo(() => {
-    if (availableModels.length) {
-      return Array.from(new Set(availableModels.map((m) => m.provider)));
+    // Only show providers that are actually configured with API keys
+    if (configuredProviders.length) {
+      return configuredProviders;
     }
+    // Fallback to default list only if no providers are configured yet
     return ['openai', 'anthropic', 'google', 'groq', 'ollama'];
-  }, [availableModels]);
+  }, [configuredProviders]);
+
+  const modelOptions = useMemo(() => {
+    if (!provider) return [];
+    return availableModels.filter((m) => m.provider === provider);
+  }, [availableModels, provider]);
 
   const connectionLabel = health || (error && !token ? error : 'API status unknown');
 
@@ -1092,6 +1152,12 @@ function App() {
                     <h2 className="text-3xl font-bold tracking-tight">Dataset library</h2>
                     <div className="flex items-center gap-2">
                       <button
+                        onClick={handlePurgeMissing}
+                        className="rounded-full border border-rose-500/60 px-3 py-1 text-xs font-semibold text-rose-200"
+                      >
+                        Purge broken
+                      </button>
+                      <button
                         onClick={loadDatasets}
                         className="rounded-full border border-slate-800/70 px-3 py-1 text-xs font-semibold text-cyan-400"
                       >
@@ -1152,26 +1218,42 @@ function App() {
                       {datasets.map((ds) => {
                         const active = selectedDatasetId === ds.id;
                         return (
-                          <button
+                          <div
                             key={ds.id}
-                            onClick={() => selectDataset(ds.id)}
                             className={`group flex w-full flex-col rounded-2xl border p-4 text-left transition ${active
-                                ? 'border-cyan-500/70 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
-                                : theme === 'dark'
-                                  ? 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
-                                  : 'border-slate-200 bg-white hover:border-slate-300'
+                              ? 'border-cyan-500/70 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
+                              : theme === 'dark'
+                                ? 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
+                                : 'border-slate-200 bg-white hover:border-slate-300'
                               }`}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-semibold text-slate-100">{ds.original_filename}</span>
-                              {active && <CheckCircle2 size={16} className="text-cyan-400" />}
+                            <button onClick={() => selectDataset(ds.id)} className="w-full text-left">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-semibold text-slate-100">
+                                  {ds.original_filename}
+                                  {ds.file_missing && (
+                                    <span className="ml-2 rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-rose-200">
+                                      missing
+                                    </span>
+                                  )}
+                                </span>
+                                {active && <CheckCircle2 size={16} className="text-cyan-400" />}
+                              </div>
+                              <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+                                <span>{ds.row_count ? `${ds.row_count} rows` : 'Row count pending'}</span>
+                                <span>•</span>
+                                <span>{ds.id.slice(0, 6)}…</span>
+                              </div>
+                            </button>
+                            <div className="mt-3 flex items-center justify-end">
+                              <button
+                                onClick={() => handleDeleteDataset(ds.id, ds.original_filename)}
+                                className="rounded-full border border-rose-500/60 px-2 py-1 text-[11px] font-semibold text-rose-200"
+                              >
+                                Delete
+                              </button>
                             </div>
-                            <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
-                              <span>{ds.row_count ? `${ds.row_count} rows` : 'Row count pending'}</span>
-                              <span>•</span>
-                              <span>{ds.id.slice(0, 6)}…</span>
-                            </div>
-                          </button>
+                          </div>
                         );
                       })}
                       {!datasets.length && (
@@ -1191,12 +1273,19 @@ function App() {
                         <h3 className="text-lg font-semibold">{preview.original_filename}</h3>
                       </div>
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleDeleteDataset(preview.dataset_id, preview.original_filename)}
+                          className="rounded-full border border-rose-500/60 px-3 py-1 text-xs font-semibold text-rose-200"
+                        >
+                          Delete dataset
+                        </button>
                         <div className="flex items-center gap-2 rounded-full border border-slate-800/50 px-3 py-1 text-xs text-slate-400">
                           <Settings size={14} />
                           <select
                             value={provider}
                             onChange={(e) => setProvider(e.target.value)}
                             className="bg-transparent text-sm outline-none"
+                            disabled={configuredProviders.length === 0}
                           >
                             {providerOptions.map((p) => (
                               <option key={p} value={p}>
@@ -1204,14 +1293,33 @@ function App() {
                               </option>
                             ))}
                           </select>
+                          {configuredProviders.length === 0 && (
+                            <span className="text-amber-400 text-[10px] ml-1">Configure keys ↓</span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 rounded-full border border-slate-800/50 px-3 py-1 text-xs text-slate-400">
-                          <input
-                            value={modelName}
-                            onChange={(e) => setModelName(e.target.value)}
-                            className="bg-transparent text-sm outline-none"
-                            placeholder="Model name"
-                          />
+                          {modelOptions.length ? (
+                            <select
+                              value={modelName}
+                              onChange={(e) => setModelName(e.target.value)}
+                              className="bg-transparent text-sm outline-none"
+                              disabled={configuredProviders.length === 0}
+                            >
+                              {modelOptions.map((model) => (
+                                <option key={model.name} value={model.name}>
+                                  {model.display_name || model.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              value={modelName}
+                              onChange={(e) => setModelName(e.target.value)}
+                              className="bg-transparent text-sm outline-none"
+                              placeholder={configuredProviders.length === 0 ? "Configure API key" : "Model name"}
+                              disabled={configuredProviders.length === 0}
+                            />
+                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="flex items-center gap-2 rounded-full border border-slate-700/80 px-3 py-1 text-xs text-slate-300">
@@ -1226,13 +1334,15 @@ function App() {
                           <span className="text-[11px] text-slate-500">{routeOverrideHint}</span>
                           <button
                             onClick={() => handleRunAnalysis(false)}
-                            className="flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-600 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20"
+                            disabled={configuredProviders.length === 0}
+                            className="flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-600 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Zap size={16} /> Run new version
                           </button>
                           <button
                             onClick={() => handleRunAnalysis(true)}
-                            className="rounded-full border border-amber-400/60 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-500/10"
+                            disabled={configuredProviders.length === 0}
+                            className="rounded-full border border-amber-400/60 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Overwrite latest
                           </button>
@@ -1245,6 +1355,14 @@ function App() {
                         <span className="rounded-full bg-slate-800/60 px-3 py-1">{preview.column_names.length} columns</span>
                         <span className="rounded-full bg-slate-800/60 px-3 py-1">Select columns below</span>
                       </div>
+                      {configuredProviders.length === 0 && (
+                        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+                          <p className="font-semibold">No API keys configured</p>
+                          <p className="text-xs mt-1">
+                            Configure your API keys in the "Provider credentials" section below to enable analysis.
+                          </p>
+                        </div>
+                      )}
                       <div className="mb-4">
                         <div className="mb-1 flex items-center justify-between text-xs uppercase tracking-[0.18em] text-slate-500">
                           <span>Dataset notes</span>
@@ -1255,8 +1373,8 @@ function App() {
                           onChange={(e) => setDatasetNotes(e.target.value)}
                           placeholder="Add collection context, quirks, or exclusions..."
                           className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${theme === 'dark'
-                              ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500'
-                              : 'border-slate-200 bg-white focus:border-cyan-500'
+                            ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500'
+                            : 'border-slate-200 bg-white focus:border-cyan-500'
                             }`}
                           rows={3}
                         />
@@ -1273,8 +1391,8 @@ function App() {
                                 )
                               }
                               className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${active
-                                  ? 'border-cyan-500 bg-cyan-500/10 text-cyan-200 shadow-cyan-500/10'
-                                  : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                                ? 'border-cyan-500 bg-cyan-500/10 text-cyan-200 shadow-cyan-500/10'
+                                : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
                                 }`}
                               type="button"
                             >
@@ -1553,10 +1671,10 @@ function App() {
                         </div>
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-bold ${streaming
-                              ? 'bg-amber-500/20 text-amber-300'
-                              : analysisStatus?.status === 'completed' || analysisResults
-                                ? 'bg-emerald-500/20 text-emerald-300'
-                                : 'bg-slate-800 text-slate-300'
+                            ? 'bg-amber-500/20 text-amber-300'
+                            : analysisStatus?.status === 'completed' || analysisResults
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-slate-800 text-slate-300'
                             }`}
                         >
                           {streaming ? 'Running' : analysisStatus?.status || analysisResults?.status || 'Ready'}
@@ -1575,8 +1693,8 @@ function App() {
                               <button
                                 onClick={() => setRouteOverride(pendingRoutingDecision.primary || '')}
                                 className={`rounded-lg border px-3 py-2 text-left text-sm font-semibold ${routeOverride === pendingRoutingDecision.primary
-                                    ? 'border-cyan-400 bg-cyan-400/20 text-cyan-100'
-                                    : 'border-slate-700/80 text-slate-200 hover:border-cyan-400/70'
+                                  ? 'border-cyan-400 bg-cyan-400/20 text-cyan-100'
+                                  : 'border-slate-700/80 text-slate-200 hover:border-cyan-400/70'
                                   }`}
                               >
                                 Primary: {pendingRoutingDecision.primary}
@@ -1587,8 +1705,8 @@ function App() {
                                 key={alt}
                                 onClick={() => setRouteOverride(alt)}
                                 className={`rounded-lg border px-3 py-2 text-left text-sm ${routeOverride === alt
-                                    ? 'border-cyan-400 bg-cyan-400/20 text-cyan-100'
-                                    : 'border-slate-700/80 text-slate-200 hover:border-cyan-400/70'
+                                  ? 'border-cyan-400 bg-cyan-400/20 text-cyan-100'
+                                  : 'border-slate-700/80 text-slate-200 hover:border-cyan-400/70'
                                   }`}
                               >
                                 Alternative: {alt}
@@ -1771,8 +1889,8 @@ function App() {
                             onChange={(e) => setCommentDraft(e.target.value)}
                             placeholder="Add interpretation, caveats, or next steps..."
                             className={`min-h-[120px] w-full rounded-xl border px-3 py-2 text-sm outline-none ${theme === 'dark'
-                                ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500'
-                                : 'border-slate-200 bg-white focus:border-cyan-500'
+                              ? 'border-slate-800 bg-slate-900/70 focus:border-cyan-500'
+                              : 'border-slate-200 bg-white focus:border-cyan-500'
                               }`}
                           />
                         </div>
@@ -1912,8 +2030,8 @@ function App() {
                   </button>
                 </div>
                 <pre className={`h-[70vh] overflow-auto rounded-2xl border p-6 text-xs leading-relaxed ${theme === 'dark'
-                    ? 'border-slate-800 bg-slate-950 text-emerald-200'
-                    : 'border-slate-200 bg-slate-900 text-slate-50'
+                  ? 'border-slate-800 bg-slate-950 text-emerald-200'
+                  : 'border-slate-200 bg-slate-900 text-slate-50'
                   }`}>
                   {logContent || '// Waiting for execution logs...'}
                 </pre>
@@ -1951,8 +2069,8 @@ function App() {
                         {idx !== trace.length - 1 && <div className="absolute left-[10px] top-5 h-full w-[1px] bg-slate-800" />}
                         <div
                           className={`absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-full border-2 ${isCurrent && streaming
-                              ? 'border-amber-400 bg-amber-500/10'
-                              : 'border-cyan-400 bg-cyan-500/10'
+                            ? 'border-amber-400 bg-amber-500/10'
+                            : 'border-cyan-400 bg-cyan-500/10'
                             }`}
                         >
                           <CheckCircle2 size={12} className={isCurrent && streaming ? 'text-amber-300 animate-pulse' : 'text-cyan-300'} />
@@ -1988,12 +2106,12 @@ const NavItem = ({ icon, label, active, isOpen, onClick, theme }: NavItemProps) 
   <button
     onClick={onClick}
     className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold transition ${active
-        ? theme === 'dark'
-          ? 'bg-cyan-500/10 text-cyan-300'
-          : 'bg-cyan-50 text-cyan-600'
-        : theme === 'dark'
-          ? 'text-slate-400 hover:bg-slate-800 hover:text-white'
-          : 'text-slate-500 hover:bg-slate-100'
+      ? theme === 'dark'
+        ? 'bg-cyan-500/10 text-cyan-300'
+        : 'bg-cyan-50 text-cyan-600'
+      : theme === 'dark'
+        ? 'text-slate-400 hover:bg-slate-800 hover:text-white'
+        : 'text-slate-500 hover:bg-slate-100'
       }`}
   >
     <span className={active ? 'scale-110' : ''}>{icon}</span>

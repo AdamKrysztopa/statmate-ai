@@ -6,6 +6,7 @@ export type Dataset = {
   row_count?: number;
   created_at?: string;
   description?: string | null;
+  file_missing?: boolean | null;
 };
 export type DatasetPreview = {
   dataset_id: string;
@@ -236,6 +237,23 @@ export class ApiClient {
     return res.json();
   }
 
+  async deleteDataset(datasetId: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/datasets/${datasetId}`, {
+      method: 'DELETE',
+      headers: this.headers(false),
+    });
+    if (!res.ok) throw await this.error(res);
+  }
+
+  async purgeMissingDatasets(): Promise<{ deleted_count: number; deleted_ids: string[] }> {
+    const res = await fetch(`${this.baseUrl}/datasets/purge-missing`, {
+      method: 'DELETE',
+      headers: this.headers(false),
+    });
+    if (!res.ok) throw await this.error(res);
+    return res.json();
+  }
+
   async runAnalysis(args: {
     dataset_id: string;
     selected_columns?: string[];
@@ -337,8 +355,9 @@ export class ApiClient {
     return res.json();
   }
 
-  async availableModels(): Promise<AvailableModelsResponse> {
-    const res = await fetch(`${this.baseUrl}/models/available`, { headers: this.headers(false) });
+  async availableModels(includeAll = false): Promise<AvailableModelsResponse> {
+    const qs = includeAll ? '?include_all=true' : '';
+    const res = await fetch(`${this.baseUrl}/models/available${qs}`, { headers: this.headers(false) });
     if (!res.ok) throw await this.error(res);
     return res.json();
   }

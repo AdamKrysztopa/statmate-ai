@@ -463,8 +463,13 @@ def call_test_agent(
             assumption_entry = {**diag, 'node': test_agent.name, 'timestamp': datetime.utcnow().isoformat()}
             state.add_assumption_entry(assumption_entry)
 
+        # Build a descriptive prompt – Anthropic rejects empty text content blocks.
+        agent_prompt = (
+            f'Run the {test_agent.name} on the provided data. '
+            f'Alpha={alpha}. Return structured results.'
+        )
         result = execute_with_backoff(
-            lambda: run_sync_agent(test_agent, user_prompt='', deps=deps),
+            lambda: run_sync_agent(test_agent, user_prompt=agent_prompt, deps=deps),
             on_retry=lambda attempt, delay, exc: state.add_step(
                 step='Rate limit backoff',
                 detail=f'Retrying {test_agent.name} in {delay:.1f}s (attempt {attempt})',
@@ -587,10 +592,21 @@ def call_initialization_agent(state: WorkflowState) -> WorkflowState:
             model=model,
             model_settings=settings,
         )
+        if roles.raw_response:
+            state.add_step(
+                step='Initialization Agent (raw)',
+                detail='Captured raw column role agent output.',
+                data={'response': roles.raw_response},
+            )
 
         # Apply transformation if any
         if roles.data_transformation != 'None':
-            state.df = TOOL_FUNCS[roles.data_transformation](state.df, **roles.tool_arguments)
+            try:
+                state.df = TOOL_FUNCS[roles.data_transformation](state.df, **roles.tool_arguments)
+            except Exception as exc:
+                logger.warning('Failed to apply transformation %s: %s', roles.data_transformation, exc)
+                roles.data_transformation = 'None'
+                roles.tool_arguments = {}
 
         inp_df = state.df if isinstance(state.df, pd.DataFrame) else pd.DataFrame(state.df)
 
