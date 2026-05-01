@@ -10,6 +10,12 @@ from statmate.core.config import default_config
 from statmate.core.exceptions import DataValidationError
 from statmate.core.validation import validate_paired_data
 from statmate.statistical_core.base import StatTestResult
+from statmate.statistical_core.effect_size import (
+    ci_mean_diff,
+    hedges_g,
+    rank_biserial,
+    wilcoxon_rank_biserial,
+)
 
 
 def _assert_design(design_type: str | None, expected: Literal["paired", "independent"]) -> None:
@@ -35,6 +41,7 @@ def ttest_rel_test(
         data1: First paired sample.
         data2: Second paired sample.
         alpha: Significance level. If None, uses config default.
+        design_type: Optional design type hint ('paired', 'independent', or 'mixed').
 
     Returns:
         StatTestResult containing test outcomes.
@@ -61,6 +68,12 @@ def ttest_rel_test(
     statistic = float(result_typed.statistic)
     p_value = float(result_typed.pvalue)
 
+    differences = data1 - data2
+    len(differences)
+    mean_diff = float(np.mean(differences))
+    std_diff = float(np.std(differences, ddof=1))
+    mean_diff / std_diff if std_diff != 0 else 0.0
+
     if p_value < alpha:
         result_text = f"We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha})."
     else:
@@ -74,6 +87,7 @@ def ttest_rel_test(
         alternative="The mean difference between paired samples is not zero.",
         statistical_test_results=result_text,
         test_specifics={"alpha": alpha, "sample_size": len(data1)},
+        effect_size_type="cohen_d",
     )
 
 
@@ -87,6 +101,7 @@ def wilcoxon_test(
         data1: First paired sample.
         data2: Second paired sample.
         alpha: Significance level. If None, uses config default.
+        design_type: Optional design type hint ('paired', 'independent', or 'mixed').
 
     Returns:
         StatTestResult containing test outcomes.
@@ -113,6 +128,9 @@ def wilcoxon_test(
     statistic = float(result_typed.statistic)
     p_value = float(result_typed.pvalue)
 
+    n_obs = len(data1)
+    wilcoxon_rank_biserial(statistic, n_obs)
+
     if p_value < alpha:
         result_text = f"We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha})."
     else:
@@ -126,6 +144,7 @@ def wilcoxon_test(
         alternative="The distribution of the differences between paired samples is not symmetric about zero.",
         statistical_test_results=result_text,
         test_specifics={"alpha": alpha, "sample_size": len(data1)},
+        effect_size_type="rank_biserial_r",
     )
 
 
@@ -150,6 +169,9 @@ def ttest_ind_test(
     statistic = results.statistic  # type: ignore # not true
     p_value = results.pvalue  # type: ignore # not true
 
+    hedges_g(data1, data2)
+    ci = ci_mean_diff(data1, data2, alpha)
+
     test_type = "Student's t-test" if equal_var else "Welch's t-test"
     if p_value < alpha:
         result_text = f"We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}) using {test_type}."
@@ -169,6 +191,8 @@ def ttest_ind_test(
             "sample_size_1": len(data1),
             "sample_size_2": len(data2),
         },
+        effect_size_type="hedges_g",
+        confidence_interval=ci,
     )
 
 
@@ -190,6 +214,7 @@ def mannwhitneyu_test(
     """
     _assert_design(design_type, "independent")
     statistic, p_value = scipy.stats.mannwhitneyu(data1, data2, alternative=alternative)
+    rank_biserial(float(statistic), len(data1), len(data2))
     if p_value < alpha:
         result_text = f"We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha})."
     else:
@@ -208,6 +233,7 @@ def mannwhitneyu_test(
             "sample_size_1": len(data1),
             "sample_size_2": len(data2),
         },
+        effect_size_type="rank_biserial_r",
     )
 
 
@@ -221,6 +247,7 @@ def welch_t_test(
         data1 (np.ndarray): First independent sample.
         data2 (np.ndarray): Second independent sample.
         alpha (float, optional): Significance level. Defaults to 0.05.
+        design_type: Optional design type hint ('paired', 'independent', or 'mixed').
 
     Returns:
         StatTestResult: A standardized result object containing:
@@ -236,6 +263,9 @@ def welch_t_test(
     results = scipy.stats.ttest_ind(data1, data2, equal_var=False, nan_policy="propagate")
     statistic = results.statistic  # type: ignore # not true
     p_value = results.pvalue  # type: ignore # not true
+
+    hedges_g(data1, data2)
+    ci = ci_mean_diff(data1, data2, alpha)
 
     if p_value < alpha:
         result_text = f"We must reject the null hypothesis (p = {p_value:.4f} < alpha = {alpha}); "
@@ -257,4 +287,6 @@ def welch_t_test(
             "sample_size_2": len(data2),
             "equal_variance_assumed": False,
         },
+        effect_size_type="hedges_g",
+        confidence_interval=ci,
     )

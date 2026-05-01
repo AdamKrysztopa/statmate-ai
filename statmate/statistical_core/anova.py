@@ -12,13 +12,32 @@ from statsmodels.stats.multitest import multipletests
 
 from statmate.core.config import default_config
 from statmate.statistical_core.base import StatTestResult
+from statmate.statistical_core.effect_size import (
+    epsilon_squared_kruskal,
+    eta_squared,
+    kendall_w_friedman,
+)
 
 
 def anova_one_way_test(*groups: np.ndarray, alpha: float | None = None) -> StatTestResult:
+    """Run a one-way ANOVA F-test across two or more independent groups.
+
+    Args:
+        *groups: Arrays of observations, one per group.
+        alpha: Significance level. If None, uses config default.
+
+    Returns:
+        StatTestResult containing test outcomes.
+    """
     if alpha is None:
         alpha = default_config.statistical.default_alpha
 
     statistic, p_value = scipy.stats.f_oneway(*groups)
+    n_groups = len(groups)
+    n_total = sum(len(g) for g in groups)
+    df_between = n_groups - 1
+    df_within = n_total - n_groups
+    eta_squared(float(statistic), df_between, df_within)
     if p_value < alpha:
         result_text = (
             f"We must reject the null hypothesis (p = {p_value:.4f} < α = {alpha}); at least one group mean differs."
@@ -40,6 +59,7 @@ def anova_one_way_test(*groups: np.ndarray, alpha: float | None = None) -> StatT
             "sample_sizes": [len(g) for g in groups],
             "number_of_groups": len(groups),
         },
+        effect_size_type="eta_squared",
     )
 
 
@@ -160,6 +180,8 @@ def kruskal_wallis_test(
         raise ValueError("Kruskal-Wallis H-test requires at least two groups.")
 
     statistic, p_value = scipy.stats.kruskal(*cleaned, nan_policy="omit")
+    n_total = sum(len(g) for g in cleaned)
+    epsilon_squared_kruskal(float(statistic), n_total)
 
     if p_value < alpha:
         decision = f"We must reject the null hypothesis (p = {p_value:.4f} < α = {alpha}); at least one group differs."
@@ -187,6 +209,7 @@ def kruskal_wallis_test(
             "posthoc": posthoc_results,
             "p_adjust": p_adjust,
         },
+        effect_size_type="epsilon_squared",
     )
 
 
@@ -274,6 +297,8 @@ def friedman_test(
         raise ValueError("Friedman test requires at least three paired samples.")
 
     statistic, p_value = scipy.stats.friedmanchisquare(*arrays)
+    k_cond = len(arrays)
+    kendall_w_friedman(float(statistic), n_subjects, k_cond)
     if p_value < alpha:
         decision = (
             f"We must reject the null hypothesis (p = {p_value:.4f} < α = {alpha}); at least one condition differs."
@@ -301,6 +326,7 @@ def friedman_test(
             "subjects": n_subjects,
             "posthoc_guidance": posthoc_guidance,
         },
+        effect_size_type="kendall_w",
     )
 
 
