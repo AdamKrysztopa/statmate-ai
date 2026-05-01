@@ -7,7 +7,6 @@ from typing import BinaryIO
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from config.settings import settings
 from database.models import Analysis, AnalysisStatus, Dataset, ScheduledTask
 from statmate.api.services.storage_service import StorageService
 
@@ -18,16 +17,16 @@ class DatasetService:
     """Service for dataset management operations."""
 
     SUPPORTED_EXTENSIONS = {
-        '.csv',
-        '.tsv',
-        '.txt',
-        '.xlsx',
-        '.xls',
-        '.json',
-        '.parquet',
-        '.md',
-        '.doc',
-        '.docx',
+        ".csv",
+        ".tsv",
+        ".txt",
+        ".xlsx",
+        ".xls",
+        ".json",
+        ".parquet",
+        ".md",
+        ".doc",
+        ".docx",
     }
 
     @staticmethod
@@ -86,7 +85,7 @@ class DatasetService:
         db.commit()
         db.refresh(dataset)
 
-        logger.info(f'Created dataset: {dataset.id} ({original_filename})')
+        logger.info(f"Created dataset: {dataset.id} ({original_filename})")
         return dataset
 
     @staticmethod
@@ -94,34 +93,34 @@ class DatasetService:
         """Load an uploaded file into a DataFrame based on extension."""
         buffer = pd.io.common.BytesIO(file_content)  # type: ignore[attr-defined]
 
-        if suffix == '.csv':
+        if suffix == ".csv":
             return pd.read_csv(buffer)
-        if suffix == '.tsv':
+        if suffix == ".tsv":
             buffer.seek(0)
-            return pd.read_csv(buffer, sep='\t')
-        if suffix == '.txt':
+            return pd.read_csv(buffer, sep="\t")
+        if suffix == ".txt":
             buffer.seek(0)
             try:
-                return pd.read_csv(buffer, sep=None, engine='python')  # auto-detect delimiter
+                return pd.read_csv(buffer, sep=None, engine="python")  # auto-detect delimiter
             except Exception:
-                text = file_content.decode('utf-8', errors='replace')
+                text = file_content.decode("utf-8", errors="replace")
                 lines = [line for line in text.splitlines() if line.strip()] or [text]
-                return pd.DataFrame({'text': lines})
-        if suffix in {'.xlsx', '.xls'}:
+                return pd.DataFrame({"text": lines})
+        if suffix in {".xlsx", ".xls"}:
             buffer.seek(0)
             return pd.read_excel(buffer)
-        if suffix == '.json':
+        if suffix == ".json":
             buffer.seek(0)
             return pd.read_json(buffer)
-        if suffix == '.parquet':
+        if suffix == ".parquet":
             buffer.seek(0)
             return pd.read_parquet(buffer)
-        if suffix in {'.md', '.doc', '.docx'}:
-            text = file_content.decode('utf-8', errors='replace')
+        if suffix in {".md", ".doc", ".docx"}:
+            text = file_content.decode("utf-8", errors="replace")
             lines = [line for line in text.splitlines() if line.strip()] or [text]
-            return pd.DataFrame({'text': lines})
+            return pd.DataFrame({"text": lines})
 
-        msg = f'Unsupported file format: {suffix}'
+        msg = f"Unsupported file format: {suffix}"
         raise ValueError(msg)
 
     @classmethod
@@ -225,13 +224,13 @@ class DatasetService:
         try:
             StorageService.delete_upload(str(dataset.filename))
         except Exception as e:
-            logger.warning(f'Could not delete file {dataset.filename}: {e}')
+            logger.warning(f"Could not delete file {dataset.filename}: {e}")
 
         # Delete database record (cascades to analyses and tasks)
         db.delete(dataset)
         db.commit()
 
-        logger.info(f'Deleted dataset: {dataset_id}')
+        logger.info(f"Deleted dataset: {dataset_id}")
         return True
 
     @staticmethod
@@ -262,17 +261,17 @@ class DatasetService:
 
         # Get preview rows
         preview_df = df.head(num_rows)
-        preview_data = preview_df.to_dict(orient='records')
+        preview_data = preview_df.to_dict(orient="records")
 
         return {
-            'dataset_id': dataset.id,
-            'original_filename': dataset.original_filename,
-            'row_count': dataset.row_count,
-            'column_names': dataset.column_names,
-            'data_types': dataset.data_types,
-            'preview_data': preview_data,
-            'preview_rows': len(preview_data),
-            'description': dataset.description,
+            "dataset_id": dataset.id,
+            "original_filename": dataset.original_filename,
+            "row_count": dataset.row_count,
+            "column_names": dataset.column_names,
+            "data_types": dataset.data_types,
+            "preview_data": preview_data,
+            "preview_rows": len(preview_data),
+            "description": dataset.description,
         }
 
     @staticmethod
@@ -304,19 +303,19 @@ class DatasetService:
             return None
 
         if not renames:
-            raise ValueError('No column renames provided')
+            raise ValueError("No column renames provided")
 
         existing_cols = dataset.column_names or []
         missing = [col for col in renames.keys() if col not in existing_cols]
         if missing:
-            raise ValueError(f'Columns not found: {", ".join(missing)}')
+            raise ValueError(f"Columns not found: {', '.join(missing)}")
 
         new_names = [renames.get(str(col), str(col)) for col in existing_cols]
         if len(set(new_names)) != len(new_names):
-            raise ValueError('Duplicate target column names detected')
+            raise ValueError("Duplicate target column names detected")
 
-        if any((name is None) or (str(name).strip() == '') for name in new_names):
-            raise ValueError('Column names cannot be empty')
+        if any((name is None) or (str(name).strip() == "") for name in new_names):
+            raise ValueError("Column names cannot be empty")
 
         # Read dataset
         file_path = DatasetService._resolve_dataset_path(dataset)
@@ -334,7 +333,9 @@ class DatasetService:
         tasks = db.query(ScheduledTask).filter(ScheduledTask.dataset_id == dataset_id).all()
         for task in tasks:
             if task.selected_columns:  # type: ignore[truthy-function]
-                task.selected_columns = [renames.get(str(col), str(col)) for col in task.selected_columns]  # type: ignore[assignment]
+                task.selected_columns = [  # type: ignore[assignment]
+                    renames.get(str(col), str(col)) for col in task.selected_columns
+                ]
 
         # Update pending/running analyses
         analyses = (
@@ -347,22 +348,24 @@ class DatasetService:
         )
         for analysis in analyses:
             if analysis.selected_columns:  # type: ignore[truthy-function]
-                analysis.selected_columns = [renames.get(str(col), str(col)) for col in analysis.selected_columns]  # type: ignore[assignment]
+                analysis.selected_columns = [  # type: ignore[assignment]
+                    renames.get(str(col), str(col)) for col in analysis.selected_columns
+                ]
 
         db.commit()
 
         preview_df = df.head(preview_rows)
-        preview_data = preview_df.to_dict(orient='records')
+        preview_data = preview_df.to_dict(orient="records")
 
         return {
-            'dataset_id': dataset.id,
-            'original_filename': dataset.original_filename,
-            'row_count': dataset.row_count,
-            'column_names': dataset.column_names,
-            'data_types': dataset.data_types,
-            'preview_data': preview_data,
-            'preview_rows': len(preview_data),
-            'description': dataset.description,
+            "dataset_id": dataset.id,
+            "original_filename": dataset.original_filename,
+            "row_count": dataset.row_count,
+            "column_names": dataset.column_names,
+            "data_types": dataset.data_types,
+            "preview_data": preview_data,
+            "preview_rows": len(preview_data),
+            "description": dataset.description,
         }
 
     @staticmethod

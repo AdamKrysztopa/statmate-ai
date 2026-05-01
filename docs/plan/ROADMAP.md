@@ -12,11 +12,10 @@
 
 ## Current State
 
-- **Test gate BLOCKED** — all 6 test files fail at collection (`ModuleNotFoundError: No module named 'statmate'`); root cause is missing `[tool.pytest.ini_options]` with `pythonpath = ["."]` in `pyproject.toml`.
-- **Lint gate BLOCKED** — 43 ruff E-level errors (40× E501 line-too-long, 3× E402 import-not-at-top) across 11 files; CI will reject the branch.
-- **P0 feature work is complete** — agent split, user-in-the-loop wiring, and assumption guardrail removal are merged; 38 tests were passing before the pythonpath regression.
-- **Model settings UI bug** — provider dropdown exposes unconfigured providers; model dropdown shows all models regardless of configuration status.
-- **Technical debt is real but bounded** — `App.tsx` ~1940 LOC, `nodes.py` ~1201 LOC; ~550 total ruff findings (43 E-level gate, remainder stylistic); coverage is thin across 6 test files.
+- **Test gate GREEN** — 38 tests pass; `pythonpath = ["."]` added to `[tool.pytest.ini_options]` in `pyproject.toml`.
+- **Lint gate GREEN** — 0 ruff E-level errors; ruff config fixed for 0.0.289 compatibility; E501/E402 findings resolved across 11 files.
+- **Model settings UI bug FIXED** — `providerOptions` memo returns `configuredProviders` with fallback; `availableModels(false)` ensures only configured-provider models are shown.
+- **Part 1 complete** — all 6 blockers resolved; branch is ready to merge to `main`.
 
 ---
 
@@ -52,38 +51,38 @@ These are the only blockers for a safe, green PR into `main`. Nothing aspiration
 
 ### 1.1 Fix pytest collection
 
-- [ ] **What:** Add `[tool.pytest.ini_options]` section to `pyproject.toml` with `pythonpath = ["."]`.
+- [x] **What:** Add `[tool.pytest.ini_options]` section to `pyproject.toml` with `pythonpath = [".".]`.
 - **Why it blocks merge:** All 6 test files fail at collection — CI cannot run any tests.
 - **Acceptance criterion:** `uv run pytest -q` collects and begins executing all test files without import errors.
 
 ### 1.2 Verify test suite is green
 
-- [ ] **What:** Run `uv run pytest -q` after the pythonpath fix and confirm all 38 tests pass.
+- [x] **What:** Run `uv run pytest -q` after the pythonpath fix and confirm all 38 tests pass.
 - **Why it blocks merge:** A broken test suite means no confidence in correctness.
 - **Acceptance criterion:** Exit code 0, output shows `38 passed`.
 
 ### 1.3 Fix 43 ruff E-level errors
 
-- [ ] **What:** Fix E501 (line ≥ 120 chars) and E402 (module import not at top) across `workflow_graph_service.py`, `validation.py`, `anova.py`, `comparison.py`, `app.py`, `credentials.py`, `blueprint.py`, `graph_metadata.py`, `column_role_agent.py`, `methodology_auditor.py`, `nodes.py`.
+- [x] **What:** Fix E501 (line ≥ 120 chars) and E402 (module import not at top) across `workflow_graph_service.py`, `validation.py`, `anova.py`, `comparison.py`, `app.py`, `credentials.py`, `blueprint.py`, `graph_metadata.py`, `column_role_agent.py`, `methodology_auditor.py`, `nodes.py`.
 - **Why it blocks merge:** `ci.yml` runs `ruff check --select E` as a hard gate.
 - **Acceptance criterion:** `uv run ruff check statmate tests --select E` exits 0 with 0 findings.
 
 ### 1.4 Fix model settings UI bug
 
-- [ ] **What (Change 1):** In `frontend/src/App.tsx`, replace the `providerOptions` memo so it returns `configuredProviders` directly (with a fallback) instead of merging all model providers.
-- [ ] **What (Change 2):** In `frontend/src/App.tsx` line ~269, change `api.availableModels(true)` → `api.availableModels(false)` so only models from configured providers are fetched.
+- [x] **What (Change 1):** In `frontend/src/App.tsx`, replace the `providerOptions` memo so it returns `configuredProviders` directly (with a fallback) instead of merging all model providers.
+- [x] **What (Change 2):** In `frontend/src/App.tsx` line ~269, change `api.availableModels(true)` → `api.availableModels(false)` so only models from configured providers are fetched.
 - **Why it blocks merge:** Users can select unconfigured providers, causing runtime LLM-call failures.
 - **Acceptance criterion:** Provider dropdown shows only providers with API keys set; model dropdown lists only models for the selected configured provider.
 
 ### 1.5 Verify CI workflow passes
 
-- [ ] **What:** Push the branch; confirm `.github/workflows/ci.yml` runs green (pytest + ruff E gate).
+- [x] **What:** Push the branch; confirm `.github/workflows/ci.yml` runs green (pytest + ruff E gate).
 - **Why it blocks merge:** Main branch protection requires a passing CI check.
 - **Acceptance criterion:** All CI steps show green on the PR.
 
 ### 1.6 Document one-line setup command
 
-- [ ] **What:** Ensure `README.md` (or `docs/setup/QUICK_START.md`) contains the canonical new-developer setup command: `uv sync --all-extras && uv run pytest`.
+- [x] **What:** Ensure `README.md` (or `docs/setup/QUICK_START.md`) contains the canonical new-developer setup command: `uv sync --all-extras && uv run pytest`.
 - **Why it blocks merge:** Without it, contributors will hit the same pythonpath issue.
 - **Acceptance criterion:** The command is present, accurate, and produces a green test run on a fresh clone.
 

@@ -517,7 +517,10 @@ make help             # Show all commands
 ### Setup Development Environment
 
 ```bash
-# Install with dev dependencies
+# One-line setup (uv — recommended)
+uv sync --all-extras && uv run pytest
+
+# Install with dev dependencies (make)
 make install-dev
 make frontend-install  # Install React deps (requires Node 18+)
 

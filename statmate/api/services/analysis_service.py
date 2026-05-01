@@ -34,7 +34,7 @@ WORKFLOW_STEP_TARGET = 10
 def _is_rate_limit_error(exc: Exception) -> bool:
     """Detect provider rate limit errors without tight coupling to SDK types."""
     msg = str(exc).lower()
-    return 'rate limit' in msg or 'rate_limit_exceeded' in msg
+    return "rate limit" in msg or "rate_limit_exceeded" in msg
 
 
 def _state_value(state: Any, key: str, default: Any) -> Any:
@@ -77,39 +77,39 @@ def _build_test_hierarchy(
     assumption_by_test: dict[str, list[dict[str, Any]]] = {}
 
     for entry in assumption_log or []:
-        test_key = str(entry.get('test_type') or entry.get('node') or 'unknown')
+        test_key = str(entry.get("test_type") or entry.get("node") or "unknown")
         assumption_by_test.setdefault(test_key, []).append(entry)
-        for failure in entry.get('failures', []) or []:
-            failures.append({'test': test_key, 'message': failure, 'timestamp': entry.get('timestamp')})
+        for failure in entry.get("failures", []) or []:
+            failures.append({"test": test_key, "message": failure, "timestamp": entry.get("timestamp")})
 
     chosen_test = None
     for step in reversed(decision_steps or []):
-        step_name = step.get('step')
-        if step_name and step_name.lower() not in ('summary', 'reviewer'):
+        step_name = step.get("step")
+        if step_name and step_name.lower() not in ("summary", "reviewer"):
             chosen_test = step_name
             break
 
     for step in decision_steps or []:
-        name = step.get('step') or 'Step'
+        name = step.get("step") or "Step"
         attempted.append(
             {
-                'name': name,
-                'detail': step.get('detail'),
-                'p_value': step.get('p_value'),
-                'assumptions': assumption_by_test.get(name, []),
-                'timestamp': step.get('timestamp'),
-                'step_index': step.get('step_index'),
-                'total_steps': step.get('total_steps'),
-                'node': step.get('node'),
+                "name": name,
+                "detail": step.get("detail"),
+                "p_value": step.get("p_value"),
+                "assumptions": assumption_by_test.get(name, []),
+                "timestamp": step.get("timestamp"),
+                "step_index": step.get("step_index"),
+                "total_steps": step.get("total_steps"),
+                "node": step.get("node"),
             }
         )
 
     return {
-        'attempted': attempted,
-        'failures': failures,
-        'assumptions': assumption_by_test,
-        'chosen_test': chosen_test,
-        'reviewer': reviewer_report,
+        "attempted": attempted,
+        "failures": failures,
+        "assumptions": assumption_by_test,
+        "chosen_test": chosen_test,
+        "reviewer": reviewer_report,
     }
 
 
@@ -141,11 +141,11 @@ class AnalysisService:
         try:
             stored_results = StorageService.read_results(analysis.id)
             if stored_results:
-                if stored_results.get('workflow_graph'):
-                    return stored_results['workflow_graph']
+                if stored_results.get("workflow_graph"):
+                    return stored_results["workflow_graph"]
                 # results_detail may be nested
-                detail = stored_results.get('results_detail') or stored_results
-                test_hierarchy = detail.get('test_hierarchy') or stored_results.get('test_hierarchy')
+                detail = stored_results.get("results_detail") or stored_results
+                test_hierarchy = detail.get("test_hierarchy") or stored_results.get("test_hierarchy")
         except Exception:
             test_hierarchy = None
 
@@ -183,7 +183,7 @@ class AnalysisService:
 
         ds = DatasetService.get_dataset(db, dataset_id, user_id=user_id if settings.AUTH_REQUIRED else None)
         if settings.AUTH_REQUIRED and not ds:
-            raise ValueError('Dataset not found or not owned by user')
+            raise ValueError("Dataset not found or not owned by user")
 
         query = db.query(Analysis).filter(Analysis.dataset_id == dataset_id)
         if user_id:
@@ -197,7 +197,7 @@ class AnalysisService:
 
         config_payload = dict(configuration or {})
         if route_override:
-            config_payload['route_override'] = route_override
+            config_payload["route_override"] = route_override
 
         analysis = Analysis(
             dataset_id=dataset_id,
@@ -214,7 +214,7 @@ class AnalysisService:
         db.commit()
         db.refresh(analysis)
 
-        logger.info('Created analysis: %s with model: %s', analysis.id, model_name or 'default')
+        logger.info("Created analysis: %s with model: %s", analysis.id, model_name or "default")
         return analysis
 
     @staticmethod
@@ -293,8 +293,8 @@ class AnalysisService:
             stored_keys = CredentialService.load_credentials(db, analysis.user_id)
             for provider_key, api_key in stored_keys.items():
                 mapped_key = provider_key
-                if provider_key == 'gemini':
-                    mapped_key = 'google'
+                if provider_key == "gemini":
+                    mapped_key = "google"
                 try:
                     provider_enum = ModelProvider(mapped_key)
                 except ValueError:
@@ -326,16 +326,16 @@ class AnalysisService:
         """
         analysis = AnalysisService.get_analysis(db, analysis_id)
         if not analysis:
-            raise ValueError(f'Analysis not found: {analysis_id}')
+            raise ValueError(f"Analysis not found: {analysis_id}")
         if user_id and analysis.user_id and analysis.user_id != user_id:
-            raise ValueError('Analysis does not belong to this user')
+            raise ValueError("Analysis does not belong to this user")
         if analysis.configuration is None:
             analysis.configuration = {}
 
         analysis.status = AnalysisStatus.RUNNING
         analysis.start_time = datetime.utcnow()
         analysis.decision_steps = []
-        analysis.intermediate_log = ''
+        analysis.intermediate_log = ""
         analysis.assumption_log = []
         db.commit()
         workflow_config = AnalysisService._build_model_config_for_analysis(db, analysis)
@@ -346,14 +346,14 @@ class AnalysisService:
 
         log_file = settings.get_log_path(analysis_id)
         log_file.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_file, mode='w')
+        file_handler = logging.FileHandler(log_file, mode="w")
         file_handler.setLevel(logging.INFO)
 
-        formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
         log_handler.setFormatter(formatter)
         file_handler.setFormatter(formatter)
 
-        workflow_logger = logging.getLogger('statmate')
+        workflow_logger = logging.getLogger("statmate")
         workflow_logger.addHandler(log_handler)
         workflow_logger.addHandler(file_handler)
 
@@ -373,19 +373,19 @@ class AnalysisService:
                 if not isinstance(step, dict):
                     continue
                 entry = dict(step)
-                if node and 'node' not in entry:
-                    entry['node'] = node
-                node_id = entry.get('node_id') or map_step_to_node_id(entry.get('node') or entry.get('step'))
+                if node and "node" not in entry:
+                    entry["node"] = node
+                node_id = entry.get("node_id") or map_step_to_node_id(entry.get("node") or entry.get("step"))
                 if node_id:
-                    entry['node_id'] = node_id
-                step_id = str(entry.get('timestamp') or entry.get('step') or f'{node}-{len(stored)}')
+                    entry["node_id"] = node_id
+                step_id = str(entry.get("timestamp") or entry.get("step") or f"{node}-{len(stored)}")
                 if step_id in seen_step_ids:
                     continue
                 seen_step_ids.add(step_id)
-                entry.setdefault('step_index', len(stored) + 1)
-                entry.setdefault('total_steps', WORKFLOW_STEP_TARGET)
-                progress = min(1.0, entry['step_index'] / WORKFLOW_STEP_TARGET)
-                entry.setdefault('progress_pct', round(progress * 100, 2))
+                entry.setdefault("step_index", len(stored) + 1)
+                entry.setdefault("total_steps", WORKFLOW_STEP_TARGET)
+                progress = min(1.0, entry["step_index"] / WORKFLOW_STEP_TARGET)
+                entry.setdefault("progress_pct", round(progress * 100, 2))
                 stored.append(entry)
             analysis.decision_steps = stored
 
@@ -397,7 +397,7 @@ class AnalysisService:
             for entry in entries:
                 if not isinstance(entry, dict):
                     continue
-                entry_id = str(entry.get('timestamp') or entry.get('test_type') or len(stored))
+                entry_id = str(entry.get("timestamp") or entry.get("test_type") or len(stored))
                 if entry_id in seen_assumption_ids:
                     continue
                 seen_assumption_ids.add(entry_id)
@@ -413,10 +413,10 @@ class AnalysisService:
             if not isinstance(state_update, dict) or not state_update:
                 return
             node, state_val = next(iter(state_update.items()))
-            trace_entries = _state_value(state_val, 'execution_trace', []) or []
+            trace_entries = _state_value(state_val, "execution_trace", []) or []
             if isinstance(trace_entries, list):
                 _persist_decision_steps(trace_entries, node=str(node))
-            assumption_entries = _state_value(state_val, 'assumption_log', []) or []
+            assumption_entries = _state_value(state_val, "assumption_log", []) or []
             if isinstance(assumption_entries, list):
                 _persist_assumption_log(assumption_entries)
             _persist_intermediate_log()
@@ -429,7 +429,7 @@ class AnalysisService:
 
         def _record_system_step(step: str, detail: str) -> None:
             """Persist non-agent steps (fallbacks, retries) for clients."""
-            payload = {'step': step, 'detail': detail, 'timestamp': datetime.utcnow().isoformat()}
+            payload = {"step": step, "detail": detail, "timestamp": datetime.utcnow().isoformat()}
             _persist_decision_steps([payload])
             _persist_intermediate_log()
             db.commit()
@@ -437,23 +437,23 @@ class AnalysisService:
         try:
             df = DatasetService.load_dataset_dataframe(db, analysis.dataset_id, user_id=user_id or analysis.user_id)
             if df is None:
-                raise ValueError(f'Dataset not found for analysis: {analysis.dataset_id}')
+                raise ValueError(f"Dataset not found for analysis: {analysis.dataset_id}")
 
-            logger.info('=' * 80)
-            logger.info('🚀 STARTING ANALYSIS: %s', analysis_id)
-            logger.info('   Model: %s', analysis.model_name or 'default')
-            logger.info('   Dataset ID: %s', analysis.dataset_id)
-            logger.info('   Rows: %d, Columns: %d', len(df), len(df.columns))
-            logger.info('=' * 80)
+            logger.info("=" * 80)
+            logger.info("🚀 STARTING ANALYSIS: %s", analysis_id)
+            logger.info("   Model: %s", analysis.model_name or "default")
+            logger.info("   Dataset ID: %s", analysis.dataset_id)
+            logger.info("   Rows: %d, Columns: %d", len(df), len(df.columns))
+            logger.info("=" * 80)
 
             provider_for_quota = analysis.provider or (
-                workflow_config.model.default_provider.value if getattr(workflow_config, 'model', None) else None
+                workflow_config.model.default_provider.value if getattr(workflow_config, "model", None) else None
             )
             if analysis.user_id and provider_for_quota:
                 try:
                     CredentialService.enforce_quota(db, analysis.user_id, str(provider_for_quota))
                 except QuotaExceededError as exc:
-                    _record_system_step('Quota exceeded', str(exc))
+                    _record_system_step("Quota exceeded", str(exc))
                     raise
 
             fallback_attempted = False
@@ -468,11 +468,11 @@ class AnalysisService:
                 return workflow.run(
                     data=df,
                     target_columns=analysis.selected_columns,
-                    paired=analysis.configuration.get('paired', False),
-                    do_association=analysis.configuration.get('do_association', False),
+                    paired=analysis.configuration.get("paired", False),
+                    do_association=analysis.configuration.get("do_association", False),
                     model_name=model_override or analysis.model_name,
                     provider=analysis.provider,
-                    route_override=analysis.configuration.get('route_override'),
+                    route_override=analysis.configuration.get("route_override"),
                     on_update=_on_state_update,
                     thread_id=analysis_id,
                 )
@@ -485,16 +485,16 @@ class AnalysisService:
                 if (
                     _is_rate_limit_error(e)
                     and not fallback_attempted
-                    and analysis.provider in (None, '', 'openai')
+                    and analysis.provider in (None, "", "openai")
                     and settings.OPENAI_FALLBACK_ENABLED
                 ):
                     fallback_attempted = True
                     fallback_model = settings.OPENAI_FALLBACK_MODEL
                     log_stream.write(
-                        f'\nRate limit hit for {analysis.model_name}, retrying with fallback {fallback_model}\n'
+                        f"\nRate limit hit for {analysis.model_name}, retrying with fallback {fallback_model}\n"
                     )
                     logger.warning(
-                        'Rate limit for %s, retrying analysis %s with fallback model %s',
+                        "Rate limit for %s, retrying analysis %s with fallback model %s",
                         analysis.model_name,
                         analysis_id,
                         fallback_model,
@@ -503,17 +503,17 @@ class AnalysisService:
                     analysis.model_name = fallback_model
                     db.commit()
                     _record_system_step(
-                        'Model fallback',
+                        "Model fallback",
                         f'Rate limit detected for {analysis.model_name or "default"}, retrying with {fallback_model}',
                     )
                     result_state = _run_workflow(model_override=fallback_model)
                 else:
                     raise
 
-            messages = _state_value(result_state, 'results', [])
-            probabilities = _clean_probabilities(_sanitize_for_json(_state_value(result_state, 'probabilities', {})))
-            execution_trace = _sanitize_for_json(_state_value(result_state, 'execution_trace', [])) or []
-            reviewer_report = _sanitize_for_json(_state_value(result_state, 'reviewer_report', None))
+            messages = _state_value(result_state, "results", [])
+            probabilities = _clean_probabilities(_sanitize_for_json(_state_value(result_state, "probabilities", {})))
+            execution_trace = _sanitize_for_json(_state_value(result_state, "execution_trace", [])) or []
+            reviewer_report = _sanitize_for_json(_state_value(result_state, "reviewer_report", None))
 
             def _normalize_steps(steps: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
                 """Ensure step metadata (ordering/progress) is populated."""
@@ -523,13 +523,13 @@ class AnalysisService:
                     if not isinstance(raw, dict):
                         continue
                     entry = dict(raw)
-                    node_id = entry.get('node_id') or map_step_to_node_id(entry.get('node') or entry.get('step'))
+                    node_id = entry.get("node_id") or map_step_to_node_id(entry.get("node") or entry.get("step"))
                     if node_id:
-                        entry['node_id'] = node_id
-                    entry.setdefault('step_index', idx)
-                    entry.setdefault('total_steps', total)
-                    progress = min(1.0, entry['step_index'] / total)
-                    entry.setdefault('progress_pct', round(progress * 100, 2))
+                        entry["node_id"] = node_id
+                    entry.setdefault("step_index", idx)
+                    entry.setdefault("total_steps", total)
+                    progress = min(1.0, entry["step_index"] / total)
+                    entry.setdefault("progress_pct", round(progress * 100, 2))
                     normalized.append(entry)
                 return normalized
 
@@ -541,53 +541,53 @@ class AnalysisService:
             analysis.decision_steps = _sanitize_for_json(analysis.decision_steps) or []
 
             assumption_log = _sanitize_for_json(
-                _state_value(result_state, 'assumption_log', []) or analysis.assumption_log or []
+                _state_value(result_state, "assumption_log", []) or analysis.assumption_log or []
             )
             analysis.assumption_log = assumption_log or []
-            test_hierarchy_state = _sanitize_for_json(_state_value(result_state, 'test_hierarchy', None))
+            test_hierarchy_state = _sanitize_for_json(_state_value(result_state, "test_hierarchy", None))
             test_hierarchy = test_hierarchy_state or _build_test_hierarchy(
                 analysis.decision_steps or execution_trace, assumption_log, reviewer_report
             )
             _persist_intermediate_log()
             summary = None
             if reviewer_report and isinstance(reviewer_report, dict):
-                summary = reviewer_report.get('adjusted_summary') or reviewer_report.get('summary')
+                summary = reviewer_report.get("adjusted_summary") or reviewer_report.get("summary")
             if not summary:
-                summary = messages[-1].content if messages else 'Analysis completed without a summary.'
-            full_output = '\n\n'.join(msg.content for msg in messages)
+                summary = messages[-1].content if messages else "Analysis completed without a summary."
+            full_output = "\n\n".join(msg.content for msg in messages)
             viz_payload = VisualizationService.generate_visualizations(
                 df,
                 selected_columns=analysis.selected_columns,
                 limit=6,
             )
-            plots = viz_payload.get('plots', [])
-            effect_sizes = viz_payload.get('effect_sizes', {})
+            plots = viz_payload.get("plots", [])
+            effect_sizes = viz_payload.get("effect_sizes", {})
             workflow_graph_state = AnalysisService.build_workflow_graph_state(analysis.decision_steps, test_hierarchy)
             workflow_graph_payload = {
                 **workflow_graph_state,
-                'assets': render_workflow_graph(workflow_graph_state),
+                "assets": render_workflow_graph(workflow_graph_state),
             }
 
             results_data = {
-                'analysis_id': analysis_id,
-                'dataset_id': analysis.dataset_id,
-                'selected_columns': analysis.selected_columns,
-                'version': analysis.version,
-                'comment': analysis.comment,
-                'full_output': full_output,
-                'messages': [msg.content for msg in messages],
-                'probabilities': probabilities,
-                'summary': summary,
-                'execution_trace': execution_trace,
-                'decision_steps': analysis.decision_steps,
-                'intermediate_log': analysis.intermediate_log,
-                'assumption_log': assumption_log,
-                'test_hierarchy': test_hierarchy,
-                'reviewer_report': reviewer_report,
-                'plots': plots,
-                'effect_sizes': effect_sizes,
-                'workflow_graph': workflow_graph_payload,
-                'timestamp': datetime.utcnow().isoformat(),
+                "analysis_id": analysis_id,
+                "dataset_id": analysis.dataset_id,
+                "selected_columns": analysis.selected_columns,
+                "version": analysis.version,
+                "comment": analysis.comment,
+                "full_output": full_output,
+                "messages": [msg.content for msg in messages],
+                "probabilities": probabilities,
+                "summary": summary,
+                "execution_trace": execution_trace,
+                "decision_steps": analysis.decision_steps,
+                "intermediate_log": analysis.intermediate_log,
+                "assumption_log": assumption_log,
+                "test_hierarchy": test_hierarchy,
+                "reviewer_report": reviewer_report,
+                "plots": plots,
+                "effect_sizes": effect_sizes,
+                "workflow_graph": workflow_graph_payload,
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
             results_data = _sanitize_for_json(results_data)
@@ -596,23 +596,23 @@ class AnalysisService:
             analysis.probabilities = probabilities
             AnalysisService._update_analysis_status(db, analysis, status=AnalysisStatus.COMPLETED)
 
-            logger.info('=' * 80)
-            logger.info('✅ ANALYSIS COMPLETED: %s', analysis_id)
+            logger.info("=" * 80)
+            logger.info("✅ ANALYSIS COMPLETED: %s", analysis_id)
             if analysis.start_time:
                 duration = (datetime.utcnow() - analysis.start_time).total_seconds()
-                logger.info('   Duration: %.2fs', duration)
-            logger.info('   Tests performed: %d', len(probabilities))
-            logger.info('=' * 80)
+                logger.info("   Duration: %.2fs", duration)
+            logger.info("   Tests performed: %d", len(probabilities))
+            logger.info("=" * 80)
 
         except QuotaExceededError as e:
-            logger.error('Quota exceeded for analysis %s: %s', analysis_id, e)
+            logger.error("Quota exceeded for analysis %s: %s", analysis_id, e)
             AnalysisService._update_analysis_status(db, analysis, status=AnalysisStatus.FAILED, error_message=str(e))
-            log_stream.write(f'\n\nQuota exceeded: {e}')
+            log_stream.write(f"\n\nQuota exceeded: {e}")
             raise
         except Exception as e:
-            logger.error('Analysis failed: %s - %s', analysis_id, e, exc_info=True)
+            logger.error("Analysis failed: %s - %s", analysis_id, e, exc_info=True)
             AnalysisService._update_analysis_status(db, analysis, status=AnalysisStatus.FAILED, error_message=str(e))
-            log_stream.write(f'\n\nERROR: {e}')
+            log_stream.write(f"\n\nERROR: {e}")
             # We re-raise the exception to ensure the caller knows the operation failed.
             raise
         finally:
@@ -651,39 +651,39 @@ class AnalysisService:
         if analysis.start_time and analysis.end_time:
             duration = (analysis.end_time - analysis.start_time).total_seconds()
 
-        workflow_graph_state = results_data.get('workflow_graph') or AnalysisService.build_workflow_graph_state(
-            analysis.decision_steps, results_data.get('test_hierarchy')
+        workflow_graph_state = results_data.get("workflow_graph") or AnalysisService.build_workflow_graph_state(
+            analysis.decision_steps, results_data.get("test_hierarchy")
         )
-        if isinstance(workflow_graph_state, dict) and 'assets' not in workflow_graph_state:
-            workflow_graph_state = {**workflow_graph_state, 'assets': render_workflow_graph(workflow_graph_state)}
+        if isinstance(workflow_graph_state, dict) and "assets" not in workflow_graph_state:
+            workflow_graph_state = {**workflow_graph_state, "assets": render_workflow_graph(workflow_graph_state)}
 
         return {
-            'id': analysis.id,
-            'status': analysis.status.value,
-            'dataset_id': analysis.dataset_id,
-            'dataset_name': dataset.original_filename if dataset else 'Unknown',
-            'user_id': analysis.user_id,
-            'model_name': analysis.model_name,
-            'provider': analysis.provider,
-            'start_time': analysis.start_time,
-            'end_time': analysis.end_time,
-            'duration_seconds': duration,
-            'summary': analysis.summary,
-            'comment': analysis.comment,
-            'probabilities': _clean_probabilities(_sanitize_for_json(analysis.probabilities)),
-            'results_detail': results_data,
-            'execution_trace': results_data.get('execution_trace'),
-            'decision_steps': analysis.decision_steps or results_data.get('decision_steps'),
-            'intermediate_log': analysis.intermediate_log,
-            'assumption_log': analysis.assumption_log or results_data.get('assumption_log'),
-            'test_hierarchy': results_data.get('test_hierarchy'),
-            'reviewer_report': results_data.get('reviewer_report'),
-            'plots': results_data.get('plots'),
-            'effect_sizes': results_data.get('effect_sizes'),
-            'log_available': bool(analysis.log_path),
-            'version': analysis.version,
-            'superseded_at': analysis.superseded_at,
-            'workflow_graph': workflow_graph_state,
+            "id": analysis.id,
+            "status": analysis.status.value,
+            "dataset_id": analysis.dataset_id,
+            "dataset_name": dataset.original_filename if dataset else "Unknown",
+            "user_id": analysis.user_id,
+            "model_name": analysis.model_name,
+            "provider": analysis.provider,
+            "start_time": analysis.start_time,
+            "end_time": analysis.end_time,
+            "duration_seconds": duration,
+            "summary": analysis.summary,
+            "comment": analysis.comment,
+            "probabilities": _clean_probabilities(_sanitize_for_json(analysis.probabilities)),
+            "results_detail": results_data,
+            "execution_trace": results_data.get("execution_trace"),
+            "decision_steps": analysis.decision_steps or results_data.get("decision_steps"),
+            "intermediate_log": analysis.intermediate_log,
+            "assumption_log": analysis.assumption_log or results_data.get("assumption_log"),
+            "test_hierarchy": results_data.get("test_hierarchy"),
+            "reviewer_report": results_data.get("reviewer_report"),
+            "plots": results_data.get("plots"),
+            "effect_sizes": results_data.get("effect_sizes"),
+            "log_available": bool(analysis.log_path),
+            "version": analysis.version,
+            "superseded_at": analysis.superseded_at,
+            "workflow_graph": workflow_graph_state,
         }
 
     @staticmethod
@@ -717,12 +717,14 @@ class AnalysisService:
         return True
 
     @staticmethod
-    def update_comment(db: Session, analysis_id: str, *, comment: str | None, user_id: str | None = None) -> Analysis | None:
+    def update_comment(
+        db: Session, analysis_id: str, *, comment: str | None, user_id: str | None = None
+    ) -> Analysis | None:
         """Update the comment for an analysis."""
         analysis = AnalysisService.get_analysis(db, analysis_id, user_id=user_id)
         if not analysis:
             return None
-        analysis.comment = comment or ''
+        analysis.comment = comment or ""
         # Clean any legacy NaN/Inf fields to avoid JSON serialization errors on return.
         analysis = AnalysisService.sanitize_analysis(analysis)
         db.commit()
