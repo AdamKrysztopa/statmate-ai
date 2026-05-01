@@ -21,6 +21,8 @@
 
 **Part 2 — P1 wave shipped (2026-05-01):** 62 tests green · P2-F00 (effect sizes & 95% CIs) · P2-F01 (post-hoc power interpretation) · P2-F02 (regression module: linear, multiple+VIF, logistic) · P2-F03 (outlier/influence diagnostics) · P2-F04 (Cox regression hard-disabled, HTTP 501).
 
+**Part 2 — P2 medical-reporting slice shipped (2026-05-01):** P2-F08 (structured Finding/Evidence/Caveat output + reviewer missing-structure flags) · P2-F09 (reviewer CI/effect-size fail-soft flags) · P2-F10 (Bonferroni multiplicity warning) · P2-F11 (chart narrative captions). Validation: repo-wide `pytest -q` passed; repo-wide `ruff` remains blocked by existing lint debt; `ty` is unavailable in this environment.
+
 ---
 
 ## Phase overview
@@ -123,10 +125,10 @@ Every code change is reviewed against all five principles. Violations are report
 | P2-F05 | Decompose `statmate/workflow/nodes.py` (~1201 LOC) into per-phase modules; 400-LOC hard limit per file                | P1       | Architecture            | **Shipped ✓** |
 | P2-F06 | >80% line coverage on `statistical_core/` and `workflow/` via `pytest-cov`; coverage report in CI                     | P1       | Test coverage           | Not started   |
 | P2-F07 | Integration tests for full analysis workflow (file upload → result export)                                            | P1       | Test coverage           | Not started   |
-| P2-F08 | Structured Finding/Evidence/Caveat format in summarizer; reviewer check for missing clinical significance block       | P2       | Medical reporting       | Not started   |
-| P2-F09 | Reviewer enforcement for CI/effect-size presence (fail-soft: flag, not error)                                         | P2       | Medical reporting       | Not started   |
-| P2-F10 | Multiplicity check in reviewer agent for multi-group comparisons (Bonferroni/FDR flag)                                | P2       | Medical reporting       | Not started   |
-| P2-F11 | Chart narrative captions in plain clinical language                                                                   | P2       | Medical reporting       | Not started   |
+| P2-F08 | Structured Finding/Evidence/Caveat format in summarizer; reviewer check for missing clinical significance block       | P2       | Medical reporting       | **Shipped ✓** |
+| P2-F09 | Reviewer enforcement for CI/effect-size presence (fail-soft: flag, not error)                                         | P2       | Medical reporting       | **Shipped ✓** |
+| P2-F10 | Multiplicity check in reviewer agent for multi-group comparisons (Bonferroni/FDR flag)                                | P2       | Medical reporting       | **Shipped ✓** |
+| P2-F11 | Chart narrative captions in plain clinical language                                                                   | P2       | Medical reporting       | **Shipped ✓** |
 | P2-F12 | Decompose `frontend/src/App.tsx` (~1940 LOC) into focused components; 400-LOC hard limit per file                     | P2       | Frontend                | Not started   |
 | P2-F13 | Playwright end-to-end smoke test for happy-path analysis flow                                                         | P2       | Frontend                | Not started   |
 | P2-F14 | Address ~507 ruff W/C/ANN findings in a dedicated cleanup PR — do not mix with feature work                           | P2       | Lint debt               | Not started   |
@@ -617,7 +619,7 @@ All current tests are unit tests. There are no tests that verify the full path: 
 
 ### P2-F08 — Structured Finding/Evidence/Caveat format in summarizer
 
-**Status:** Not started | **Priority:** P2 | **Area:** Medical reporting
+**Status:** Shipped ✓ (2026-05-01) | **Priority:** P2 | **Area:** Medical reporting
 
 **Context.**
 `SummariserResults.summary` is currently a free-form string. Clinicians need a predictable structure: what was found, what evidence supports it, and what caveats apply. The reviewer must flag when the structure is missing so a downstream system can request a retry.
@@ -670,7 +672,7 @@ All current tests are unit tests. There are no tests that verify the full path: 
 
 ### P2-F09 — Reviewer enforcement for CI and effect-size presence
 
-**Status:** Not started | **Priority:** P2 | **Area:** Medical reporting
+**Status:** Shipped ✓ (2026-05-01) | **Priority:** P2 | **Area:** Medical reporting
 
 **Context.**
 After P2-F00 all test functions populate `effect_size_type` and (where applicable) `confidence_interval`. The reviewer must check that both are present and flag absences — but must not block the result (fail-soft).
@@ -704,7 +706,7 @@ After P2-F00 all test functions populate `effect_size_type` and (where applicabl
 
 ### P2-F10 — Multiplicity check in reviewer agent for multi-group comparisons
 
-**Status:** Not started | **Priority:** P2 | **Area:** Medical reporting
+**Status:** Shipped ✓ (2026-05-01) | **Priority:** P2 | **Area:** Medical reporting
 
 **Context.**
 When multiple group comparisons are performed simultaneously (e.g. three pairwise t-tests from a three-group ANOVA post-hoc), the familywise error rate inflates. The reviewer must flag this when more than one test is reported, so the clinician knows to apply Bonferroni or FDR correction.
@@ -734,7 +736,7 @@ When multiple group comparisons are performed simultaneously (e.g. three pairwis
 
 ### P2-F11 — Chart narrative captions in plain clinical language
 
-**Status:** Not started | **Priority:** P2 | **Area:** Medical reporting
+**Status:** Shipped ✓ (2026-05-01) | **Priority:** P2 | **Area:** Medical reporting
 
 **Context.**
 Charts are generated by `statmate/api/services/visualization_service.py`. Currently charts have titles but no narrative captions. A caption should appear below each chart explaining what the visualisation shows and what the viewer should conclude.
