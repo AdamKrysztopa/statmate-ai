@@ -2,7 +2,7 @@ from collections.abc import Callable, Iterable
 
 import numpy as np
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
+from pydantic_ai.models.openai import Model, ModelSettings, OpenAIChatModel
 
 from statmate.agents import (
     AgentResult,
@@ -364,7 +364,7 @@ if __name__ == '__main__':
     # Example usage
     import pandas as pd
 
-    model = OpenAIModel('gpt-4o')
+    model = OpenAIChatModel('gpt-4o')
     model_settings = ModelSettings(
         temperature=0.1,
         max_tokens=1000,

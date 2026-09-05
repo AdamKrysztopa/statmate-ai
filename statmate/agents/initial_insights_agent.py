@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
+from pydantic_ai.models.openai import Model, ModelSettings, OpenAIChatModel
 
 from statmate.core.validation import StatisticalDesign
 
@@ -449,7 +449,7 @@ def validate_tool_args(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
 
 if __name__ == '__main__':
     # Example usage
-    model = OpenAIModel('gpt-4o')
+    model = OpenAIChatModel('gpt-4o')
     model_settings = ModelSettings(
         temperature=0.0,
         top_p=1.0,

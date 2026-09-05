@@ -5,7 +5,7 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
+from pydantic_ai.models.openai import Model, ModelSettings, OpenAIChatModel
 
 from statmate.agents import AgentResult, StatTestDeps, build_stat_test_agent, run_sync_agent
 from statmate.core.config import default_config
@@ -108,7 +108,7 @@ def cochran_armitage_agent(
 
 if __name__ == '__main__':
     # Example usage
-    model = OpenAIModel(default_config.model.model_name)
+    model = OpenAIChatModel(default_config.model.model_name)
     model_settings = ModelSettings(
         temperature=0.1,
         max_tokens=1500,

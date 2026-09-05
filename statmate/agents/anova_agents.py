@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterable
 import numpy as np
 import pandas as pd
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
+from pydantic_ai.models.openai import Model, ModelSettings, OpenAIChatModel
 
 from statmate.agents import (
     AgentResult,
@@ -149,7 +149,7 @@ def run_anova_rm_agent(
 
 if __name__ == '__main__':
     # Example usage
-    model = OpenAIModel('gpt-4o')
+    model = OpenAIChatModel('gpt-4o')
     agent = anova_rm_agent(model=model)
     user_prompt = 'Perform a repeated measures ANOVA test.'
     deps = StatTestDeps(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import csv
+import html
 import io
 import json
 import zipfile
@@ -20,7 +21,14 @@ class ExportService:
 
     @staticmethod
     def _html_safe(text: str | None) -> str:
-        return (text or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        """Escape text for use in HTML text *and* attribute contexts.
+
+        Quotes are escaped as well as angle brackets: report content (dataset names,
+        LLM-authored plot titles, column names) is interpolated into quoted attributes,
+        where an unescaped quote would allow attribute/CSS injection into the document
+        handed to WeasyPrint.
+        """
+        return html.escape(str(text) if text is not None else '', quote=True)
 
     @staticmethod
     def _latex_escape(text: str | None) -> str:
@@ -74,7 +82,8 @@ class ExportService:
             f"""
             <div class="plot">
               <div class="plot-title">{cls._html_safe(plot.get("title") or "Plot")}</div>
-              <img src="data:{plot.get("content_type", "image/png")};base64,{plot.get("image_base64")}" />
+              <img src="data:{cls._html_safe(plot.get("content_type") or "image/png")};base64,"""
+            f"""{cls._html_safe(plot.get("image_base64"))}" />
               <div class="plot-meta">{cls._html_safe(plot.get("description") or "")}</div>
             </div>
             """
@@ -137,7 +146,7 @@ class ExportService:
             "<img alt='"
             + cls._html_safe(graph_assets.get("alt") or "Workflow graph")
             + "' src='data:image/svg+xml;base64,"
-            + graph_assets.get("svg_base64", "")
+            + cls._html_safe(graph_assets.get("svg_base64", ""))
             + "' />"
             if graph_assets.get("svg_base64")
             else "<div class='muted'>No workflow graph available.</div>"

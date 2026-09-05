@@ -2,14 +2,14 @@ from collections.abc import Callable
 
 import numpy as np
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import ModelSettings, OpenAIModel
+from pydantic_ai.models.openai import ModelSettings, OpenAIChatModel
 
 from statmate.agents import AgentResult, StatTestDeps, build_stat_test_agent, run_sync_agent
 from statmate.statistical_core import StatTestResult, bartlett_test, levene_test
 
 
 def bartlett_agent(
-    model: OpenAIModel,
+    model: OpenAIChatModel,
     model_settings: ModelSettings | None = None,
     test_name: str = 'Bartlett Test',
     test_function: Callable[..., StatTestResult] = bartlett_test,
@@ -34,7 +34,7 @@ def bartlett_agent(
 
 
 def levene_agent(
-    model: OpenAIModel,
+    model: OpenAIChatModel,
     model_settings: ModelSettings | None = None,
     test_name: str = 'Levene Test',
     test_function: Callable[..., StatTestResult] = levene_test,
@@ -59,7 +59,7 @@ def levene_agent(
 
 if __name__ == '__main__':
     # Example usage
-    model = OpenAIModel('gpt-4o')
+    model = OpenAIChatModel('gpt-4o')
     model_settings = ModelSettings(
         temperature=0.1,
         max_tokens=1500,

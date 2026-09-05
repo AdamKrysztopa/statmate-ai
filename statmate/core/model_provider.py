@@ -185,7 +185,7 @@ class ModelProviderSystem:
         **kwargs: Any,
     ) -> Model:
         """Create OpenAI model."""
-        from pydantic_ai.models.openai import OpenAIModel
+        from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.providers.openai import OpenAIProvider
 
         # Create provider with API key and base_url
@@ -198,7 +198,7 @@ class ModelProviderSystem:
         provider = OpenAIProvider(**provider_params)
 
         # Create model with provider
-        return OpenAIModel(model_name, provider=provider, **kwargs)
+        return OpenAIChatModel(model_name, provider=provider, **kwargs)
 
     def _create_anthropic_model(
         self,
@@ -231,18 +231,18 @@ class ModelProviderSystem:
         **kwargs: Any,
     ) -> Model:
         """Create Google/Gemini model."""
-        from pydantic_ai.models.gemini import GeminiModel
-        from pydantic_ai.providers.gemini import GeminiProvider
+        from pydantic_ai.models.google import GoogleModel
+        from pydantic_ai.providers.google import GoogleProvider
 
         # Create provider with API key
         provider_params = {}
         if api_key:
             provider_params['api_key'] = api_key
 
-        provider = GeminiProvider(**provider_params)
+        provider = GoogleProvider(**provider_params)
 
         # Create model with provider
-        return GeminiModel(model_name, provider=provider, **kwargs)
+        return GoogleModel(model_name, provider=provider, **kwargs)
 
     def _create_groq_model(
         self,
@@ -252,7 +252,7 @@ class ModelProviderSystem:
         **kwargs: Any,
     ) -> Model:
         """Create Groq model."""
-        from pydantic_ai.models.openai import OpenAIModel
+        from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.providers.groq import GroqProvider
 
         # Create provider with API key and base_url
@@ -265,7 +265,7 @@ class ModelProviderSystem:
         provider = GroqProvider(**provider_params)
 
         # Create model with provider (Groq uses OpenAI-compatible API)
-        return OpenAIModel(model_name, provider=provider, **kwargs)
+        return OpenAIChatModel(model_name, provider=provider, **kwargs)
 
     def _create_ollama_model(
         self,
@@ -274,7 +274,7 @@ class ModelProviderSystem:
         **kwargs: Any,
     ) -> Model:
         """Create Ollama (local) model."""
-        from pydantic_ai.models.openai import OpenAIModel
+        from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.providers.ollama import OllamaProvider
 
         # Default Ollama base URL
@@ -284,7 +284,7 @@ class ModelProviderSystem:
         provider = OllamaProvider(base_url=base_url)
 
         # Create model with provider (Ollama uses OpenAI-compatible API)
-        return OpenAIModel(model_name, provider=provider, **kwargs)
+        return OpenAIChatModel(model_name, provider=provider, **kwargs)
 
     def get_model_for_tools(
         self,
