@@ -60,7 +60,7 @@ class MethodologyAuditor:
         correction: dict[str, Any] | None = None
         conflicts: list[str] = []
 
-        if recommendation_is_conflict := (
+        if (
             assumption_status
             and assumption_status.get("status") == "fail"
             and recommended != executed

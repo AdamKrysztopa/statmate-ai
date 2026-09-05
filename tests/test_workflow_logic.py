@@ -13,6 +13,11 @@ from statmate.core.validation import StatisticalDesign, validate_statistical_des
 from statmate.statistical_core.base import StatTestResult
 from statmate.workflow.edges import decide_two_independent, parametric_assumptions
 from statmate.workflow.nodes import call_test_agent, design_verification_node
+from statmate.workflow.nodes_summary import (
+    _build_reported_probabilities,
+    _build_reviewer_result_context,
+    _get_reported_test_names,
+)
 from statmate.workflow.state import create_initial_state
 
 
@@ -45,7 +50,7 @@ def test_call_test_agent_uses_explicit_probability_key(monkeypatch):
         # Return an AgentResult with a different p-value to ensure fallback is applied
         return AgentResult(statistical_test_result=_stat_result(0.99), result='llm', comments='llm')
 
-    monkeypatch.setattr('statmate.workflow.nodes.run_sync_agent', fake_run_sync_agent)
+    monkeypatch.setattr('statmate.workflow._node_helpers.run_sync_agent', fake_run_sync_agent)
 
     agent = DummyAgent('Statistical Test Agent: Dummy', fake_stat_func)
     state = create_initial_state(df=pd.Series(np.arange(5)))
@@ -66,6 +71,47 @@ def test_decide_two_independent_respects_named_probabilities():
 
     state.probabilities['shapiro_group1'] = 0.01
     assert decide_two_independent(state, alpha=0.05) == NodeName.NONPARAMETRIC
+
+
+def test_reported_test_helpers_exclude_assumption_diagnostics_from_execution_trace():
+    state = create_initial_state(df=pd.DataFrame({'a': [1, 2, 3]}))
+    state.add_step(
+        step='Shapiro-Wilk Test',
+        detail='Normality check',
+        data={'test_name': 'Shapiro-Wilk Test', 'statistics': 0.98},
+        p_value=0.42,
+    )
+    state.add_step(
+        step='Levene Test',
+        detail='Variance check',
+        data={'test_name': 'Levene Test', 'statistics': 1.21},
+        p_value=0.31,
+    )
+    state.add_step(
+        step='Welch T-Test',
+        detail='Primary comparison',
+        data={
+            'test_name': 'Welch T-Test',
+            'statistics': 2.33,
+            'effect_size_type': 'hedges_g',
+            'confidence_interval': [0.1, 0.7],
+        },
+        p_value=0.02,
+    )
+
+    assert _get_reported_test_names(state) == ['Welch T-Test']
+    assert _build_reported_probabilities(state) == {'Welch T-Test': 0.02}
+    assert [evidence.test_name for evidence in _build_reviewer_result_context(state)] == ['Welch T-Test']
+
+
+def test_reported_test_helpers_filter_diagnostics_from_probability_fallback():
+    state = create_initial_state(df=pd.DataFrame({'a': [1, 2, 3]}))
+    state.add_probability('shapiro_group1', 0.42)
+    state.add_probability('levene', 0.31)
+    state.add_probability('welch_t_test', 0.02)
+
+    assert _get_reported_test_names(state) == ['welch_t_test']
+    assert _build_reported_probabilities(state) == {'welch_t_test': 0.02}
 
 
 def test_parametric_assumptions_for_paired_branch():

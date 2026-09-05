@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 import numpy as np
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import Model, ModelSettings, OpenAIModel
+from pydantic_ai.models.openai import Model, ModelSettings, OpenAIChatModel
 
 from statmate.agents import AgentResult, StatTestDeps, build_stat_test_agent
 from statmate.statistical_core import (
@@ -109,7 +109,7 @@ def welch_t_agent(
 
 if __name__ == '__main__':
     # Example usage
-    model = OpenAIModel('gpt-4o')
+    model = OpenAIChatModel('gpt-4o')
 
     agent = wilcoxon_agent(model=model)
     data_1 = np.random.normal(0, 1, 100)
@@ -119,11 +119,11 @@ if __name__ == '__main__':
         user_prompt='Please let me know the result of the test.',  # type: ignore
         deps=StatTestDeps(data=data_1, data_secondary=data_2, test_params=test_params),
     )
-    print(result.data)
+    print(result.output)
 
     agent_2 = ttest_rel_agent(model=model)
     result_2 = agent_2.run_sync(
         user_prompt='Please let me know the result of the test.',  # type: ignore
         deps=StatTestDeps(data=data_1, data_secondary=data_2, test_params=test_params),
     )
-    print(result_2.data)
+    print(result_2.output)

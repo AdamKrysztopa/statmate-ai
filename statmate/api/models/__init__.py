@@ -2,6 +2,7 @@
 
 from statmate.api.models.analysis import (
     AnalysisCreate,
+    AnalysisPlotResponse,
     AnalysisResponse,
     AnalysisResultResponse,
     AnalysisStatusResponse,
@@ -30,6 +31,7 @@ __all__ = [
     'DatasetDescriptionUpdate',
     # Analysis models
     'AnalysisCreate',
+    'AnalysisPlotResponse',
     'AnalysisResponse',
     'AnalysisStatusResponse',
     'AnalysisResultResponse',

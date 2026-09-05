@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 import numpy as np
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import ModelSettings, OpenAIModel
+from pydantic_ai.models.openai import ModelSettings, OpenAIChatModel
 
 from statmate.agents import AgentResult, StatTestDeps, build_stat_test_agent, run_sync_agent
 from statmate.core.config import default_config
@@ -12,7 +12,7 @@ from statmate.statistical_core import StatTestResult, pearson_corr, spearman_cor
 
 
 def pearson_agent(
-    model: OpenAIModel,
+    model: OpenAIChatModel,
     model_settings: ModelSettings | None = None,
     test_name: str = 'Pearson Correlation',
     test_function: Callable[..., StatTestResult] = pearson_corr,
@@ -44,7 +44,7 @@ def pearson_agent(
 
 
 def spearman_agent(
-    model: OpenAIModel,
+    model: OpenAIChatModel,
     model_settings: ModelSettings | None = None,
     test_name: str = 'Spearman Correlation',
     test_function: Callable[..., StatTestResult] = spearman_corr,
@@ -95,7 +95,7 @@ if __name__ == '__main__':
     # 3) flip sign to make Spearman positive
     series3 = -resid3
 
-    model = OpenAIModel(default_config.model.model_name)
+    model = OpenAIChatModel(default_config.model.model_name)
     model_settings = ModelSettings(
         temperature=0.0,
         max_tokens=500,

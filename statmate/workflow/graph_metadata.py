@@ -52,7 +52,6 @@ _NODE_ALIAS: dict[str, str] = {
     "parametric assumptions hold": NodeName.NORMALITY_OF_DIFFERENCE,
     "two independent groups?": NodeName.TWO_INDEPENDENT_GROUPS,
     "two_independent_groups?": NodeName.TWO_INDEPENDENT_GROUPS,
-    "paired t-test": NodeName.PAIRED_T,
     "paired_t_test": NodeName.PAIRED_T,
     "wilcoxon signed-rank test": NodeName.WILCOXON,
     "wilcoxon signed rank test": NodeName.WILCOXON,
@@ -281,6 +280,12 @@ _NODES: list[WorkflowNode] = [
         label=NodeName.COX_REGRESSION,
         kind="test",
         transitions=["end"],
+    ),
+    WorkflowNode(
+        id="regression_node",
+        label="Regression Analysis",
+        kind="analysis",
+        transitions=[normalize_node_id(NodeName.SUMMARY)],
     ),
     WorkflowNode(
         id=normalize_node_id(NodeName.DESCRIPTIVE_SUMMARY),

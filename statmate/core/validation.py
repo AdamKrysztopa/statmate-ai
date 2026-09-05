@@ -24,7 +24,7 @@ from statmate.core.exceptions import (
 )
 
 
-def validate_array_not_empty(data: np.ndarray, name: str = "data") -> None:
+def validate_array_not_empty(data: np.ndarray, name: str = 'data') -> None:
     """Validate that an array is not empty.
 
     Args:
@@ -35,11 +35,11 @@ def validate_array_not_empty(data: np.ndarray, name: str = "data") -> None:
         InsufficientDataError: If array is empty.
     """
     if data.size == 0:
-        raise InsufficientDataError(f"{name} is empty")
+        raise InsufficientDataError(f'{name} is empty')
 
 
 def validate_minimum_sample_size(
-    data: np.ndarray | pd.Series | pd.DataFrame, min_size: int, name: str = "data"
+    data: np.ndarray | pd.Series | pd.DataFrame, min_size: int, name: str = 'data'
 ) -> None:
     """Validate that data has minimum sample size.
 
@@ -59,10 +59,10 @@ def validate_minimum_sample_size(
         size = data.shape[0] if data.ndim > 0 else 1
 
     if size < min_size:
-        raise InsufficientDataError(f"{name} has {size} samples, but {min_size} required")
+        raise InsufficientDataError(f'{name} has {size} samples, but {min_size} required')
 
 
-def validate_no_missing_values(data: np.ndarray | pd.Series | pd.DataFrame, name: str = "data") -> None:
+def validate_no_missing_values(data: np.ndarray | pd.Series | pd.DataFrame, name: str = 'data') -> None:
     """Validate that data has no missing values.
 
     Args:
@@ -74,13 +74,13 @@ def validate_no_missing_values(data: np.ndarray | pd.Series | pd.DataFrame, name
     """
     if isinstance(data, pd.DataFrame | pd.Series):
         if data.isnull().any().any() if isinstance(data, pd.DataFrame) else data.isnull().any():
-            raise MissingDataError(f"{name} contains missing values")
+            raise MissingDataError(f'{name} contains missing values')
     elif isinstance(data, np.ndarray):
         if np.isnan(data).any():
-            raise MissingDataError(f"{name} contains NaN values")
+            raise MissingDataError(f'{name} contains NaN values')
 
 
-def validate_numeric_data(data: np.ndarray | pd.Series | pd.DataFrame, name: str = "data") -> None:
+def validate_numeric_data(data: np.ndarray | pd.Series | pd.DataFrame, name: str = 'data') -> None:
     """Validate that data is numeric.
 
     Args:
@@ -92,17 +92,17 @@ def validate_numeric_data(data: np.ndarray | pd.Series | pd.DataFrame, name: str
     """
     if isinstance(data, pd.DataFrame):
         if not data.select_dtypes(include=[np.number]).shape[1] == data.shape[1]:
-            raise InvalidDataTypeError(f"{name} must contain only numeric values")
+            raise InvalidDataTypeError(f'{name} must contain only numeric values')
     elif isinstance(data, pd.Series):
         if not pd.api.types.is_numeric_dtype(data):
-            raise InvalidDataTypeError(f"{name} must be numeric")
+            raise InvalidDataTypeError(f'{name} must be numeric')
     elif isinstance(data, np.ndarray):
         if not np.issubdtype(data.dtype, np.number):
-            raise InvalidDataTypeError(f"{name} must be numeric")
+            raise InvalidDataTypeError(f'{name} must be numeric')
 
 
 def validate_same_length(
-    data1: np.ndarray | pd.Series, data2: np.ndarray | pd.Series, name1: str = "data1", name2: str = "data2"
+    data1: np.ndarray | pd.Series, data2: np.ndarray | pd.Series, name1: str = 'data1', name2: str = 'data2'
 ) -> None:
     """Validate that two datasets have the same length.
 
@@ -119,7 +119,7 @@ def validate_same_length(
     len2 = len(data2) if isinstance(data2, pd.Series) else data2.shape[0]
 
     if len1 != len2:
-        raise InvalidDataShapeError(f"{name1} has length {len1}, but {name2} has length {len2}")
+        raise InvalidDataShapeError(f'{name1} has length {len1}, but {name2} has length {len2}')
 
 
 def validate_dataframe_columns(data: pd.DataFrame, required_columns: list[str]) -> None:
@@ -134,7 +134,7 @@ def validate_dataframe_columns(data: pd.DataFrame, required_columns: list[str]) 
     """
     missing = set(required_columns) - set(data.columns)
     if missing:
-        raise MissingDataError(f"DataFrame is missing required columns: {missing}")
+        raise MissingDataError(f'DataFrame is missing required columns: {missing}')
 
 
 def validate_categorical_data(data: pd.Series | pd.DataFrame, min_categories: int = 2) -> None:
@@ -151,14 +151,14 @@ def validate_categorical_data(data: pd.Series | pd.DataFrame, min_categories: in
         n_unique = data.nunique()
         if n_unique < min_categories:
             raise InvalidDataTypeError(
-                f"Categorical data must have at least {min_categories} categories, found {n_unique}"
+                f'Categorical data must have at least {min_categories} categories, found {n_unique}'
             )
     elif isinstance(data, pd.DataFrame):
         for col in data.columns:
             n_unique = data[col].nunique()
             if n_unique < min_categories:
                 raise InvalidDataTypeError(
-                    f"Column {col} must have at least {min_categories} categories, found {n_unique}"
+                    f'Column {col} must have at least {min_categories} categories, found {n_unique}'
                 )
 
 
@@ -177,13 +177,13 @@ def validate_contingency_table(table: np.ndarray | pd.DataFrame, min_cell_count:
         table = table.to_numpy()
 
     if table.ndim != 2:
-        raise InvalidDataShapeError("Contingency table must be 2-dimensional")
+        raise InvalidDataShapeError('Contingency table must be 2-dimensional')
 
     if table.shape[0] < 2 or table.shape[1] < 2:
-        raise InvalidDataShapeError("Contingency table must be at least 2x2")
+        raise InvalidDataShapeError('Contingency table must be at least 2x2')
 
     if np.any(table < 0):
-        raise DataValidationError("Contingency table cannot contain negative values")
+        raise DataValidationError('Contingency table cannot contain negative values')
 
     # Check for sufficient expected counts
     row_totals = table.sum(axis=1)
@@ -191,7 +191,7 @@ def validate_contingency_table(table: np.ndarray | pd.DataFrame, min_cell_count:
     total = table.sum()
 
     if total == 0:
-        raise InsufficientDataError("Contingency table is empty (sum is 0)")
+        raise InsufficientDataError('Contingency table is empty (sum is 0)')
 
     expected = np.outer(row_totals, col_totals) / total
     if np.any(expected < min_cell_count):
@@ -212,12 +212,12 @@ def validate_paired_data(data1: np.ndarray | pd.Series, data2: np.ndarray | pd.S
     Raises:
         DataValidationError: If data is not valid for paired tests.
     """
-    validate_array_not_empty(data1 if isinstance(data1, np.ndarray) else data1.to_numpy(), "data1")
-    validate_array_not_empty(data2 if isinstance(data2, np.ndarray) else data2.to_numpy(), "data2")
+    validate_array_not_empty(data1 if isinstance(data1, np.ndarray) else data1.to_numpy(), 'data1')
+    validate_array_not_empty(data2 if isinstance(data2, np.ndarray) else data2.to_numpy(), 'data2')
     validate_same_length(data1, data2)
-    validate_numeric_data(data1, "data1")
-    validate_numeric_data(data2, "data2")
-    validate_minimum_sample_size(data1, 3, "data1")
+    validate_numeric_data(data1, 'data1')
+    validate_numeric_data(data2, 'data2')
+    validate_minimum_sample_size(data1, 3, 'data1')
 
 
 def validate_independent_samples(
@@ -233,12 +233,12 @@ def validate_independent_samples(
     Raises:
         DataValidationError: If data is not valid for independent samples tests.
     """
-    validate_array_not_empty(data1 if isinstance(data1, np.ndarray) else data1.to_numpy(), "data1")
-    validate_array_not_empty(data2 if isinstance(data2, np.ndarray) else data2.to_numpy(), "data2")
-    validate_numeric_data(data1, "data1")
-    validate_numeric_data(data2, "data2")
-    validate_minimum_sample_size(data1, 2, "data1")
-    validate_minimum_sample_size(data2, 2, "data2")
+    validate_array_not_empty(data1 if isinstance(data1, np.ndarray) else data1.to_numpy(), 'data1')
+    validate_array_not_empty(data2 if isinstance(data2, np.ndarray) else data2.to_numpy(), 'data2')
+    validate_numeric_data(data1, 'data1')
+    validate_numeric_data(data2, 'data2')
+    validate_minimum_sample_size(data1, 2, 'data1')
+    validate_minimum_sample_size(data2, 2, 'data2')
 
 
 def validate_alpha(alpha: float) -> None:
@@ -251,7 +251,7 @@ def validate_alpha(alpha: float) -> None:
         DataValidationError: If alpha is not in valid range.
     """
     if not 0 < alpha < 1:
-        raise DataValidationError(f"Alpha must be between 0 and 1, got {alpha}")
+        raise DataValidationError(f'Alpha must be between 0 and 1, got {alpha}')
 
 
 def validate_test_parameters(**params: Any) -> None:
@@ -263,12 +263,12 @@ def validate_test_parameters(**params: Any) -> None:
     Raises:
         DataValidationError: If parameters are invalid.
     """
-    if "alpha" in params:
-        validate_alpha(params["alpha"])
+    if 'alpha' in params:
+        validate_alpha(params['alpha'])
 
-    if "alternative" in params:
-        valid_alternatives = ["two-sided", "less", "greater"]
-        if params["alternative"] not in valid_alternatives:
+    if 'alternative' in params:
+        valid_alternatives = ['two-sided', 'less', 'greater']
+        if params['alternative'] not in valid_alternatives:
             raise DataValidationError(f"alternative must be one of {valid_alternatives}, got {params['alternative']}")
 
 
@@ -284,7 +284,7 @@ def _flatten_numeric_array(data: np.ndarray | pd.Series | pd.DataFrame) -> np.nd
     try:
         return arr.astype(float, copy=False)
     except (TypeError, ValueError):
-        coerced = pd.to_numeric(arr, errors="coerce")
+        coerced = pd.to_numeric(arr, errors='coerce')
         return np.asarray(coerced, dtype=float)
 
 
@@ -307,21 +307,21 @@ def validate_assumptions(
         Dictionary containing diagnostics and any detected failures.
     """
     thresholds = {
-        "skewness": default_config.statistical.skewness_threshold,
-        "kurtosis": default_config.statistical.kurtosis_threshold,
-        "variance_ratio": default_config.statistical.variance_ratio_threshold,
-        "sparsity": default_config.statistical.sparsity_threshold,
+        'skewness': default_config.statistical.skewness_threshold,
+        'kurtosis': default_config.statistical.kurtosis_threshold,
+        'variance_ratio': default_config.statistical.variance_ratio_threshold,
+        'sparsity': default_config.statistical.sparsity_threshold,
     }
 
     primary_arr = _flatten_numeric_array(data)
     failures: list[str] = []
 
     skewness = float(pd.Series(primary_arr).skew()) if primary_arr.size else None
-    if skewness is not None and abs(skewness) > thresholds["skewness"]:
+    if skewness is not None and abs(skewness) > thresholds['skewness']:
         failures.append(f"High skewness ({skewness:.2f}) exceeds |{thresholds['skewness']}| threshold.")
 
     kurt = float(pd.Series(primary_arr).kurtosis()) if primary_arr.size else None
-    if kurt is not None and kurt > thresholds["kurtosis"]:
+    if kurt is not None and kurt > thresholds['kurtosis']:
         failures.append(f"Heavy tails (kurtosis {kurt:.2f}) above {thresholds['kurtosis']}.")
 
     variance_ratio = None
@@ -333,7 +333,7 @@ def validate_assumptions(
             high = max(var_a, var_b)
             low = min(var_a, var_b)
             variance_ratio = high / low if low > 0 else None
-            if variance_ratio and variance_ratio > thresholds["variance_ratio"]:
+            if variance_ratio and variance_ratio > thresholds['variance_ratio']:
                 failures.append(
                     f"Variance ratio {variance_ratio:.2f} exceeds threshold "
                     f"{thresholds['variance_ratio']}; variances differ."
@@ -341,20 +341,20 @@ def validate_assumptions(
 
     zero_like = np.isnan(primary_arr) | (primary_arr == 0)
     sparsity = float(np.mean(zero_like)) if primary_arr.size else None
-    if sparsity is not None and sparsity > thresholds["sparsity"]:
+    if sparsity is not None and sparsity > thresholds['sparsity']:
         failures.append(
             f"Sparsity {sparsity:.2%} above threshold {thresholds['sparsity']:.0%}; many zero/empty values."
         )
 
     return {
-        "test_type": test_type,
-        "skewness": skewness,
-        "kurtosis": kurt,
-        "variance_ratio": variance_ratio,
-        "sparsity": sparsity,
-        "thresholds": thresholds,
-        "failures": failures,
-        "status": "fail" if failures else "pass",
+        'test_type': test_type,
+        'skewness': skewness,
+        'kurtosis': kurt,
+        'variance_ratio': variance_ratio,
+        'sparsity': sparsity,
+        'thresholds': thresholds,
+        'failures': failures,
+        'status': 'fail' if failures else 'pass',
     }
 
 
@@ -369,8 +369,8 @@ def requires_assumptions(*, normality: bool | None = None, variance: bool | None
     def decorator(func):
         @wraps(func)
         def wrapper(state: Any, *args: Any, **kwargs: Any):
-            assumptions = {"normality": normality, "variance": variance}
-            for assumption in ("normality", "variance"):
+            assumptions = {'normality': normality, 'variance': variance}
+            for assumption in ('normality', 'variance'):
                 if _assumption_failed(state, assumption=assumption, assumptions=assumptions):
                     raise StatisticalAssumptionError(
                         f"Required assumption '{assumption}' not satisfied for {func.__name__}."
@@ -385,7 +385,7 @@ def requires_assumptions(*, normality: bool | None = None, variance: bool | None
 def _assumption_failed(
     state: Any,
     *,
-    assumption: Literal["normality", "variance"],
+    assumption: Literal['normality', 'variance'],
     assumptions: dict[str, Any],
 ) -> bool:
     """Check whether a required assumption is violated using blueprint or logged diagnostics."""
@@ -396,23 +396,23 @@ def _assumption_failed(
         return False
 
     # Blueprint-derived diagnostics
-    blueprint = getattr(state, "data_blueprint", None)
-    if blueprint and assumption == "normality":
+    blueprint = getattr(state, 'data_blueprint', None)
+    if blueprint and assumption == 'normality':
         threshold = default_config.statistical.normality_threshold
         for metric in (blueprint.distribution_metrics or {}).values():
             if metric.normality_p_value is not None and metric.normality_p_value < threshold:
                 return True
 
     # Assumption logs
-    for entry in reversed(getattr(state, "assumption_log", []) or []):
-        failures = " ".join(entry.get("failures") or []).lower()
-        if assumption == "normality" and any(tok in failures for tok in ("skew", "normal", "kurt")):
+    for entry in reversed(getattr(state, 'assumption_log', []) or []):
+        failures = ' '.join(entry.get('failures') or []).lower()
+        if assumption == 'normality' and any(tok in failures for tok in ('skew', 'normal', 'kurt')):
             return True
-        if assumption == "variance":
-            ratio = entry.get("variance_ratio")
+        if assumption == 'variance':
+            ratio = entry.get('variance_ratio')
             if ratio and ratio > default_config.statistical.variance_ratio_threshold:
                 return True
-            if "variance" in failures or "heteroscedastic" in failures:
+            if 'variance' in failures or 'heteroscedastic' in failures:
                 return True
     return False
 
@@ -421,7 +421,7 @@ def _assumption_failed(
 class StatisticalDesign:
     """Structured output describing the detected study design."""
 
-    design_type: Literal["independent", "paired", "mixed"]
+    design_type: Literal['independent', 'paired', 'mixed']
     is_paired: bool
     grouping_variable: str | None
     subject_id_column: str | None
@@ -435,16 +435,16 @@ class StatisticalDesign:
     def as_dict(self) -> dict[str, Any]:
         """Convert to a JSON-serialisable dictionary."""
         return {
-            "design_type": self.design_type,
-            "is_paired": self.is_paired,
-            "grouping_variable": self.grouping_variable,
-            "subject_id_column": self.subject_id_column,
-            "rationale": self.rationale,
-            "dependent_variable": self.dependent_variable,
-            "suggested_groups": self.suggested_groups,
-            "overlap_summary": self.overlap_summary,
-            "comparison_matrix": self.comparison_matrix,
-            "keyword_cues": self.keyword_cues,
+            'design_type': self.design_type,
+            'is_paired': self.is_paired,
+            'grouping_variable': self.grouping_variable,
+            'subject_id_column': self.subject_id_column,
+            'rationale': self.rationale,
+            'dependent_variable': self.dependent_variable,
+            'suggested_groups': self.suggested_groups,
+            'overlap_summary': self.overlap_summary,
+            'comparison_matrix': self.comparison_matrix,
+            'keyword_cues': self.keyword_cues,
         }
 
     def dict(self) -> dict[str, Any]:
@@ -489,44 +489,44 @@ def validate_statistical_design(
         nunique = frame[col].nunique(dropna=True)
         if nunique >= max(len(frame) * 0.9, 5):
             return True
-        id_tokens = ("id", "subject", "participant", "patient", "user")
+        id_tokens = ('id', 'subject', 'participant', 'patient', 'user')
         return any(tok in low for tok in id_tokens)
 
     measurement_cols = [col for col in numeric_dep_values if not _is_id_like(col)]
 
-    wide_pairs = wide_detection.get("pairs", [])
-    if wide_detection.get("detected"):
-        dep_label = dep_label or ", ".join([pair for cols in wide_pairs for pair in cols][:2])
+    wide_pairs = wide_detection.get('pairs', [])
+    if wide_detection.get('detected'):
+        dep_label = dep_label or ', '.join([pair for cols in wide_pairs for pair in cols][:2])
         return StatisticalDesign(
-            design_type="paired",
+            design_type='paired',
             is_paired=True,
             grouping_variable=group_var if group_var in frame.columns else None,
             subject_id_column=subject_id,
             dependent_variable=dep_label,
-            rationale=wide_detection.get("reason")
-            or "Detected pre/post or timepoint column patterns indicating paired wide-format measurements.",
+            rationale=wide_detection.get('reason')
+            or 'Detected pre/post or timepoint column patterns indicating paired wide-format measurements.',
             suggested_groups=[p for cols in wide_pairs for p in cols][:2],
-            overlap_summary={"wide_format_pairs": wide_pairs},
+            overlap_summary={'wide_format_pairs': wide_pairs},
             keyword_cues=keyword_cues,
         )
 
     # 1. Wide-format paired: multiple numeric measurement columns imply row-wise pairing.
     if len(measurement_cols) >= 2 and potential_group is None and (group_var is None or group_var in frame.columns):
         return StatisticalDesign(
-            design_type="paired",
+            design_type='paired',
             is_paired=True,
             grouping_variable=group_var if group_var in frame.columns else None,
             subject_id_column=subject_id,
-            dependent_variable=", ".join(measurement_cols),
+            dependent_variable=', '.join(measurement_cols),
             rationale=(
-                "Multiple numeric measurement columns per row (wide-format) detected. Skipping group-overlap checks."
+                'Multiple numeric measurement columns per row (wide-format) detected. Skipping group-overlap checks.'
             ),
             suggested_groups=[],
             keyword_cues=keyword_cues,
         )
 
     # 2. Temporal/paired keyword cues: single dep var provided but paired-like columns exist.
-    paired_keywords = ("pre", "post", "baseline", "followup", "week")
+    paired_keywords = ('pre', 'post', 'baseline', 'followup', 'week')
     if not group_var:
         temporal_like = [
             col
@@ -535,12 +535,12 @@ def validate_statistical_design(
         ]
         if len(temporal_like) >= 2:
             return StatisticalDesign(
-                design_type="paired",
+                design_type='paired',
                 is_paired=True,
                 grouping_variable=None,
                 subject_id_column=subject_id,
-                dependent_variable=", ".join(temporal_like[:2]),
-                rationale=f"Found temporal column pair {temporal_like[:2]}; treating layout as paired.",
+                dependent_variable=', '.join(temporal_like[:2]),
+                rationale=f'Found temporal column pair {temporal_like[:2]}; treating layout as paired.',
                 suggested_groups=[],
                 keyword_cues=keyword_cues,
             )
@@ -548,30 +548,30 @@ def validate_statistical_design(
     # 3. No grouping provided: default to independent exploration.
     if not group_var:
         return StatisticalDesign(
-            design_type="independent",
+            design_type='independent',
             is_paired=False,
             grouping_variable=potential_group,
             subject_id_column=subject_id,
             dependent_variable=dep_label,
-            rationale="No grouping variable provided; assuming single group or independent exploration.",
+            rationale='No grouping variable provided; assuming single group or independent exploration.',
             suggested_groups=[],
             keyword_cues=keyword_cues,
         )
 
     # 3b. Pre/post style grouping labels imply repeated measures even without subject IDs.
-    temporal_group_tokens = ("before", "after", "pre", "post", "baseline", "followup", "follow-up")
+    temporal_group_tokens = ('before', 'after', 'pre', 'post', 'baseline', 'followup', 'follow-up')
     if groups:
         temporal_hits = [g for g in groups if any(tok in g.lower() for tok in temporal_group_tokens)]
         if len(set(temporal_hits)) >= 2:
             return StatisticalDesign(
-                design_type="paired",
+                design_type='paired',
                 is_paired=True,
                 grouping_variable=group_var,
                 subject_id_column=subject_id,
                 dependent_variable=dep_label,
-                rationale="Grouping labels suggest pre/post repeated measures; defaulting to paired design.",
+                rationale='Grouping labels suggest pre/post repeated measures; defaulting to paired design.',
                 suggested_groups=groups,
-                overlap_summary={"temporal_group_labels": groups},
+                overlap_summary={'temporal_group_labels': groups},
                 keyword_cues=keyword_cues,
             )
 
@@ -587,21 +587,21 @@ def validate_statistical_design(
             denom = min(len(g1_ids), len(g2_ids)) or 1
             percent_overlap = len(overlap) / denom
             overlap_summary = {
-                "group_a": group_a,
-                "group_b": group_b,
-                "overlap_count": len(overlap),
-                "percent_overlap": percent_overlap,
+                'group_a': group_a,
+                'group_b': group_b,
+                'overlap_count': len(overlap),
+                'percent_overlap': percent_overlap,
             }
 
             if percent_overlap > 0.8:
                 return StatisticalDesign(
-                    design_type="paired",
+                    design_type='paired',
                     is_paired=True,
                     grouping_variable=group_var,
                     subject_id_column=subject_id,
                     dependent_variable=dep_label,
                     rationale=(
-                        f"High ID overlap ({percent_overlap:.1%}) between groups suggests paired/longitudinal design."
+                        f'High ID overlap ({percent_overlap:.1%}) between groups suggests paired/longitudinal design.'
                     ),
                     suggested_groups=[str(group_a), str(group_b)],
                     overlap_summary=overlap_summary,
@@ -610,12 +610,12 @@ def validate_statistical_design(
 
     # 5. Independent groups: no meaningful ID overlap detected.
     return StatisticalDesign(
-        design_type="independent",
+        design_type='independent',
         is_paired=False,
         grouping_variable=group_var,
         subject_id_column=subject_id,
         dependent_variable=dep_label,
-        rationale="Unique entities per group or no ID overlap detected. Treating as independent samples.",
+        rationale='Unique entities per group or no ID overlap detected. Treating as independent samples.',
         suggested_groups=groups,
         overlap_summary=overlap_summary,
         keyword_cues=keyword_cues,
@@ -636,38 +636,38 @@ def get_structural_summary(df: pd.DataFrame, group_var: str) -> str:
 
 def _keyword_cues(columns: Sequence[str]) -> dict[str, list[str]]:
     """Detect temporal vs grouping cues from column names."""
-    temporal_tokens = ("time", "visit", "week", "month", "follow", "day", "year")
-    grouping_tokens = ("group", "arm", "cohort", "treatment", "variant", "condition")
+    temporal_tokens = ('time', 'visit', 'week', 'month', 'follow', 'day', 'year')
+    grouping_tokens = ('group', 'arm', 'cohort', 'treatment', 'variant', 'condition')
     lower = {col: col.lower() for col in columns}
     temporal_like = [col for col, low in lower.items() if any(tok in low for tok in temporal_tokens)]
     group_like = [col for col, low in lower.items() if any(tok in low for tok in grouping_tokens)]
-    return {"temporal_like": temporal_like, "group_like": group_like}
+    return {'temporal_like': temporal_like, 'group_like': group_like}
 
 
 def detect_wide_format_pairing(columns: Sequence[str]) -> dict[str, Any]:
     """Detect common wide-format pairing patterns from column names."""
     lower = {str(col): str(col).lower() for col in columns}
     token_pairs = [
-        ("pre", "post"),
-        ("before", "after"),
-        ("baseline", "followup"),
-        ("baseline", "follow_up"),
+        ('pre', 'post'),
+        ('before', 'after'),
+        ('baseline', 'followup'),
+        ('baseline', 'follow_up'),
     ]
     pairs: list[tuple[str, str]] = []
 
     def _base(name: str, token: str) -> str:
-        cleaned = re.sub(rf"(^|[_\\-\\s]){token}([_\\-\\s]|$)", "_", name)
-        return re.sub(r"_+", "_", cleaned).strip("_- ")
+        cleaned = re.sub(rf'(^|[_\\-\\s]){token}([_\\-\\s]|$)', '_', name)
+        return re.sub(r'_+', '_', cleaned).strip('_- ')
 
     for pre, post in token_pairs:
-        pre_hits = [col for col, low in lower.items() if re.search(rf"(^|[^a-z0-9]){pre}([^a-z0-9]|$)", low)]
-        post_hits = [col for col, low in lower.items() if re.search(rf"(^|[^a-z0-9]){post}([^a-z0-9]|$)", low)]
+        pre_hits = [col for col, low in lower.items() if re.search(rf'(^|[^a-z0-9]){pre}([^a-z0-9]|$)', low)]
+        post_hits = [col for col, low in lower.items() if re.search(rf'(^|[^a-z0-9]){post}([^a-z0-9]|$)', low)]
         for pre_col in pre_hits:
             for post_col in post_hits:
                 if _base(lower[pre_col], pre) == _base(lower[post_col], post) and _base(lower[pre_col], pre):
                     pairs.append((pre_col, post_col))
 
-    timepoint_regex = re.compile(r"(.+?)(?:[_\\-\\s]?)(t|tp|timepoint|visit)(\\d+)$", re.IGNORECASE)
+    timepoint_regex = re.compile(r'(.+?)(?:[_\\-\\s]?)(t|tp|timepoint|visit)(\\d+)$', re.IGNORECASE)
     timepoint_buckets: dict[str, list[tuple[str, int]]] = {}
     for col, low in lower.items():
         match = timepoint_regex.match(low)
@@ -686,17 +686,17 @@ def detect_wide_format_pairing(columns: Sequence[str]) -> dict[str, Any]:
     detected = len(pairs) > 0
     reason = None
     if detected:
-        pair_labels = ["/".join(p) for p in pairs]
+        pair_labels = ['/'.join(p) for p in pairs]
         reason = f"Wide-format pairing detected via columns: {', '.join(pair_labels)}."
 
-    return {"detected": detected, "pairs": pairs, "reason": reason}
+    return {'detected': detected, 'pairs': pairs, 'reason': reason}
 
 
 def _candidate_subject_columns(df: pd.DataFrame, provided: Sequence[str] | None = None) -> list[str]:
     """Identify plausible subject ID columns."""
     if provided:
         return [col for col in provided if col in df.columns]
-    keywords = ("id", "subject", "participant", "patient", "user")
+    keywords = ('id', 'subject', 'participant', 'patient', 'user')
     candidates = []
     for col in df.columns:
         low = str(col).lower()
@@ -731,13 +731,13 @@ def _build_comparison_matrix(df: pd.DataFrame, subject_col: str, group_col: str)
             shared = len(id_sets[group_a] & id_sets[group_b])
             comparisons.append(
                 {
-                    "group_a": group_a,
-                    "group_b": group_b,
-                    "shared_ids": shared,
-                    "comparison_type": "paired" if shared > 0 else "independent",
+                    'group_a': group_a,
+                    'group_b': group_b,
+                    'shared_ids': shared,
+                    'comparison_type': 'paired' if shared > 0 else 'independent',
                 }
             )
-    return {"groups": levels, "comparisons": comparisons}
+    return {'groups': levels, 'comparisons': comparisons}
 
 
 def _overlap_summary(df: pd.DataFrame, subject_col: str, group_col: str) -> dict[str, Any]:
@@ -749,11 +749,11 @@ def _overlap_summary(df: pd.DataFrame, subject_col: str, group_col: str) -> dict
     overlap_rate = float(shared_ids / total_ids) if total_ids else 0.0
     comparison_matrix = _build_comparison_matrix(df, subject_col, group_col)
     return {
-        "shared_ids_across_groups": shared_ids,
-        "repeated_within_group": repeated_within_group,
-        "total_subjects": total_ids,
-        "overlap_rate": overlap_rate,
-        "comparison_matrix": comparison_matrix,
+        'shared_ids_across_groups': shared_ids,
+        'repeated_within_group': repeated_within_group,
+        'total_subjects': total_ids,
+        'overlap_rate': overlap_rate,
+        'comparison_matrix': comparison_matrix,
     }
 
 
@@ -774,29 +774,29 @@ def infer_statistical_design(
     """
     frame = data.to_frame() if isinstance(data, pd.Series) else data.copy()
     summary: dict[str, Any] = {
-        "n_rows": int(len(frame)),
-        "n_cols": int(frame.shape[1]),
-        "nunique_by_column": {col: int(frame[col].nunique(dropna=True)) for col in frame.columns},
+        'n_rows': int(len(frame)),
+        'n_cols': int(frame.shape[1]),
+        'nunique_by_column': {col: int(frame[col].nunique(dropna=True)) for col in frame.columns},
     }
-    summary["keyword_cues"] = _keyword_cues(frame.columns)
+    summary['keyword_cues'] = _keyword_cues(frame.columns)
     wide_detection = detect_wide_format_pairing(frame.columns)
-    summary["wide_format_detection"] = wide_detection
+    summary['wide_format_detection'] = wide_detection
 
     subject_cols = _candidate_subject_columns(frame, subject_id_candidates)
     group_cols = _candidate_group_columns(frame, group_candidates)
-    summary["subject_id_candidates"] = subject_cols
-    summary["group_candidates"] = group_cols
+    summary['subject_id_candidates'] = subject_cols
+    summary['group_candidates'] = group_cols
 
     best_pair: tuple[str, str] | None = None
     best_overlap: dict[str, Any] = {}
     best_score = -1
-    temporal_group_tokens = ("before", "after", "pre", "post", "baseline", "followup", "follow-up")
+    temporal_group_tokens = ('before', 'after', 'pre', 'post', 'baseline', 'followup', 'follow-up')
     paired_by_labels = False
     paired_label_group: str | None = None
     label_values: list[str] = []
 
-    if wide_detection.get("detected"):
-        best_overlap = {"wide_format_pairs": wide_detection.get("pairs", [])}
+    if wide_detection.get('detected'):
+        best_overlap = {'wide_format_pairs': wide_detection.get('pairs', [])}
 
     for subj in subject_cols:
         subj_series = frame[subj] if subj in frame.columns else pd.Series(frame.index, name=subj)
@@ -809,7 +809,7 @@ def infer_statistical_design(
             if candidate_df.empty:
                 continue
             overlap = _overlap_summary(candidate_df, subj, grp)
-            score = overlap["shared_ids_across_groups"] + overlap["repeated_within_group"]
+            score = overlap['shared_ids_across_groups'] + overlap['repeated_within_group']
             if score > best_score:
                 best_score = score
                 best_overlap = overlap
@@ -825,23 +825,23 @@ def infer_statistical_design(
                 paired_by_labels = True
                 paired_label_group = grp
                 label_values = [str(v) for v in values]
-                best_overlap = {"temporal_group_labels": label_values}
+                best_overlap = {'temporal_group_labels': label_values}
                 break
 
     # Fallback: row-wise paired signals (wide format)
     paired_by_row = False
     if best_pair is None:
         numeric_cols = frame.select_dtypes(include=[np.number]).columns
-        paired_by_row = (len(numeric_cols) >= 2 and len(frame) > 1) or wide_detection.get("detected")
+        paired_by_row = (len(numeric_cols) >= 2 and len(frame) > 1) or wide_detection.get('detected')
         if paired_by_row:
             best_overlap = {
-                "paired_by_row": True,
-                "shared_ids_across_groups": 0,
-                "repeated_within_group": 0,
-                "wide_format_pairs": wide_detection.get("pairs", []),
+                'paired_by_row': True,
+                'shared_ids_across_groups': 0,
+                'repeated_within_group': 0,
+                'wide_format_pairs': wide_detection.get('pairs', []),
             }
 
-    design_type: Literal["independent", "paired", "mixed"] = "independent"
+    design_type: Literal['independent', 'paired', 'mixed'] = 'independent'
     grouping_variable: str | None = None
     subject_id_column: str | None = None
     rationale_parts: list[str] = []
@@ -849,49 +849,49 @@ def infer_statistical_design(
     if best_pair:
         subject_id_column, grouping_variable = best_pair
         overlap = best_overlap
-        comparison_matrix = overlap.get("comparison_matrix", {})
-        shared = overlap.get("shared_ids_across_groups", 0)
-        repeated = overlap.get("repeated_within_group", 0)
+        comparison_matrix = overlap.get('comparison_matrix', {})
+        shared = overlap.get('shared_ids_across_groups', 0)
+        repeated = overlap.get('repeated_within_group', 0)
         if shared > 0 and repeated > 0:
-            design_type = "mixed"
+            design_type = 'mixed'
             rationale_parts.append(
-                f"{shared} subject IDs appear across groups and {repeated} repeated entries within at least one group."
+                f'{shared} subject IDs appear across groups and {repeated} repeated entries within at least one group.'
             )
         elif shared > 0 or repeated > 0:
-            design_type = "paired"
+            design_type = 'paired'
             if shared > 0:
-                rationale_parts.append(f"{shared} subject IDs overlap across groups, implying paired/crossover data.")
+                rationale_parts.append(f'{shared} subject IDs overlap across groups, implying paired/crossover data.')
             if repeated > 0:
-                rationale_parts.append(f"{repeated} repeated IDs within a group suggest longitudinal tracking.")
+                rationale_parts.append(f'{repeated} repeated IDs within a group suggest longitudinal tracking.')
         else:
-            rationale_parts.append("No subject overlaps detected across groups; treating as independent samples.")
-        best_overlap.setdefault("comparison_matrix", comparison_matrix)
+            rationale_parts.append('No subject overlaps detected across groups; treating as independent samples.')
+        best_overlap.setdefault('comparison_matrix', comparison_matrix)
     elif paired_by_row:
-        design_type = "paired"
-        rationale_parts.append("Multiple measurement columns per row imply a paired/wide layout.")
-        if wide_detection.get("reason"):
-            rationale_parts.append(wide_detection["reason"])
+        design_type = 'paired'
+        rationale_parts.append('Multiple measurement columns per row imply a paired/wide layout.')
+        if wide_detection.get('reason'):
+            rationale_parts.append(wide_detection['reason'])
     elif paired_by_labels:
-        design_type = "paired"
+        design_type = 'paired'
         grouping_variable = grouping_variable or paired_label_group
         rationale_parts.append(
-            "Grouping labels suggest pre/post repeated measures; defaulting to paired design despite missing IDs."
+            'Grouping labels suggest pre/post repeated measures; defaulting to paired design despite missing IDs.'
         )
         if label_values:
             rationale_parts.append(f"Detected labels: {', '.join(label_values)}.")
     else:
-        rationale_parts.append("No ID/group overlap found; defaulting to independent design.")
+        rationale_parts.append('No ID/group overlap found; defaulting to independent design.')
 
     design = StatisticalDesign(
         design_type=design_type,
-        is_paired=design_type != "independent",
+        is_paired=design_type != 'independent',
         grouping_variable=grouping_variable,
         subject_id_column=subject_id_column,
-        rationale=" ".join(rationale_parts).strip(),
+        rationale=' '.join(rationale_parts).strip(),
         overlap_summary=best_overlap,
-        comparison_matrix=best_overlap.get("comparison_matrix", {}),
-        keyword_cues=summary["keyword_cues"],
+        comparison_matrix=best_overlap.get('comparison_matrix', {}),
+        keyword_cues=summary['keyword_cues'],
     )
-    summary["overlap_summary"] = best_overlap
-    summary["design_type"] = design_type
+    summary['overlap_summary'] = best_overlap
+    summary['design_type'] = design_type
     return design, summary

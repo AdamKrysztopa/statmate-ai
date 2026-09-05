@@ -78,9 +78,7 @@ class AnalysisStatusResponse(BaseModel):
     decision_steps: list[dict[str, Any]] | None = Field(
         default=None, description='Ordered list of streamed node/agent decisions'
     )
-    intermediate_log: str | None = Field(
-        default=None, description='Rolling log output persisted during streaming'
-    )
+    intermediate_log: str | None = Field(default=None, description='Rolling log output persisted during streaming')
     execution_trace: list[dict[str, Any]] | None = Field(
         default=None, description='Live step-by-step trace (may be partial while running)'
     )
@@ -90,6 +88,18 @@ class AnalysisStatusResponse(BaseModel):
     workflow_graph: dict[str, Any] | None = Field(
         default=None, description='Workflow graph metadata plus visited/active nodes'
     )
+
+
+class AnalysisPlotResponse(BaseModel):
+    """Structured chart payload returned for an analysis result."""
+
+    title: str = Field(description='Chart title shown in the client.')
+    description: str = Field(description='Short technical description of the plot.')
+    image_base64: str = Field(description='Base64-encoded PNG bytes for the rendered chart.')
+    type: str = Field(description='Plot type identifier.')
+    column: str = Field(description='Column or column pair represented in the chart.')
+    content_type: str = Field(description='MIME type for the plot image.')
+    caption: str | None = Field(default=None, description='Plain-language narrative caption for the chart.')
 
 
 class AnalysisResultResponse(BaseModel):
@@ -118,7 +128,7 @@ class AnalysisResultResponse(BaseModel):
     intermediate_log: str | None = Field(
         default=None, description='Rolling workflow log captured during streaming execution'
     )
-    plots: list[dict[str, Any]] | None = Field(default=None, description='Base64-encoded diagnostic plots')
+    plots: list[AnalysisPlotResponse] | None = Field(default=None, description='Base64-encoded diagnostic plots')
     effect_sizes: dict[str, float] | None = Field(
         default=None, description="Computed effect sizes (e.g., Cohen's d) when a binary grouping exists"
     )

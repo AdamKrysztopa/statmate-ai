@@ -1,7 +1,10 @@
+"""Linear correlation tests: Pearson and Spearman."""
+
 import numpy as np
 from scipy.stats import pearsonr, spearmanr
 
 from statmate.statistical_core.base import StatTestResult
+from statmate.statistical_core.effect_size import ci_pearson
 
 
 def pearson_corr(data: np.ndarray, data2: np.ndarray, alpha: float = 0.05) -> StatTestResult:
@@ -22,6 +25,8 @@ def pearson_corr(data: np.ndarray, data2: np.ndarray, alpha: float = 0.05) -> St
         A StatTestResult containing statistic, p-value, decision text, and details.
     """
     corr_coef, p_value = pearsonr(data, data2)
+    n = len(data)
+    ci = ci_pearson(float(corr_coef), n, alpha)
     if p_value < alpha:  # type: ignore # not true
         result_text = (
             f'Reject H₀ (p = {p_value:.4f} < α = {alpha}); '
@@ -45,6 +50,8 @@ def pearson_corr(data: np.ndarray, data2: np.ndarray, alpha: float = 0.05) -> St
             'sample_size_1': len(data),
             'sample_size_2': len(data2),
         },
+        effect_size_type='pearson_r',
+        confidence_interval=ci,
     )
 
 
@@ -66,6 +73,8 @@ def spearman_corr(data: np.ndarray, data2: np.ndarray, alpha: float = 0.05) -> S
         A StatTestResult containing statistic, p-value, decision text, and details.
     """
     corr_coef, p_value = spearmanr(data, data2)
+    n = len(data)
+    ci = ci_pearson(float(corr_coef), n, alpha)
     if p_value < alpha:  # type: ignore # not true
         result_text = (
             f'Reject Null hypothesis (p = {p_value:.4f} < alpha = {alpha}); '
@@ -89,4 +98,6 @@ def spearman_corr(data: np.ndarray, data2: np.ndarray, alpha: float = 0.05) -> S
             'sample_size_1': len(data),
             'sample_size_2': len(data2),
         },
+        effect_size_type='spearman_rho',
+        confidence_interval=ci,
     )

@@ -16,9 +16,8 @@ from statmate.api.models.model_config import (
     ModelInfoResponse,
     ModelValidationResponse,
 )
-from statmate.core.model_config import ModelProvider, resolve_model_alias
 from statmate.api.services.credential_service import CredentialService
-from statmate.core.model_config import SUPPORTED_MODELS
+from statmate.core.model_config import SUPPORTED_MODELS, ModelProvider, resolve_model_alias
 from statmate.workflow.model_factory import get_default_factory, initialize_default_factory
 
 logger = logging.getLogger(__name__)

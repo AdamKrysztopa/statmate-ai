@@ -153,6 +153,17 @@ async def get_analysis_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
     analysis = AnalysisService.sanitize_analysis(analysis)
 
+    # Return 501 when the workflow hit a NOT_IMPLEMENTED node
+    decision_steps = analysis.decision_steps or []
+    if any(
+        isinstance(s, dict) and isinstance(s.get("data"), dict) and s["data"].get("status") == "NOT_IMPLEMENTED"
+        for s in decision_steps
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={"detail": "Survival analysis (Cox regression) is not yet implemented.", "code": "NOT_IMPLEMENTED"},
+        )
+
     execution_trace: list[dict[str, str]] | None = None
     if analysis.log_path:
         log_content = AnalysisService.get_analysis_log(

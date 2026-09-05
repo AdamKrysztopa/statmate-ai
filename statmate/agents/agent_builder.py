@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.output import ToolOutput
 from pydantic_ai.models import Model, ModelSettings
 
 from statmate.statistical_core.base import StatTestResult
@@ -130,10 +131,10 @@ def build_stat_test_agent(
         model=model,
         model_settings=model_settings,
         deps_type=StatTestDeps,
-        result_type=AgentResult,
+        end_strategy='early',
+        output_type=ToolOutput(AgentResult, description=f'Performing {test_name} statistical test.'),
         name=f'Statistical Test Agent: {test_name}',
         system_prompt=system_prompt,
-        result_tool_description=f'Performing {test_name} statistical test.',
         retries=retries,
     )
 
@@ -233,7 +234,7 @@ async def run_async_agent(
     """
     result = await agent.run(user_prompt=user_prompt, deps=deps)
 
-    return result.data
+    return result.output
 
 
 def run_sync_agent(
@@ -253,4 +254,4 @@ def run_sync_agent(
     """
     result = agent.run_sync(user_prompt=user_prompt, deps=deps)
 
-    return result.data
+    return result.output

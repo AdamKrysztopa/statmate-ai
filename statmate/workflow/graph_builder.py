@@ -63,7 +63,7 @@ class WorkflowGraphBuilder:
         """Initialize the graph builder."""
         self.graph = StateGraph(WorkflowState)
 
-    def add_initialization_node(self) -> 'WorkflowGraphBuilder':
+    def add_initialization_node(self) -> "WorkflowGraphBuilder":
         """Add the initialization agent node.
 
         Returns:
@@ -73,13 +73,13 @@ class WorkflowGraphBuilder:
         self.graph.set_entry_point(NodeName.INITIALIZATION)
         return self
 
-    def add_intent_node(self) -> 'WorkflowGraphBuilder':
+    def add_intent_node(self) -> "WorkflowGraphBuilder":
         """Add intent discovery node between initialization and verification."""
         self.graph.add_node(NodeName.INTENT, intent_discovery_node)
         self.graph.add_edge(NodeName.INITIALIZATION, NodeName.INTENT)
         return self
 
-    def add_initial_routing(self) -> 'WorkflowGraphBuilder':
+    def add_initial_routing(self) -> "WorkflowGraphBuilder":
         """Add conditional routing from initialization to test selection.
 
         Returns:
@@ -131,7 +131,7 @@ class WorkflowGraphBuilder:
         )
         return self
 
-    def add_guardrail_nodes(self) -> 'WorkflowGraphBuilder':
+    def add_guardrail_nodes(self) -> "WorkflowGraphBuilder":
         """Add guardrail nodes for insufficient data or manual intervention."""
         self.graph.add_node(NodeName.DESCRIPTIVE_SUMMARY, descriptive_summary_node)
         self.graph.add_node(NodeName.USER_INTERVENTION, user_intervention_node)
@@ -139,7 +139,7 @@ class WorkflowGraphBuilder:
         self.graph.add_edge(NodeName.USER_INTERVENTION, END)
         return self
 
-    def add_choice_node(self) -> 'WorkflowGraphBuilder':
+    def add_choice_node(self) -> "WorkflowGraphBuilder":
         """Add choice node to allow elastic user-in-the-loop routing."""
         self.graph.add_node(NodeName.CHOICE, choice_node)
         self.graph.add_conditional_edges(
@@ -165,7 +165,7 @@ class WorkflowGraphBuilder:
         )
         return self
 
-    def add_design_verification(self) -> 'WorkflowGraphBuilder':
+    def add_design_verification(self) -> "WorkflowGraphBuilder":
         """Add a post-initialization design checkpoint."""
         self.graph.add_node(NodeName.DESIGN_VERIFICATION, design_verification_node)
         self.graph.add_node(NodeName.DESIGN_RECONCILIATION, design_reconciliation_node)
@@ -174,7 +174,7 @@ class WorkflowGraphBuilder:
         self.graph.add_edge(NodeName.INTENT, NodeName.DESIGN_VERIFICATION)
         return self
 
-    def add_study_design_assessment(self) -> 'WorkflowGraphBuilder':
+    def add_study_design_assessment(self) -> "WorkflowGraphBuilder":
         """Add study design assessment node and edges.
 
         Returns:
@@ -192,7 +192,7 @@ class WorkflowGraphBuilder:
         )
         return self
 
-    def add_paired_test_path(self) -> 'WorkflowGraphBuilder':
+    def add_paired_test_path(self) -> "WorkflowGraphBuilder":
         """Add nodes and edges for paired tests.
 
         Returns:
@@ -204,7 +204,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = normality_of_difference_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='normality_of_difference')
+            return call_test_agent(agent, state, probability_key="normality_of_difference")
 
         self.graph.add_node(NodeName.NORMALITY_OF_DIFFERENCE, normality_wrapper)
         self.graph.add_conditional_edges(
@@ -222,7 +222,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = ttest_rel_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='paired_t_test')
+            return call_test_agent(agent, state, probability_key="paired_t_test")
 
         self.graph.add_node(NodeName.PAIRED_T, paired_t_wrapper)
 
@@ -231,13 +231,13 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = wilcoxon_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='wilcoxon_signed_rank')
+            return call_test_agent(agent, state, probability_key="wilcoxon_signed_rank")
 
         self.graph.add_node(NodeName.WILCOXON, wilcoxon_wrapper)
 
         return self
 
-    def add_independent_test_path(self) -> 'WorkflowGraphBuilder':
+    def add_independent_test_path(self) -> "WorkflowGraphBuilder":
         """Add nodes and edges for independent groups tests.
 
         Returns:
@@ -260,14 +260,15 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = ttest_ind_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='independent_t_test')
+            return call_test_agent(agent, state, probability_key="independent_t_test")
 
         self.graph.add_node(NodeName.INDEP_T, indep_t_wrapper)
+
         def welch_wrapper(state: WorkflowState) -> WorkflowState:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = welch_t_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='welch_t_test')
+            return call_test_agent(agent, state, probability_key="welch_t_test")
 
         self.graph.add_node(NodeName.WELCH, welch_wrapper)
 
@@ -275,7 +276,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = mannwhitneyu_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='mann_whitney_u')
+            return call_test_agent(agent, state, probability_key="mann_whitney_u")
 
         self.graph.add_node(NodeName.MANN, mann_wrapper)
 
@@ -284,7 +285,7 @@ class WorkflowGraphBuilder:
 
         return self
 
-    def add_anova_paths(self) -> 'WorkflowGraphBuilder':
+    def add_anova_paths(self) -> "WorkflowGraphBuilder":
         """Add nodes for multi-group ANOVA/Kruskal and repeated measures."""
         self.graph.add_node(NodeName.ANOVA_ASSUMPTIONS, anova_assumptions_node)
         self.graph.add_conditional_edges(
@@ -303,7 +304,7 @@ class WorkflowGraphBuilder:
         self.graph.add_node(NodeName.FRIEDMAN, friedman_node)
         return self
 
-    def add_categorical_tests(self) -> 'WorkflowGraphBuilder':
+    def add_categorical_tests(self) -> "WorkflowGraphBuilder":
         """Add categorical test nodes.
 
         Returns:
@@ -315,7 +316,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = chi2_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='chi_square', assess_assumptions=False)
+            return call_test_agent(agent, state, probability_key="chi_square", assess_assumptions=False)
 
         self.graph.add_node(NodeName.CHI2, chi2_wrapper)
 
@@ -324,7 +325,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = fisher_exact_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='fisher_exact', assess_assumptions=False)
+            return call_test_agent(agent, state, probability_key="fisher_exact", assess_assumptions=False)
 
         self.graph.add_node(NodeName.FISHER, fisher_wrapper)
 
@@ -332,7 +333,7 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = mcnemar_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='mcnemar', assess_assumptions=False)
+            return call_test_agent(agent, state, probability_key="mcnemar", assess_assumptions=False)
 
         self.graph.add_node(NodeName.MCNEMAR, mcnemar_wrapper)
 
@@ -340,18 +341,19 @@ class WorkflowGraphBuilder:
             model = create_model(model_name=state.model_name, provider=state.provider)
             settings = create_model_settings(model_name=state.model_name)
             agent = cochran_armitage_agent(model=model, model_settings=settings)
-            return call_test_agent(agent, state, probability_key='cochran_armitage_trend', assess_assumptions=False)
+            return call_test_agent(agent, state, probability_key="cochran_armitage_trend", assess_assumptions=False)
 
         self.graph.add_node(NodeName.COCHRAN_ARMITAGE, trend_wrapper)
 
         return self
 
-    def add_survival_tests(self) -> 'WorkflowGraphBuilder':
+    def add_survival_tests(self) -> "WorkflowGraphBuilder":
         """Add survival-analysis placeholders."""
         self.graph.add_node(NodeName.COX_REGRESSION, cox_regression_node)
+        self.graph.add_edge(NodeName.COX_REGRESSION, NodeName.USER_INTERVENTION)
         return self
 
-    def add_summary_node(self) -> 'WorkflowGraphBuilder':
+    def add_summary_node(self) -> "WorkflowGraphBuilder":
         """Add summary node and edges from all terminal nodes.
 
         Returns:
@@ -374,7 +376,6 @@ class WorkflowGraphBuilder:
             NodeName.FISHER,
             NodeName.MCNEMAR,
             NodeName.COCHRAN_ARMITAGE,
-            NodeName.COX_REGRESSION,
         ]
         for node in terminal_nodes:
             self.graph.add_edge(node, NodeName.SUMMARY)
@@ -384,14 +385,14 @@ class WorkflowGraphBuilder:
 
         return self
 
-    def add_reviewer_node(self) -> 'WorkflowGraphBuilder':
+    def add_reviewer_node(self) -> "WorkflowGraphBuilder":
         """Add the reviewer/consensus node after summary."""
         self.graph.add_node(NodeName.REVIEWER, reviewer_node)
         self.graph.add_edge(NodeName.METHODOLOGY_AUDITOR, NodeName.REVIEWER)
         self.graph.add_edge(NodeName.REVIEWER, END)
         return self
 
-    def add_methodology_auditor_node(self) -> 'WorkflowGraphBuilder':
+    def add_methodology_auditor_node(self) -> "WorkflowGraphBuilder":
         """Add the methodology auditor node before reviewer."""
         self.graph.add_node(NodeName.METHODOLOGY_AUDITOR, methodology_auditor_node)
         self.graph.add_edge(NodeName.SUMMARY, NodeName.METHODOLOGY_AUDITOR)
@@ -414,7 +415,7 @@ def build_workflow_graph(checkpointer=None):
     Returns:
         Compiled workflow graph.
     """
-    logger.info('Building workflow graph...')
+    logger.info("Building workflow graph...")
 
     builder = WorkflowGraphBuilder()
     graph = (
@@ -436,7 +437,7 @@ def build_workflow_graph(checkpointer=None):
         .build(checkpointer=checkpointer)
     )
 
-    logger.info('Workflow graph built successfully')
+    logger.info("Workflow graph built successfully")
     return graph
 
 
@@ -450,11 +451,12 @@ try:
 
     def create_default_checkpointer():
         """Create a persistent checkpointer backed by SQLite."""
-        checkpoint_dir = settings.DATA_DIR / 'checkpoints'
+        checkpoint_dir = settings.DATA_DIR / "checkpoints"
         Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
-        return SqliteSaver(str(checkpoint_dir / 'workflow.sqlite'))
+        return SqliteSaver(str(checkpoint_dir / "workflow.sqlite"))
 
 except Exception:  # pragma: no cover - langgraph optional fallback
+
     def create_default_checkpointer():
         try:
             from langgraph.checkpoint.memory import MemorySaver

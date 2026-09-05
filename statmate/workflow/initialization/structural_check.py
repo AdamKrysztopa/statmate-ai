@@ -10,7 +10,6 @@ import pandas as pd
 from statmate.core.validation import (
     StatisticalDesign,
     detect_wide_format_pairing,
-    get_structural_summary,
     infer_statistical_design,
 )
 

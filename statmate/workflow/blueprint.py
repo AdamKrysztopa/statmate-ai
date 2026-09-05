@@ -43,6 +43,15 @@ class SampleBalance(BaseModel):
     group_sizes: dict[str, int] = Field(default_factory=dict)
 
 
+class InfluenceDiagnostics(BaseModel):
+    """Outlier and influence diagnostics computed during blueprint construction."""
+
+    cooks_distance_max: float | None = None
+    high_leverage_count: int | None = None
+    outlier_count_iqr: int | None = None
+    vif_warnings: list[str] = Field(default_factory=list)
+
+
 class DataBlueprint(BaseModel):
     """Immutable, machine-readable data blueprint."""
 
@@ -71,7 +80,12 @@ class DataBlueprint(BaseModel):
         default=None,
         description="Structured overlap report across groups/IDs emitted by initialization.",
     )
+    regression_intent: Literal["none", "linear", "logistic"] = Field(
+        default="none",
+        description="Detected regression intent: linear OLS, logistic, or none.",
+    )
     raw: dict[str, Any] = Field(default_factory=dict, description="Original payload from agents if provided")
+    influence_diagnostics: InfluenceDiagnostics | None = None
 
 
 def _compute_distribution_metrics(series: pd.Series) -> DistributionMetric:
@@ -112,6 +126,63 @@ def _compute_sample_balance(df: pd.DataFrame, group_col: str | None) -> SampleBa
     balanced = ratio is None or ratio >= 0.8
     return SampleBalance(
         balanced=balanced, balance_ratio=ratio, group_sizes={str(k): int(v) for k, v in counts.items()}
+    )
+
+
+def _compute_influence(df: pd.DataFrame, target_col: str) -> InfluenceDiagnostics:
+    """Compute Cook's D, leverage, IQR outlier count, and VIF warnings."""
+    import numpy as np
+    from statsmodels.regression.linear_model import OLS
+    from statsmodels.stats.outliers_influence import OLSInfluence, variance_inflation_factor
+    from statsmodels.tools import add_constant
+
+    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c]) and c != target_col]
+    if len(numeric_cols) < 1 or target_col not in df.columns:
+        return InfluenceDiagnostics()
+
+    sub = df[[target_col] + numeric_cols].dropna()
+    if len(sub) < len(numeric_cols) + 2:
+        return InfluenceDiagnostics()
+
+    y = sub[target_col]
+    X = sub[numeric_cols]
+
+    # IQR outlier count on target
+    q1 = float(y.quantile(0.25))
+    q3 = float(y.quantile(0.75))
+    iqr = q3 - q1
+    outlier_count_iqr = int(((y < q1 - 1.5 * iqr) | (y > q3 + 1.5 * iqr)).sum())
+
+    try:
+        X_const = add_constant(X)
+        model = OLS(y, X_const).fit()
+        influence = OLSInfluence(model)
+        cooks_d, _ = influence.cooks_distance
+        cooks_distance_max = float(np.max(cooks_d))
+        n, k = len(sub), X.shape[1]
+        hat = influence.hat_matrix_diag
+        threshold = 2.0 * (k + 1) / n
+        high_leverage_count = int((hat > threshold).sum())
+
+        # VIF warnings for predictors with VIF > 5
+        X_arr = X_const.values
+        vif_warnings: list[str] = []
+        for i, col in enumerate(X_const.columns):
+            if col == "const":
+                continue
+            vif_val = float(variance_inflation_factor(X_arr, i))
+            if vif_val > 5.0:
+                vif_warnings.append(str(col))
+    except Exception:
+        cooks_distance_max = None
+        high_leverage_count = None
+        vif_warnings = []
+
+    return InfluenceDiagnostics(
+        cooks_distance_max=cooks_distance_max,
+        high_leverage_count=high_leverage_count,
+        outlier_count_iqr=outlier_count_iqr,
+        vif_warnings=vif_warnings,
     )
 
 
@@ -204,6 +275,26 @@ def build_data_blueprint(
     idx_col = index_column or (raw_payload or {}).get("index_column") or df.index.name
     tgt_col = target_column or (raw_payload or {}).get("target_column")
 
+    # Detect regression intent from data layout
+    regression_intent_val: Literal["none", "linear", "logistic"] = "none"
+    if tgt_col and tgt_col in df.columns:
+        numeric_predictors = [col for col in df.columns if col != tgt_col and pd.api.types.is_numeric_dtype(df[col])]
+        target_series = df[tgt_col].dropna()
+        unique_vals = target_series.nunique()
+        if unique_vals == 2 and len(numeric_predictors) >= 1:
+            regression_intent_val = "logistic"
+        elif pd.api.types.is_numeric_dtype(df[tgt_col]) and len(numeric_predictors) >= 2:
+            regression_intent_val = "linear"
+
+    # Compute influence diagnostics when a numeric target is available
+    influence_diag: InfluenceDiagnostics | None = None
+    if tgt_col and tgt_col in df.columns and pd.api.types.is_numeric_dtype(df[tgt_col]):
+        try:
+            influence_diag = _compute_influence(df, tgt_col)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Influence diagnostics failed: %s", exc)
+            influence_diag = None
+
     return DataBlueprint(
         variable_roles=roles,
         distribution_metrics=distribution_metrics,
@@ -214,5 +305,7 @@ def build_data_blueprint(
         index_column=idx_col,
         target_column=tgt_col,
         partition_report=partition_report or (raw_payload or {}).get("partition_report"),
+        regression_intent=regression_intent_val,
         raw=raw_payload or {},
+        influence_diagnostics=influence_diag,
     )

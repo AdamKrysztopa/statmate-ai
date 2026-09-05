@@ -86,13 +86,13 @@ def render_credential_setup_page(api_base_url: str) -> bool:
         st.markdown(
             """
             You can use **Ollama** to run AI models locally on your machine for FREE!
-            
+
             **Quick Setup:**
             1. Install Ollama: [https://ollama.ai](https://ollama.ai)
             2. Run: `ollama pull deepseek-r1:8b`
             3. Start Ollama: `ollama serve`
             4. Check "Enable Ollama" below and click Configure
-            
+
             **Benefits:**
             - 🆓 Completely free
             - 🔒 Private (data never leaves your machine)
