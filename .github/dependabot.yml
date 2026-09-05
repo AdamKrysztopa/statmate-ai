@@ -1,3 +1,11 @@
+# Security updates only.
+#
+# `open-pull-requests-limit: 0` disables routine *version-update* pull requests for an
+# ecosystem. Dependabot *security* updates are controlled separately (by the repository's
+# automated-security-fixes setting) and are unaffected — so vulnerabilities still raise a
+# PR, while cosmetic "bump X from 1.2 to 1.3" churn does not.
+#
+# To re-enable routine updates for an ecosystem, raise its limit and add a schedule.
 version: 2
 
 updates:
@@ -6,31 +14,18 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
-    groups:
-      python-security:
-        applies-to: security-updates
-        patterns: ["*"]
-      python-minor-patch:
-        applies-to: version-updates
-        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 0
 
   # React frontend (frontend/package-lock.json)
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
-    groups:
-      npm-security:
-        applies-to: security-updates
-        patterns: ["*"]
-      npm-minor-patch:
-        applies-to: version-updates
-        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 0
 
   # GitHub Actions used by CI
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
