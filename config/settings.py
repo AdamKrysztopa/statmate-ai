@@ -169,6 +169,28 @@ class Settings(BaseSettings):
             if directory:
                 directory.mkdir(parents=True, exist_ok=True)
 
+    @field_validator('CORS_ORIGINS')
+    @classmethod
+    def reject_wildcard_origins(cls, value: list[str]) -> list[str]:
+        """Reject a wildcard CORS origin.
+
+        The API sends ``allow_credentials=True``, and a wildcard origin combined with
+        credentials lets any site issue credentialed cross-origin requests. Origins must
+        be listed explicitly, including for local development.
+
+        Args:
+            value: Configured CORS origins.
+
+        Returns:
+            The validated origins.
+
+        Raises:
+            ValueError: If a wildcard origin is configured.
+        """
+        if any(origin.strip() == '*' for origin in value):
+            raise ValueError('CORS_ORIGINS must not contain "*": the API allows credentials. List origins explicitly.')
+        return value
+
     @model_validator(mode='after')
     def validate_secrets(self) -> 'Settings':
         """Fail fast when security-critical secrets are not configured."""
