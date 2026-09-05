@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from config.settings import settings
 from database.models import User
 from database.session import get_db
-from statmate.api.dependencies import get_current_user_optional
+from statmate.api.dependencies import require_authenticated_user
 from statmate.api.models.model_config import (
     AvailableModelsResponse,
     CurrentModelResponse,
@@ -256,7 +256,7 @@ async def get_environment() -> EnvironmentResponse:
 @router.post('/credentials', response_model=CredentialsResponse)
 async def set_credentials(
     credentials: CredentialsRequest,
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
     db: Session = Depends(get_db),
 ) -> CredentialsResponse:
     """Set user credentials for PROD mode.
@@ -270,10 +270,6 @@ async def set_credentials(
     Raises:
         HTTPException: If environment is not production or credentials are invalid.
     """
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=401, detail='Authentication required')
-    if not current_user:
-        raise HTTPException(status_code=401, detail='Authentication required')
 
     try:
         incoming: dict[str, str] = {}
@@ -347,14 +343,10 @@ async def set_credentials(
 
 @router.get('/credentials', response_model=CredentialsListResponse)
 async def get_credentials(
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
     db: Session = Depends(get_db),
 ) -> CredentialsListResponse:
     """Return configured providers for the current user."""
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=401, detail='Authentication required')
-    if not current_user:
-        raise HTTPException(status_code=401, detail='Authentication required')
 
     stored = CredentialService.load_credentials(db=db, user_id=current_user.id)
     quotas = CredentialService.get_quota_limits(db=db, user_id=current_user.id)

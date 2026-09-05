@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from config.settings import settings
 from database.models import AnalysisStatus, User
 from database.session import get_db
-from statmate.api.dependencies import get_current_user_optional
+from statmate.api.dependencies import require_authenticated_user
 from statmate.api.models.analysis import (
     AnalysisCommentUpdate,
     AnalysisCreate,
@@ -37,7 +37,7 @@ async def run_analysis(
     request: AnalysisCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
 ) -> AnalysisResponse:
     """Run a statistical analysis on a dataset.
 
@@ -54,8 +54,6 @@ async def run_analysis(
     Raises:
         HTTPException: If dataset not found or validation fails
     """
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
     if request.route_override and request.route_override not in _VALID_ROUTE_OVERRIDES:
         raise HTTPException(
@@ -73,7 +71,7 @@ async def run_analysis(
             route_override=request.route_override,
             model_name=request.model_name,
             provider=request.provider,
-            user_id=current_user.id if current_user else None,
+            user_id=current_user.id,
             overwrite=request.overwrite,
         )
 
@@ -131,7 +129,7 @@ def _parse_trace_from_log(log_content: str) -> list[dict[str, str]]:
 async def get_analysis_status(
     analysis_id: str,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
 ) -> AnalysisStatusResponse:
     """Get the status of an analysis.
 
@@ -145,10 +143,8 @@ async def get_analysis_status(
     Raises:
         HTTPException: If analysis not found
     """
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
-    analysis = AnalysisService.get_analysis(db, analysis_id, user_id=current_user.id if current_user else None)
+    analysis = AnalysisService.get_analysis(db, analysis_id, user_id=current_user.id)
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
     analysis = AnalysisService.sanitize_analysis(analysis)
@@ -167,7 +163,7 @@ async def get_analysis_status(
     execution_trace: list[dict[str, str]] | None = None
     if analysis.log_path:
         log_content = AnalysisService.get_analysis_log(
-            db, analysis_id, user_id=current_user.id if current_user else None
+            db, analysis_id, user_id=current_user.id
         )
         if log_content:
             execution_trace = _parse_trace_from_log(log_content)
@@ -204,17 +200,15 @@ async def get_analysis_status(
 async def stream_analysis_events(
     analysis_id: str,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
 ) -> StreamingResponse:
     """Server-sent events for live analysis updates."""
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
-    analysis = AnalysisService.get_analysis(db, analysis_id, user_id=current_user.id if current_user else None)
+    analysis = AnalysisService.get_analysis(db, analysis_id, user_id=current_user.id)
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
 
-    analysis_owner = current_user.id if current_user else None
+    analysis_owner = current_user.id
     from database.session import SessionLocal
 
     async def event_generator():
@@ -298,16 +292,14 @@ async def stream_analysis_events(
 async def get_workflow_graph(
     analysis_id: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
 ) -> dict:
     """Return the canonical workflow graph and optional per-analysis progress."""
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
     if not analysis_id:
         return AnalysisService.build_workflow_graph_state([], None)
 
-    analysis = AnalysisService.get_analysis(db, analysis_id, user_id=current_user.id if current_user else None)
+    analysis = AnalysisService.get_analysis(db, analysis_id, user_id=current_user.id)
     if not analysis:
         logger.warning("Workflow graph requested for missing analysis_id=%s", analysis_id)
         return {
@@ -324,7 +316,7 @@ async def get_workflow_graph(
 async def get_analysis_results(
     analysis_id: str,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
 ) -> AnalysisResultResponse:
     """Get the results of a completed analysis.
 
@@ -338,10 +330,8 @@ async def get_analysis_results(
     Raises:
         HTTPException: If analysis not found or not completed
     """
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
-    results = AnalysisService.get_analysis_results(db, analysis_id, user_id=current_user.id if current_user else None)
+    results = AnalysisService.get_analysis_results(db, analysis_id, user_id=current_user.id)
     if not results:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -355,7 +345,7 @@ async def get_analysis_results(
 async def get_analysis_log(
     analysis_id: str,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
 ) -> dict[str, str]:
     """Get the execution log for an analysis.
 
@@ -369,10 +359,8 @@ async def get_analysis_log(
     Raises:
         HTTPException: If log not found
     """
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
-    log_content = AnalysisService.get_analysis_log(db, analysis_id, user_id=current_user.id if current_user else None)
+    log_content = AnalysisService.get_analysis_log(db, analysis_id, user_id=current_user.id)
     if log_content is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Log not found")
 
@@ -388,20 +376,18 @@ async def export_analysis_report(
     analysis_id: str,
     export_format: str,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
 ) -> StreamingResponse:
     """Export an analysis as PDF, DOCX, or CSV."""
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
-    results = AnalysisService.get_analysis_results(db, analysis_id, user_id=current_user.id if current_user else None)
+    results = AnalysisService.get_analysis_results(db, analysis_id, user_id=current_user.id)
     if not results:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found or incomplete")
 
     dataset_df = None
     try:
         dataset = DatasetService.get_dataset(
-            db, results["dataset_id"], user_id=current_user.id if current_user else None
+            db, results["dataset_id"], user_id=current_user.id
         )
         if dataset:
             dataset_df = StorageService.read_dataset(settings.get_upload_path(dataset.filename))
@@ -427,7 +413,7 @@ async def export_analysis_report(
             filename = f"analysis-{analysis_id}.tex"
         elif export_format in ("bundle", "zip"):
             log_content = AnalysisService.get_analysis_log(
-                db, analysis_id, user_id=current_user.id if current_user else None
+                db, analysis_id, user_id=current_user.id
             )
             payload = ExportService.build_repro_bundle(results, dataset_df, log_content)
             media_type = "application/zip"
@@ -447,7 +433,7 @@ async def list_analyses(
     limit: int = 100,
     dataset_id: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
 ) -> list[AnalysisResponse]:
     """List all analyses with pagination.
 
@@ -460,14 +446,12 @@ async def list_analyses(
     Returns:
         List of AnalysisResponse objects
     """
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
     analyses = AnalysisService.list_analyses(
         db,
         skip=skip,
         limit=limit,
-        user_id=current_user.id if current_user else None,
+        user_id=current_user.id,
         dataset_id=dataset_id,
     )
     return [AnalysisResponse.model_validate(AnalysisService.sanitize_analysis(a)) for a in analyses]
@@ -477,13 +461,11 @@ async def list_analyses(
 async def delete_analysis(
     analysis_id: str,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
 ) -> None:
     """Delete an analysis version and its stored artifacts."""
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
-    deleted = AnalysisService.delete_analysis(db, analysis_id, user_id=current_user.id if current_user else None)
+    deleted = AnalysisService.delete_analysis(db, analysis_id, user_id=current_user.id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
     # Files are removed inside the service via StorageService
@@ -494,14 +476,12 @@ async def update_analysis_comment(
     analysis_id: str,
     payload: AnalysisCommentUpdate,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_authenticated_user),
 ) -> AnalysisResponse:
     """Upsert a user comment on an analysis."""
-    if settings.AUTH_REQUIRED and not current_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
     updated = AnalysisService.update_comment(
-        db, analysis_id, comment=payload.comment, user_id=current_user.id if current_user else None
+        db, analysis_id, comment=payload.comment, user_id=current_user.id
     )
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")

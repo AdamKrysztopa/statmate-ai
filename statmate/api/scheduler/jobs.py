@@ -24,7 +24,7 @@ def execute_scheduled_analysis(task_id: str) -> None:
 
     try:
         # Get task details
-        task = TaskService.get_task(db, task_id)
+        task = TaskService.get_task_unscoped(db, task_id)
         if not task:
             logger.error(f'Task not found: {task_id}')
             return
@@ -48,7 +48,7 @@ def execute_scheduled_analysis(task_id: str) -> None:
         db.commit()
 
         # Run analysis
-        AnalysisService.run_analysis(db, analysis.id)
+        AnalysisService.run_analysis(db, analysis.id, user_id=task.user_id)
 
         # Update task execution record
         TaskService.update_task_execution(db, task_id, success=True)

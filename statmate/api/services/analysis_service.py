@@ -179,15 +179,13 @@ class AnalysisService:
             The created Analysis model.
         """
         # Ownership check when applicable
-        from config.settings import settings
 
-        ds = DatasetService.get_dataset(db, dataset_id, user_id=user_id if settings.AUTH_REQUIRED else None)
-        if settings.AUTH_REQUIRED and not ds:
+        ds = DatasetService.get_dataset(db, dataset_id, user_id=user_id)
+        if not ds:
             raise ValueError('Dataset not found or not owned by user')
 
         query = db.query(Analysis).filter(Analysis.dataset_id == dataset_id)
-        if user_id:
-            query = query.filter(Analysis.user_id == user_id)
+        query = query.filter(Analysis.user_id == user_id)
         latest = query.order_by(Analysis.version.desc(), Analysis.start_time.desc().nullslast()).first()
         next_version = (latest.version if latest and latest.version else 0) + 1
 
@@ -218,6 +216,23 @@ class AnalysisService:
         return analysis
 
     @staticmethod
+    def get_analysis_unscoped(db: Session, analysis_id: str) -> Analysis | None:
+        """Look up an analysis without an ownership filter.
+
+        For trusted internal callers only (the scheduler, and ``run_analysis``
+        resolving the row it is about to execute). Request-handling code must use
+        :meth:`get_analysis`, which scopes to the caller.
+
+        Args:
+            db: The database session.
+            analysis_id: The analysis UUID.
+
+        Returns:
+            The Analysis model, or None if not found.
+        """
+        return db.query(Analysis).filter(Analysis.id == analysis_id).first()
+
+    @staticmethod
     def get_analysis(db: Session, analysis_id: str, *, user_id: str | None = None) -> Analysis | None:
         """Get an analysis by its ID.
 
@@ -229,8 +244,7 @@ class AnalysisService:
             The Analysis model or None if not found.
         """
         query = db.query(Analysis).filter(Analysis.id == analysis_id)
-        if user_id:
-            query = query.filter(Analysis.user_id == user_id)
+        query = query.filter(Analysis.user_id == user_id)
         return query.first()
 
     @staticmethod
@@ -248,8 +262,7 @@ class AnalysisService:
             A list of Analysis models.
         """
         query = db.query(Analysis)
-        if user_id:
-            query = query.filter(Analysis.user_id == user_id)
+        query = query.filter(Analysis.user_id == user_id)
         if dataset_id:
             query = query.filter(Analysis.dataset_id == dataset_id)
         return query.order_by(Analysis.version.desc(), Analysis.start_time.desc()).offset(skip).limit(limit).all()
@@ -324,7 +337,7 @@ class AnalysisService:
         Raises:
             ValueError: If the analysis or its associated dataset is not found.
         """
-        analysis = AnalysisService.get_analysis(db, analysis_id)
+        analysis = AnalysisService.get_analysis_unscoped(db, analysis_id)
         if not analysis:
             raise ValueError(f'Analysis not found: {analysis_id}')
         if user_id and analysis.user_id and analysis.user_id != user_id:

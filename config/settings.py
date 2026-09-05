@@ -139,7 +139,6 @@ class Settings(BaseSettings):
             'http://172.17.0.2:3000',  # devcontainer bridge
         ]
     )
-    AUTH_REQUIRED: bool = Field(default=True, description='Require authentication for API access')
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60, description='Access token lifetime in minutes')
     TOKEN_ALGORITHM: str = Field(default='HS256', description='JWT signing algorithm')
 

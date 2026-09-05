@@ -6,7 +6,6 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
-from config.settings import settings
 from database.models import User
 from database.session import get_db
 from statmate.api.security import decode_access_token
@@ -38,9 +37,21 @@ def get_current_user_optional(token: str | None = Depends(oauth2_scheme), db: Se
 
 
 def require_authenticated_user(current_user: User | None = Depends(get_current_user_optional)) -> User:
-    """Require an authenticated user, respecting settings.AUTH_REQUIRED."""
+    """Require an authenticated user.
+
+    Returns a non-optional ``User`` so routes cannot accidentally proceed with an
+    anonymous caller: the ownership filters downstream key off ``current_user.id``,
+    and a ``None`` there previously widened queries to every user's rows.
+
+    Args:
+        current_user: User resolved from the bearer token, if any.
+
+    Returns:
+        The authenticated user.
+
+    Raises:
+        HTTPException: 401 when the request carries no valid token.
+    """
     if current_user is None:
-        if settings.AUTH_REQUIRED:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication required')
     return current_user
