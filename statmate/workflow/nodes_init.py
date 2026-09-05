@@ -371,14 +371,14 @@ def assess_study_design_node(state: WorkflowState) -> WorkflowState:
                 data={"error": str(exc)},
             ),
         )
-        state.paired = res.data.paired
+        state.paired = res.output.paired
 
-        msg = "~~~Paired comparison~~~" if res.data.paired else "~~~Two independent groups~~~"
+        msg = "~~~Paired comparison~~~" if res.output.paired else "~~~Two independent groups~~~"
         logger.info(msg)
         state.add_step(
             step="Assess Study Design",
-            detail="Paired comparison" if res.data.paired else "Two independent groups",
-            data={"paired": res.data.paired},
+            detail="Paired comparison" if res.output.paired else "Two independent groups",
+            data={"paired": res.output.paired},
         )
 
         return state

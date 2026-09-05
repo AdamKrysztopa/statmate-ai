@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import csv
 import html
 import io
@@ -29,6 +30,66 @@ class ExportService:
         handed to WeasyPrint.
         """
         return html.escape(str(text) if text is not None else '', quote=True)
+
+    #: MIME types permitted in report image data URIs.
+    _ALLOWED_IMAGE_TYPES = frozenset({'image/png', 'image/jpeg', 'image/svg+xml'})
+
+    @classmethod
+    def _image_data_uri(cls, content_type: str | None, image_base64: str | None) -> str | None:
+        """Build a validated ``data:`` URI for a report image.
+
+        HTML escaping stops markup breakout but does not make a URI well-formed: the MIME
+        type and payload still reach WeasyPrint's URL handling. This whitelists the MIME
+        type and round-trips the payload through a strict base64 decode/encode, so anything
+        malformed or smuggling extra URI syntax is dropped rather than rendered.
+
+        Args:
+            content_type: Declared MIME type of the image.
+            image_base64: Base64-encoded image payload.
+
+        Returns:
+            A safe ``data:`` URI, or None when the input is missing or invalid.
+        """
+        if not image_base64:
+            return None
+        mime = (content_type or 'image/png').strip().lower()
+        if mime not in cls._ALLOWED_IMAGE_TYPES:
+            mime = 'image/png'
+        try:
+            raw = base64.b64decode(str(image_base64), validate=True)
+        except (ValueError, binascii.Error):
+            return None
+        if not raw:
+            return None
+        return f'data:{mime};base64,{base64.b64encode(raw).decode("ascii")}'
+
+    @classmethod
+    def _plot_src(cls, plot: dict[str, Any]) -> str:
+        """Return a validated data URI for a plot, or an empty string if unusable."""
+        return cls._image_data_uri(plot.get('content_type'), plot.get('image_base64')) or ''
+
+    @staticmethod
+    def _blocked_url_fetcher(url: str) -> dict[str, Any]:
+        """Reject every non-``data:`` URL WeasyPrint tries to fetch.
+
+        Report HTML embeds all of its images inline, so the renderer never has a
+        legitimate reason to reach the network. Refusing outbound fetches closes the
+        SSRF and CSS-injection paths in WeasyPrint that have no upstream fix.
+
+        Args:
+            url: URL WeasyPrint asked to resolve.
+
+        Returns:
+            The fetch result for permitted ``data:`` URLs.
+
+        Raises:
+            ValueError: If the URL is not a ``data:`` URL.
+        """
+        if not url.lower().startswith('data:'):
+            raise ValueError(f'Blocked non-data URL in report rendering: {url[:60]}')
+        from weasyprint.urls import default_url_fetcher
+
+        return default_url_fetcher(url)
 
     @staticmethod
     def _latex_escape(text: str | None) -> str:
@@ -82,8 +143,7 @@ class ExportService:
             f"""
             <div class="plot">
               <div class="plot-title">{cls._html_safe(plot.get("title") or "Plot")}</div>
-              <img src="data:{cls._html_safe(plot.get("content_type") or "image/png")};base64,"""
-            f"""{cls._html_safe(plot.get("image_base64"))}" />
+              <img src="{cls._html_safe(cls._plot_src(plot))}" />
               <div class="plot-meta">{cls._html_safe(plot.get("description") or "")}</div>
             </div>
             """
@@ -145,8 +205,12 @@ class ExportService:
               {
             "<img alt='"
             + cls._html_safe(graph_assets.get("alt") or "Workflow graph")
-            + "' src='data:image/svg+xml;base64,"
-            + cls._html_safe(graph_assets.get("svg_base64", ""))
+            + "' src='"
+            + cls._html_safe(
+                cls._image_data_uri("image/png", graph_assets.get("png_base64"))
+                or cls._image_data_uri("image/svg+xml", graph_assets.get("svg_base64"))
+                or ""
+            )
             + "' />"
             if graph_assets.get("svg_base64")
             else "<div class='muted'>No workflow graph available.</div>"
@@ -190,7 +254,7 @@ class ExportService:
             from weasyprint import HTML
         except Exception as exc:  # pragma: no cover - optional dependency
             raise RuntimeError('WeasyPrint is required for PDF export') from exc
-        return HTML(string=html).write_pdf()
+        return HTML(string=html, url_fetcher=ExportService._blocked_url_fetcher).write_pdf()
 
     @classmethod
     def render_latex_report(cls, analysis: dict[str, Any]) -> bytes:

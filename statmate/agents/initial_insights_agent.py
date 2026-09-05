@@ -178,7 +178,8 @@ def build_initial_insights_agent(
         model=model,
         model_settings=model_settings,
         deps_type=InitialInsightsAgentDeps,
-        result_type=InitialInsightsAgentResults,
+        end_strategy='early',
+        output_type=InitialInsightsAgentResults,
         name='Initial Insights Agent',
         system_prompt=system_prompt,
         retries=retries,
@@ -506,7 +507,7 @@ if __name__ == '__main__':
                 columns_decision=None,
             ),
         )
-        res = results.data
+        res = results.output
         print(res)
         tool_args = res.tool_arguments or {}
 

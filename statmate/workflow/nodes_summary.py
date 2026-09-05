@@ -153,16 +153,16 @@ def summariser_node(state: WorkflowState) -> WorkflowState:
             ),
         )
 
-        state.add_result(AIMessage(content=str(res.data)))
+        state.add_result(AIMessage(content=str(res.output)))
         state.test_hierarchy = state.test_hierarchy or {}
-        state.test_hierarchy['summarizer'] = res.data.model_dump()
-        logger.info(f'Summariser output: {res.data}')
+        state.test_hierarchy['summarizer'] = res.output.model_dump()
+        logger.info(f'Summariser output: {res.output}')
         state.add_step(
             step='Summary',
-            detail=res.data.summary if hasattr(res, 'data') and hasattr(res.data, 'summary') else str(res.data),
+            detail=res.output.summary if hasattr(res, 'output') and hasattr(res.output, 'summary') else str(res.output),
             data={
                 'performed_tests': deps.performed_tests,
-                'findings_count': len(res.data.findings),
+                'findings_count': len(res.output.findings),
             },
         )
 
@@ -218,7 +218,7 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
             ),
         )
 
-        reviewer_result = apply_reviewer_informational_flags(res.data, deps)
+        reviewer_result = apply_reviewer_informational_flags(res.output, deps)
         state.reviewer_report = reviewer_result.model_dump()
         adjusted_summary = reviewer_result.adjusted_summary or summary_text
 

@@ -72,7 +72,8 @@ def build_column_role_agent(
         model=model,
         model_settings=model_settings,
         deps_type=InitialInsightsAgentDeps,
-        result_type=dict[str, Any],
+        end_strategy='early',
+        output_type=dict[str, Any],
         name='Column Role Agent',
         system_prompt=system_prompt,
     )
@@ -104,7 +105,7 @@ def propose_column_roles(
                 columns_decision=list(frame.columns),
             ),
         )
-        data = response.data or {}
+        data = response.output or {}
     except Exception as exc:
         logger.warning('Column role agent failed, falling back to defaults: %s', exc)
         data = {}

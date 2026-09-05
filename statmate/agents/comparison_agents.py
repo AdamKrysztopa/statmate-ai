@@ -119,11 +119,11 @@ if __name__ == '__main__':
         user_prompt='Please let me know the result of the test.',  # type: ignore
         deps=StatTestDeps(data=data_1, data_secondary=data_2, test_params=test_params),
     )
-    print(result.data)
+    print(result.output)
 
     agent_2 = ttest_rel_agent(model=model)
     result_2 = agent_2.run_sync(
         user_prompt='Please let me know the result of the test.',  # type: ignore
         deps=StatTestDeps(data=data_1, data_secondary=data_2, test_params=test_params),
     )
-    print(result_2.data)
+    print(result_2.output)

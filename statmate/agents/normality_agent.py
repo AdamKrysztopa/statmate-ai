@@ -2,6 +2,7 @@ from collections.abc import Callable, Iterable
 
 import numpy as np
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.output import ToolOutput
 from pydantic_ai.models.openai import Model, ModelSettings, OpenAIChatModel
 
 from statmate.agents import (
@@ -282,10 +283,10 @@ def meta_normality_agent(
         model=model,
         model_settings=model_settings,
         deps_type=StatTestDeps,
-        result_type=AgentResult,
+        end_strategy='early',
+        output_type=ToolOutput(AgentResult, description='Aggregates AgentResults with weighted meta-analysis.'),
         name='Meta-Analysis Normality Agent',
         system_prompt=system_prompt,
-        result_tool_description='Aggregates AgentResults with weighted meta-analysis.',
         retries=3,
     )
 
@@ -306,7 +307,7 @@ def meta_normality_agent(
         weighted_score = 0.0
         for agent_fn, weight in agents:
             print(f'Running {agent_fn.name}...')
-            result = agent_fn.run_sync(user_prompt='Answer POTENTAILLY_NORMAL or NOT_NORMAL', deps=deps).data
+            result = agent_fn.run_sync(user_prompt='Answer POTENTAILLY_NORMAL or NOT_NORMAL', deps=deps).output
             alpha = deps.test_params['alpha'] if deps.test_params else 0.05
             rejected = (
                 result.statistical_test_result.p_value < alpha
@@ -396,4 +397,4 @@ Be very concuise about the number of samples.
         user_prompt=user_prompt,
         deps=StatTestDeps(data=data_1, data_secondary=data_3, test_params=test_params),
     )
-    print(result_2.data)
+    print(result_2.output)
