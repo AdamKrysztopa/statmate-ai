@@ -142,8 +142,7 @@ class DatasetService:
             Dataset model or None if not found
         """
         query = db.query(Dataset).filter(Dataset.id == dataset_id)
-        if user_id:
-            query = query.filter(Dataset.user_id == user_id)
+        query = query.filter(Dataset.user_id == user_id)
         return query.first()
 
     @staticmethod
@@ -189,8 +188,7 @@ class DatasetService:
     @staticmethod
     def purge_missing_datasets(db: Session, *, user_id: str | None = None) -> list[str]:
         query = db.query(Dataset)
-        if user_id:
-            query = query.filter(Dataset.user_id == user_id)
+        query = query.filter(Dataset.user_id == user_id)
         datasets = query.all()
 
         deleted_ids: list[str] = []

@@ -5,7 +5,6 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from config.settings import settings
 from database.models import ScheduledTask, TaskStatus, TaskType
 from statmate.api.services.dataset_service import DatasetService
 
@@ -45,7 +44,7 @@ class TaskService:
             ValueError: If dataset not found or invalid task_type
         """
         # Validate dataset exists
-        dataset = DatasetService.get_dataset(db, dataset_id, user_id=user_id if settings.AUTH_REQUIRED else None)
+        dataset = DatasetService.get_dataset(db, dataset_id, user_id=user_id)
         if not dataset:
             msg = f'Dataset not found: {dataset_id}'
             raise ValueError(msg)
@@ -81,6 +80,23 @@ class TaskService:
         return task
 
     @staticmethod
+    def get_task_unscoped(db: Session, task_id: str) -> ScheduledTask | None:
+        """Look up a scheduled task without an ownership filter.
+
+        For the scheduler only, which runs without a request user and must resolve
+        the task in order to discover its owner. Request handlers must use
+        :meth:`get_task`.
+
+        Args:
+            db: Database session.
+            task_id: Task UUID.
+
+        Returns:
+            The ScheduledTask, or None if not found.
+        """
+        return db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+
+    @staticmethod
     def get_task(db: Session, task_id: str, *, user_id: str | None = None) -> ScheduledTask | None:
         """Get a task by ID.
 
@@ -92,8 +108,7 @@ class TaskService:
             ScheduledTask model or None if not found
         """
         query = db.query(ScheduledTask).filter(ScheduledTask.id == task_id)
-        if user_id:
-            query = query.filter(ScheduledTask.user_id == user_id)
+        query = query.filter(ScheduledTask.user_id == user_id)
         return query.first()
 
     @staticmethod
@@ -117,8 +132,7 @@ class TaskService:
         """
         query = db.query(ScheduledTask)
 
-        if user_id:
-            query = query.filter(ScheduledTask.user_id == user_id)
+        query = query.filter(ScheduledTask.user_id == user_id)
 
         if status:
             query = query.filter(ScheduledTask.status == status)
